@@ -1,4 +1,5 @@
 import 'package:collab/models/localquest_models.dart';
+import 'package:collab/core/localquest_widgets.dart';
 import 'package:collab/screens/auth_screens.dart';
 import 'package:collab/screens/merchant_screens.dart';
 import 'package:collab/screens/tourist_screens.dart';
@@ -93,7 +94,7 @@ void main() {
     expect(find.text('Add business'), findsOneWidget);
     expect(find.text('Business name'), findsOneWidget);
     expect(find.text('Business category'), findsOneWidget);
-    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+    expect(find.byType(LqDropdownField), findsOneWidget);
     expect(find.text('Registration number'), findsOneWidget);
     expect(find.text('Street address'), findsOneWidget);
     expect(find.text('Save business'), findsOneWidget);

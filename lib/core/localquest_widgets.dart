@@ -111,7 +111,7 @@ class LqCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CustomPaint(
     foregroundPainter: dashed
-        ? const _DashedRoundedBorderPainter(
+        ? _DashedRoundedBorderPainter(
             color: borderColor,
             radius: 25,
             strokeWidth: 1.35,
@@ -123,9 +123,7 @@ class LqCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(25),
-        border: dashed
-            ? null
-            : Border.all(color: borderColor, width: 1.35),
+        border: dashed ? null : Border.all(color: borderColor, width: 1.35),
         boxShadow: const [
           BoxShadow(
             color: Color(0x10293C62),
@@ -150,6 +148,111 @@ class LqDashedDivider extends StatelessWidget {
     child: SizedBox(
       width: vertical ? 1.35 : double.infinity,
       height: vertical ? double.infinity : 1.35,
+    ),
+  );
+}
+
+class LqTierBadge extends StatelessWidget {
+  const LqTierBadge({super.key, required this.level});
+
+  final int level;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    foregroundPainter: const _DashedRoundedBorderPainter(
+      color: LqColors.primary,
+      radius: 999,
+      strokeWidth: 1,
+    ),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'EXPLORER · LEVEL $level',
+        maxLines: 1,
+        style: monoLabel.copyWith(
+          color: LqColors.primary,
+          fontSize: 8.5,
+          height: 1.5,
+          letterSpacing: .85,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ),
+  );
+}
+
+class LqSegmentedControl<T> extends StatelessWidget {
+  const LqSegmentedControl({
+    super.key,
+    required this.segments,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<(T, String)> segments;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    foregroundPainter: const _DashedRoundedBorderPainter(
+      color: LqColors.primary,
+      radius: 999,
+      strokeWidth: 1.35,
+    ),
+    child: Container(
+      padding: const EdgeInsets.all(5.35),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: segments.map((segment) {
+          final isSelected = segment.$1 == selected;
+          return Semantics(
+            button: true,
+            selected: isSelected,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => onChanged(segment.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? LqColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: isSelected
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x333267D4),
+                            blurRadius: 7,
+                            offset: Offset(0, 4),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(
+                  segment.$2,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : LqColors.muted,
+                    fontSize: 12,
+                    height: 16 / 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     ),
   );
 }
@@ -330,32 +433,312 @@ const lqBusinessCategories = <String>[
   'Other',
 ];
 
-class LqDropdownField extends StatelessWidget {
-  const LqDropdownField({
+class LqDropdownField extends FormField<String> {
+  LqDropdownField({
     super.key,
     required this.label,
     required this.value,
     required this.items,
     required this.onChanged,
-    this.validator,
-  });
+    super.validator,
+  }) : super(
+         initialValue: value != null && items.contains(value) ? value : null,
+         builder: _buildDropdown,
+       );
   final String label;
   final String? value;
   final List<String> items;
   final ValueChanged<String?> onChanged;
-  final String? Function(String?)? validator;
+
+  static Widget _buildDropdown(FormFieldState<String> state) {
+    final field = state.widget as LqDropdownField;
+    final selected = state.value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () async {
+        final value = await showLqSelectionSheet<String>(
+          state.context,
+          title: field.label,
+          selected: selected,
+          options: field.items.map((item) => (item, item)).toList(),
+        );
+        if (value == null) return;
+        state.didChange(value);
+        field.onChanged(value);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            field.label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          InputDecorator(
+            decoration: InputDecoration(
+              errorText: state.errorText,
+              suffixIcon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: LqColors.primary,
+              ),
+            ),
+            child: Text(
+              selected ?? 'Choose ${field.label.toLowerCase()}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: selected == null ? LqColors.muted : LqColors.ink,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<T?> showLqSelectionSheet<T>(
+  BuildContext context, {
+  required String title,
+  required List<(T, String)> options,
+  T? selected,
+}) => showModalBottomSheet<T>(
+  context: context,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (sheetContext) => Container(
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(sheetContext).height * .72,
+    ),
+    padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+    decoration: const BoxDecoration(
+      color: LqColors.background,
+      borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 42,
+          height: 4,
+          decoration: BoxDecoration(
+            color: LqColors.line,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const CircleAvatar(
+              backgroundColor: LqColors.primarySoft,
+              foregroundColor: LqColors.primary,
+              child: Icon(Icons.tune_rounded),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('LOCALQUEST SELECTOR', style: monoLabel),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Flexible(
+          child: LqCard(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: options.length,
+              separatorBuilder: (_, _) =>
+                  const LqDashedDivider(color: LqColors.line),
+              itemBuilder: (context, index) {
+                final option = options[index];
+                final active = option.$1 == selected;
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  tileColor: active ? LqColors.primarySoft : null,
+                  title: Text(
+                    option.$2,
+                    style: TextStyle(
+                      color: active ? LqColors.primaryDark : LqColors.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  trailing: active
+                      ? const Icon(
+                          Icons.check_circle_rounded,
+                          color: LqColors.primary,
+                        )
+                      : const Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 17,
+                          color: LqColors.muted,
+                        ),
+                  onTap: () => Navigator.pop(sheetContext, option.$1),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    ),
+  ),
+);
+
+Future<DateTime?> showLqDatePicker(
+  BuildContext context, {
+  required DateTime initialDate,
+  required DateTime firstDate,
+  required DateTime lastDate,
+  String title = 'Choose a date',
+}) {
+  var selected = initialDate;
+  return showDialog<DateTime>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 410),
+          child: LqCard(
+            padding: const EdgeInsets.fromLTRB(14, 20, 14, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        backgroundColor: LqColors.primarySoft,
+                        foregroundColor: LqColors.primary,
+                        child: Icon(Icons.calendar_month_outlined),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('LOCALQUEST CALENDAR', style: monoLabel),
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Theme(
+                  data: Theme.of(context).copyWith(
+                    colorScheme: Theme.of(context).colorScheme.copyWith(
+                      primary: LqColors.primary,
+                      onPrimary: Colors.white,
+                      surface: Colors.white,
+                      onSurface: LqColors.ink,
+                    ),
+                    datePickerTheme: DatePickerThemeData(
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      dayShape: const WidgetStatePropertyAll(CircleBorder()),
+                      todayBorder: const BorderSide(color: LqColors.primary),
+                    ),
+                  ),
+                  child: CalendarDatePicker(
+                    initialDate: selected,
+                    firstDate: firstDate,
+                    lastDate: lastDate,
+                    onDateChanged: (value) =>
+                        setDialogState(() => selected = value),
+                  ),
+                ),
+                const LqDashedDivider(color: LqColors.line),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(dialogContext, selected),
+                        icon: const Icon(Icons.check_rounded, size: 18),
+                        label: const Text('Choose date'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class LqStatusPill extends StatelessWidget {
+  const LqStatusPill({super.key, required this.active});
+  final bool active;
 
   @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
-    initialValue: value != null && items.contains(value) ? value : null,
-    isExpanded: true,
-    decoration: InputDecoration(labelText: label),
-    items: items
-        .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-        .toList(),
-    onChanged: onChanged,
-    validator: validator,
-  );
+  Widget build(BuildContext context) {
+    final color = active ? const Color(0xFF46815B) : const Color(0xFF7B8492);
+    final background = active
+        ? const Color(0xFFE4F2DF)
+        : const Color(0xFFEEF0F4);
+    return CustomPaint(
+      foregroundPainter: _DashedRoundedBorderPainter(
+        color: color,
+        radius: 999,
+        strokeWidth: 1,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          active ? 'Active' : 'Inactive',
+          style: TextStyle(
+            color: color,
+            fontFamily: 'monospace',
+            fontSize: 10,
+            height: 1.5,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class LqFloatingNavBar extends StatelessWidget {
@@ -375,6 +758,7 @@ class LqFloatingNavBar extends StatelessWidget {
   Widget build(BuildContext context) => SafeArea(
     minimum: const EdgeInsets.only(bottom: 12),
     child: Center(
+      heightFactor: 1,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -416,28 +800,27 @@ class LqFloatingNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       CircleAvatar(
-                        radius: 17,
+                        radius: 15,
                         backgroundColor: const Color(0xFFE4C8B7),
                         child: Text(
                           profileInitials,
                           style: const TextStyle(
                             color: Color(0xFF573725),
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
-                      Transform.translate(
-                        offset: const Offset(0, -2),
-                        child: Text(
-                          'Profile',
-                          style: TextStyle(
-                            color: selectedIndex == 2
-                                ? Colors.white
-                                : LqColors.ink,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
+                      const SizedBox(height: 1),
+                      Text(
+                        'Profile',
+                        style: TextStyle(
+                          color: selectedIndex == 2
+                              ? Colors.white
+                              : LqColors.ink,
+                          fontSize: 9,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
@@ -600,5 +983,12 @@ Future<void> confirmLqSignOut(
       ),
     ),
   );
-  if (confirmed == true) await signOut();
+  if (confirmed != true) return;
+  await signOut();
+  if (context.mounted) {
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).popUntil((route) => route.isFirst);
+  }
 }

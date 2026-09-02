@@ -61,17 +61,17 @@ class _MerchantHomeState extends State<MerchantHome> {
         ),
       ];
       return LqPage(
-      bottomNavigationBar: LqFloatingNavBar(
-        selectedIndex: _index,
-        onSelected: (value) => setState(() => _index = value),
-        items: const [
-          (Icons.business_center_outlined, 'Home'),
-          (Icons.auto_awesome_outlined, 'Campaign'),
-          (Icons.person_outline, 'Profile'),
-        ],
-        profileInitials: initialsFor(widget.user.displayName),
-      ),
-      child: pages[_index],
+        bottomNavigationBar: LqFloatingNavBar(
+          selectedIndex: _index,
+          onSelected: (value) => setState(() => _index = value),
+          items: const [
+            (Icons.business_center_outlined, 'Home'),
+            (Icons.auto_awesome_outlined, 'Campaign'),
+            (Icons.person_outline, 'Profile'),
+          ],
+          profileInitials: initialsFor(widget.user.displayName),
+        ),
+        child: pages[_index],
       );
     },
   );
@@ -287,6 +287,7 @@ class MerchantOverview extends StatelessWidget {
           startDate: campaign.startDate,
           endDate: campaign.endDate,
           status: active ? 'active' : 'inactive',
+          businessId: campaign.businessId,
           views: campaign.views,
           claims: campaign.claims,
           imageUrl: campaign.imageUrl,
@@ -385,26 +386,77 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                   ),
                 ],
                 const SizedBox(height: 22),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'ad', label: Text('Promotional ads')),
-                    ButtonSegment(value: 'voucher', label: Text('Vouchers')),
-                  ],
-                  selected: {type},
-                  onSelectionChanged: (value) =>
-                      setState(() => type = value.first),
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.comfortable,
+                Center(
+                  child: LqSegmentedControl<String>(
+                    segments: const [
+                      ('ad', 'Promotional ads'),
+                      ('voucher', 'Vouchers'),
+                    ],
+                    selected: type,
+                    onChanged: (value) => setState(() => type = value),
                   ),
                 ),
                 const SizedBox(height: 20),
                 if (campaigns.isEmpty)
                   LqCard(
-                    child: Text(
-                      type == 'ad'
-                          ? 'No promotional ads yet.'
-                          : 'No vouchers yet.',
-                      style: const TextStyle(color: LqColors.muted),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: type == 'ad'
+                              ? LqColors.primarySoft
+                              : LqColors.greenSoft,
+                          foregroundColor: LqColors.primary,
+                          child: Icon(
+                            type == 'ad'
+                                ? Icons.auto_awesome_outlined
+                                : Icons.confirmation_num_outlined,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          type == 'ad'
+                              ? 'No promotional ads yet'
+                              : 'No vouchers yet',
+                          style: const TextStyle(
+                            color: LqColors.primaryDark,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Create the first ${type == 'ad' ? 'campaign' : 'voucher'} for ${widget.business?.name ?? 'this workspace'}.',
+                          style: const TextStyle(
+                            color: LqColors.muted,
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: widget.business == null
+                                ? null
+                                : () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CampaignEditor(
+                                        user: widget.user,
+                                        businessId: widget.business!.id,
+                                        initialType: type,
+                                      ),
+                                    ),
+                                  ),
+                            icon: const Icon(Icons.add),
+                            label: Text(
+                              type == 'ad'
+                                  ? 'Create campaign'
+                                  : 'Create voucher',
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 else
@@ -494,25 +546,27 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
               ],
             ),
           ),
-          Positioned(
-            right: 16,
-            bottom: 22,
-            child: FilledButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      CampaignEditor(
-                        user: widget.user,
-                        businessId: widget.business?.id ?? '',
-                        initialType: type,
-                      ),
+          if (campaigns.isNotEmpty)
+            Positioned(
+              right: 16,
+              bottom: 22,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CampaignEditor(
+                      user: widget.user,
+                      businessId: widget.business?.id ?? '',
+                      initialType: type,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.add),
+                label: Text(
+                  type == 'ad' ? 'Create campaign' : 'Create voucher',
                 ),
               ),
-              icon: const Icon(Icons.add),
-              label: Text(type == 'ad' ? 'Create campaign' : 'Create voucher'),
             ),
-          ),
         ],
       );
     },
@@ -523,10 +577,12 @@ class CampaignEditor extends StatefulWidget {
   const CampaignEditor({
     super.key,
     required this.user,
+    this.businessId = '',
     this.campaign,
     this.initialType = 'ad',
   });
   final AppUser user;
+  final String businessId;
   final Campaign? campaign;
   final String initialType;
   @override
@@ -643,21 +699,13 @@ class _CampaignEditorState extends State<CampaignEditor> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: const [
-                    DropdownMenuItem(value: 'active', child: Text('Active')),
-                    DropdownMenuItem(
-                      value: 'scheduled',
-                      child: Text('Scheduled'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'inactive',
-                      child: Text('Inactive'),
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => status = value!),
+                LqDropdownField(
+                  label: 'Status',
+                  value: status,
+                  items: const ['active', 'scheduled', 'inactive'],
+                  onChanged: (value) {
+                    if (value != null) setState(() => status = value);
+                  },
                 ),
                 const SizedBox(height: 24),
                 LqButton(
@@ -703,11 +751,12 @@ class _CampaignEditorState extends State<CampaignEditor> {
 
   Future<void> _date(bool start) async {
     final initial = start ? startDate : endDate;
-    final value = await showDatePicker(
-      context: context,
+    final value = await showLqDatePicker(
+      context,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 730)),
       initialDate: initial,
+      title: start ? 'Campaign start date' : 'Campaign end date',
     );
     if (value != null) {
       setState(() => start ? startDate = value : endDate = value);
@@ -730,6 +779,9 @@ class _CampaignEditorState extends State<CampaignEditor> {
         Campaign(
           id: existing?.id ?? '',
           ownerId: widget.user.id,
+          businessId: existing?.businessId.isNotEmpty == true
+              ? existing!.businessId
+              : widget.businessId,
           name: _name.text,
           description: _description.text,
           type: type,
@@ -823,10 +875,16 @@ class MerchantProfile extends StatelessWidget {
   const MerchantProfile({
     super.key,
     required this.user,
+    this.businesses = const [],
+    this.selectedBusiness,
+    this.onBusinessSelected,
     this.openAds,
     this.openVouchers,
   });
   final AppUser user;
+  final List<Business> businesses;
+  final Business? selectedBusiness;
+  final ValueChanged<String?>? onBusinessSelected;
   final VoidCallback? openAds;
   final VoidCallback? openVouchers;
   @override
@@ -896,7 +954,12 @@ class MerchantProfile extends StatelessWidget {
         const SizedBox(height: 16),
         Text('BUSINESS', style: monoLabel),
         const SizedBox(height: 8),
-        _BusinessSelector(user: user),
+        _BusinessSelector(
+          user: user,
+          businesses: businesses,
+          selectedBusiness: selectedBusiness,
+          onSelected: onBusinessSelected,
+        ),
         const SizedBox(height: 22),
         LqCard(
           child: Column(
@@ -934,18 +997,21 @@ class MerchantProfile extends StatelessWidget {
   );
 }
 
-class _BusinessSelector extends StatefulWidget {
-  const _BusinessSelector({required this.user});
+class _BusinessSelector extends StatelessWidget {
+  const _BusinessSelector({
+    required this.user,
+    required this.businesses,
+    this.selectedBusiness,
+    this.onSelected,
+  });
   final AppUser user;
-  @override
-  State<_BusinessSelector> createState() => _BusinessSelectorState();
-}
+  final List<Business> businesses;
+  final Business? selectedBusiness;
+  final ValueChanged<String?>? onSelected;
 
-class _BusinessSelectorState extends State<_BusinessSelector> {
-  String? selectedId;
   @override
   Widget build(BuildContext context) {
-    if (Firebase.apps.isEmpty) {
+    if (businesses.isEmpty) {
       return LqCard(
         child: Row(
           children: [
@@ -960,7 +1026,7 @@ class _BusinessSelectorState extends State<_BusinessSelector> {
                     style: TextStyle(color: LqColors.muted, fontSize: 11),
                   ),
                   Text(
-                    widget.user.displayName,
+                    user.displayName,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
@@ -972,56 +1038,51 @@ class _BusinessSelectorState extends State<_BusinessSelector> {
         ),
       );
     }
-    return StreamBuilder<List<Business>>(
-      stream: MerchantRepository.instance.businesses(widget.user.id),
-      builder: (context, snapshot) {
-        final businesses = snapshot.data ?? [];
-        if (businesses.isEmpty) {
-          return const LqCard(child: Text('No registered business yet.'));
-        }
-        final value = businesses.any((item) => item.id == selectedId)
-            ? selectedId
-            : businesses.first.id;
-        return LqCard(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              isExpanded: true,
-              icon: const Icon(
-                Icons.keyboard_arrow_down,
-                color: LqColors.primary,
-              ),
-              items: businesses
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item.id,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Manage workspace for',
-                            style: TextStyle(
-                              color: LqColors.muted,
-                              fontSize: 11,
-                            ),
-                          ),
-                          Text(
-                            item.name,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (next) => setState(() => selectedId = next),
-            ),
-          ),
+    final value = selectedBusiness?.id ?? businesses.first.id;
+    return InkWell(
+      borderRadius: BorderRadius.circular(25),
+      onTap: () async {
+        final next = await showLqSelectionSheet<String>(
+          context,
+          title: 'Choose business workspace',
+          selected: value,
+          options: businesses.map((item) => (item.id, item.name)).toList(),
         );
+        if (next != null) onSelected?.call(next);
       },
+      child: LqCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            const CircleAvatar(
+              backgroundColor: LqColors.greenSoft,
+              foregroundColor: Color(0xFF42723B),
+              child: Icon(Icons.storefront_outlined),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Manage workspace for',
+                    style: TextStyle(color: LqColors.muted, fontSize: 11),
+                  ),
+                  Text(
+                    selectedBusiness?.name ?? businesses.first.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: LqColors.primary,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1072,62 +1133,103 @@ class BusinessRegistrationsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 22),
               Expanded(
-                child: LqCard(
-                  child: values.isEmpty
-                      ? const Center(
+                child: values.isEmpty
+                    ? const LqCard(
+                        child: Center(
                           child: Text(
                             'No registered businesses.',
                             style: TextStyle(color: LqColors.muted),
                           ),
-                        )
-                      : ListView.separated(
-                          itemCount: values.length,
-                          separatorBuilder: (_, _) => const Divider(),
-                          itemBuilder: (context, index) {
-                            final item = values[index];
-                            return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const CircleAvatar(
-                                backgroundColor: LqColors.primarySoft,
-                                child: Icon(
-                                  Icons.storefront,
-                                  color: LqColors.primary,
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: values.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final item = values[index];
+                          return LqCard(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: index.isEven
+                                      ? const Color(0xFFE4C8B7)
+                                      : LqColors.primarySoft,
+                                  foregroundColor: LqColors.primaryDark,
+                                  child: const Icon(Icons.storefront_outlined),
                                 ),
-                              ),
-                              title: Text(
-                                item.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${item.address}\n${item.active ? 'Active' : 'Inactive'}',
-                                maxLines: 2,
-                              ),
-                              trailing: TextButton(
-                                onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => BusinessEditor(
-                                      user: user,
-                                      business: item,
-                                    ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(
+                                        item.address,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: LqColors.muted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: const Text('Edit'),
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                                const SizedBox(width: 8),
+                                LqStatusPill(active: item.active),
+                                const SizedBox(width: 8),
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    backgroundColor: const Color(0xFFEDF1F9),
+                                    shape: const StadiumBorder(),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => BusinessEditor(
+                                        user: user,
+                                        business: item,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Edit',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
               ),
               const SizedBox(height: 16),
-              LqButton(
-                label: 'Add business',
-                icon: Icons.add_business,
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => BusinessEditor(user: user)),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add business'),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BusinessEditor(user: user),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -1144,6 +1246,57 @@ class BusinessEditor extends StatefulWidget {
   final Business? business;
   @override
   State<BusinessEditor> createState() => _BusinessEditorState();
+}
+
+class _BusinessStatusSelector extends StatelessWidget {
+  const _BusinessStatusSelector({
+    required this.active,
+    required this.onChanged,
+  });
+  final bool active;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(5),
+    decoration: BoxDecoration(
+      color: LqColors.field,
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(color: LqColors.line),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [_option('Active', true), _option('Inactive', false)],
+    ),
+  );
+
+  Widget _option(String label, bool value) {
+    final selected = active == value;
+    final color = value ? const Color(0xFF46815B) : const Color(0xFF7B8492);
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => onChanged(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? (value ? const Color(0xFFE4F2DF) : const Color(0xFFEEF0F4))
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: selected ? Border.all(color: color) : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? color : LqColors.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _BusinessEditorState extends State<BusinessEditor> {
@@ -1200,16 +1353,33 @@ class _BusinessEditorState extends State<BusinessEditor> {
                 ),
                 const SizedBox(height: 16),
                 LqField(controller: _phone, label: 'Contact number'),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: active,
-                  onChanged: (value) => setState(() => active = value),
-                  title: const Text(
-                    'Business status',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(active ? 'Active' : 'Inactive'),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Business status',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            'Only active businesses can run ads and issue vouchers.',
+                            style: TextStyle(
+                              color: LqColors.muted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _BusinessStatusSelector(
+                      active: active,
+                      onChanged: (value) => setState(() => active = value),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 18),
                 LqButton(

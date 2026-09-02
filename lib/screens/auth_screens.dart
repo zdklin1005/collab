@@ -38,7 +38,8 @@ class AccountTypeScreen extends StatelessWidget {
             style: TextStyle(color: LqColors.muted),
           ),
           const SizedBox(height: 32),
-          IntrinsicHeight(
+          SizedBox(
+            height: 264,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -125,7 +126,7 @@ class _RoleCard extends StatelessWidget {
     borderRadius: BorderRadius.circular(25),
     child: LqCard(
       dashed: false,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 205),
         child: Column(
@@ -133,8 +134,8 @@ class _RoleCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: color,
                 borderRadius: BorderRadius.circular(18),
@@ -146,7 +147,7 @@ class _RoleCard extends StatelessWidget {
                     : const Color(0xFF42723B),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Text(
               role.label,
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
@@ -154,13 +155,15 @@ class _RoleCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               description,
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: LqColors.muted,
-                fontSize: 12,
-                height: 1.65,
+                fontSize: 11,
+                height: 1.45,
               ),
             ),
-            const SizedBox(height: 16),
+            const Spacer(),
             const Row(
               children: [
                 Flexible(
@@ -571,12 +574,12 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _pickBirthday() async {
     final current = _parseDate(_birthday.text);
-    final chosen = await showDatePicker(
-      context: context,
+    final chosen = await showLqDatePicker(
+      context,
       initialDate: current ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
-      helpText: 'Select birthday',
+      title: 'Select birthday',
     );
     if (chosen != null) {
       setState(

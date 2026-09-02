@@ -155,32 +155,25 @@ class TouristProfileScreen extends StatelessWidget {
                             Row(
                               children: [
                                 Flexible(
-                                  child: Chip(
-                                    label: Text(
-                                      'EXPLORER · LEVEL ${user.level}',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: monoLabel.copyWith(
-                                        color: LqColors.primary,
-                                      ),
-                                    ),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: LqTierBadge(level: user.level),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 6),
                                 Text(
                                   '${user.exp}/3,000XP',
-                                  style: const TextStyle(
+                                  style: monoLabel.copyWith(
+                                    color: const Color(0xFF466294),
                                     fontWeight: FontWeight.w700,
-                                    fontSize: 11,
+                                    fontSize: 9,
+                                    letterSpacing: 0,
                                   ),
-                                ),
-                                const Icon(
-                                  Icons.chevron_right,
-                                  color: LqColors.primary,
-                                  size: 18,
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 8),
                             LinearProgressIndicator(
                               value: ((user.exp % 3000) / 3000).clamp(0, 1),
                               minHeight: 7,
@@ -329,8 +322,9 @@ class _JourneyItem extends StatelessWidget {
 }
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.user});
+  const SettingsScreen({super.key, required this.user, this.onSignOut});
   final AppUser user;
+  final Future<void> Function()? onSignOut;
 
   @override
   Widget build(BuildContext context) => LqPage(
@@ -431,8 +425,10 @@ class SettingsScreen extends StatelessWidget {
           ]),
           const SizedBox(height: 100),
           LqLogoutButton(
-            onPressed: () =>
-                confirmLqSignOut(context, AuthService.instance.signOut),
+            onPressed: () => confirmLqSignOut(
+              context,
+              onSignOut ?? AuthService.instance.signOut,
+            ),
           ),
         ],
       ),
@@ -641,12 +637,12 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     final current = parts.length == 3
         ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
         : null;
-    final chosen = await showDatePicker(
-      context: context,
+    final chosen = await showLqDatePicker(
+      context,
       initialDate: current ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
-      helpText: 'Select birthday',
+      title: 'Select birthday',
     );
     if (chosen != null) {
       setState(() => _birthday.text = DateFormat('dd/MM/yyyy').format(chosen));
@@ -945,8 +941,14 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
                               ),
                             ),
                             children: [
+                              const LqDashedDivider(color: Color(0xFFE8ECF2)),
                               Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  16,
+                                ),
                                 child: Text(
                                   item.$2.value,
                                   style: const TextStyle(
@@ -976,52 +978,55 @@ class NotificationsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LqPage(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const LqBackButton(label: 'Profile'),
-          const LqTitleBlock(
-            eyebrow: 'Activity',
-            title: 'Notifications',
-            subtitle: 'Account updates and LocalQuest alerts in one place.',
-          ),
-          const SizedBox(height: 24),
-          LqCard(
-            child: Column(
-              children: [
-                const CircleAvatar(
-                  backgroundColor: LqColors.primarySoft,
-                  foregroundColor: LqColors.primary,
-                  child: Icon(Icons.notifications_active_outlined),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'You’re all caught up',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  user.role == AccountRole.merchant
-                      ? 'Campaign and voucher activity will appear here.'
-                      : 'Trip, reward and voucher activity will appear here.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: LqColors.muted, height: 1.45),
-                ),
-              ],
+    child: SizedBox(
+      width: double.infinity,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const LqBackButton(label: 'Profile'),
+            const LqTitleBlock(
+              eyebrow: 'Activity',
+              title: 'Notifications',
+              subtitle: 'Account updates and LocalQuest alerts in one place.',
             ),
-          ),
-          const SizedBox(height: 18),
-          LqButton(
-            label: 'Notification preferences',
-            icon: Icons.tune,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
+            const SizedBox(height: 24),
+            LqCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: LqColors.primarySoft,
+                    foregroundColor: LqColors.primary,
+                    child: Icon(Icons.notifications_active_outlined),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'You’re all caught up',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    user.role == AccountRole.merchant
+                        ? 'Campaign and voucher activity will appear here.'
+                        : 'Trip, reward and voucher activity will appear here.',
+                    style: const TextStyle(color: LqColors.muted, height: 1.45),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            LqButton(
+              label: 'Notification preferences',
+              icon: Icons.tune,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
