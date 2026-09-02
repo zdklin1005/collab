@@ -1,4 +1,4 @@
-package com.example.collab
+package com.localquest.app
 
 import io.flutter.embedding.android.FlutterActivity
 
