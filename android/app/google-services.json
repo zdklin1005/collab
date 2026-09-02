@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "195421341322",
+    "project_id": "localquest-d9625",
+    "storage_bucket": "localquest-d9625.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:195421341322:android:243e5f99f0a637bf070f73",
+        "android_client_info": {
+          "package_name": "com.localquest.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzF7GtXU3PAYAKowrbHzM7FdkE0KLc9ew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
