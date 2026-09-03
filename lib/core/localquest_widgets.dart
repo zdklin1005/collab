@@ -10,16 +10,26 @@ class LqPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    extendBody: bottomNavigationBar != null,
     backgroundColor: LqColors.background,
-    bottomNavigationBar: bottomNavigationBar,
-    body: SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: child,
+    body: Stack(
+      fit: StackFit.expand,
+      children: [
+        SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: child,
+            ),
+          ),
         ),
-      ),
+        if (bottomNavigationBar != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(ignoring: false, child: bottomNavigationBar!),
+          ),
+      ],
     ),
   );
 }

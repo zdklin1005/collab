@@ -1,4 +1,5 @@
 import 'package:collab/core/localquest_theme.dart';
+import 'package:collab/core/localquest_location.dart';
 import 'package:collab/core/localquest_widgets.dart';
 import 'package:collab/models/localquest_models.dart';
 import 'package:collab/screens/auth_screens.dart';
@@ -33,6 +34,26 @@ Widget app(Widget home) => MaterialApp(
 );
 
 void main() {
+  test('Photon address result preserves label and coordinates', () {
+    final suggestion = AddressSuggestion.fromPhotonFeature({
+      'properties': {
+        'name': 'Noka Coffee',
+        'street': 'Jalan Sultan Ismail',
+        'postcode': '50250',
+        'city': 'Kuala Lumpur',
+        'country': 'Malaysia',
+      },
+      'geometry': {
+        'coordinates': [101.7080, 3.1478],
+      },
+    });
+
+    expect(suggestion.label, contains('Noka Coffee'));
+    expect(suggestion.label, contains('Kuala Lumpur'));
+    expect(suggestion.latitude, 3.1478);
+    expect(suggestion.longitude, 101.7080);
+  });
+
   testWidgets('account selection fits a compact phone without overflow', (
     tester,
   ) async {
@@ -202,6 +223,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('floating navigation overlays content without a reserved bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: localQuestTheme(),
+        home: LqPage(
+          bottomNavigationBar: LqFloatingNavBar(
+            selectedIndex: 2,
+            onSelected: (_) {},
+            items: const [
+              (Icons.explore_outlined, 'Discover'),
+              (Icons.confirmation_num_outlined, 'Rewards'),
+              (Icons.person_outline, 'Profile'),
+            ],
+            profileInitials: 'TT',
+          ),
+          child: const ColoredBox(color: Colors.orange),
+        ),
+      ),
+    );
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    expect(scaffold.bottomNavigationBar, isNull);
+    expect(
+      find.ancestor(
+        of: find.byType(LqFloatingNavBar),
+        matching: find.byType(Stack),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('merchant profile links to settings and business management', (
     tester,
   ) async {
@@ -232,6 +287,8 @@ void main() {
     expect(find.text('Business name'), findsOneWidget);
     expect(find.text('Business category'), findsOneWidget);
     expect(find.text('Street address'), findsOneWidget);
+    expect(find.byType(LqAddressField), findsOneWidget);
+    expect(find.byIcon(Icons.map_outlined), findsOneWidget);
     expect(find.text('Save business'), findsOneWidget);
   });
 

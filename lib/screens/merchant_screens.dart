@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../core/localquest_theme.dart';
+import '../core/localquest_location.dart';
 import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
@@ -1311,8 +1312,26 @@ class _BusinessEditorState extends State<BusinessEditor> {
     text: widget.business?.address ?? '',
   );
   late final _phone = TextEditingController(text: widget.business?.phone ?? '');
+  late LqLocation? _location =
+      widget.business?.latitude == null || widget.business?.longitude == null
+      ? null
+      : LqLocation(
+          latitude: widget.business!.latitude!,
+          longitude: widget.business!.longitude!,
+        );
   late bool active = widget.business?.active ?? true;
   bool busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _category.dispose();
+    _registration.dispose();
+    _address.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SingleChildScrollView(
@@ -1346,10 +1365,11 @@ class _BusinessEditorState extends State<BusinessEditor> {
                   label: 'Registration number',
                 ),
                 const SizedBox(height: 16),
-                LqField(
+                LqAddressField(
                   controller: _address,
                   label: 'Street address',
-                  maxLines: 3,
+                  initialLocation: _location,
+                  onLocationChanged: (value) => _location = value,
                 ),
                 const SizedBox(height: 16),
                 LqField(controller: _phone, label: 'Contact number'),
@@ -1430,6 +1450,8 @@ class _BusinessEditorState extends State<BusinessEditor> {
           phone: _phone.text,
           registrationNumber: _registration.text,
           active: active,
+          latitude: _location?.latitude,
+          longitude: _location?.longitude,
         ),
       );
       if (mounted) Navigator.pop(context);

@@ -72,6 +72,8 @@ class Business {
     required this.phone,
     this.registrationNumber = '',
     this.active = true,
+    this.latitude,
+    this.longitude,
   });
 
   final String id;
@@ -82,6 +84,8 @@ class Business {
   final String phone;
   final String registrationNumber;
   final bool active;
+  final double? latitude;
+  final double? longitude;
 
   factory Business.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -94,6 +98,8 @@ class Business {
       phone: data['phone'] as String? ?? '',
       registrationNumber: data['registrationNumber'] as String? ?? '',
       active: data['active'] as bool? ?? true,
+      latitude: (data['latitude'] as num?)?.toDouble(),
+      longitude: (data['longitude'] as num?)?.toDouble(),
     );
   }
 }

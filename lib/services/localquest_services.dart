@@ -181,6 +181,8 @@ class AuthService {
     required String category,
     required String address,
     required String phone,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       final result = await auth.createUserWithEmailAndPassword(
@@ -213,6 +215,8 @@ class AuthService {
         'phone': phone.trim(),
         'registrationNumber': '',
         'active': true,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -431,6 +435,8 @@ class MerchantRepository {
       'phone': value.phone.trim(),
       'registrationNumber': value.registrationNumber.trim(),
       'active': value.active,
+      'latitude': ?value.latitude,
+      'longitude': ?value.longitude,
       'updatedAt': FieldValue.serverTimestamp(),
       if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

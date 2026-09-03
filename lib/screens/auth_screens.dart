@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/localquest_theme.dart';
+import '../core/localquest_location.dart';
 import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
@@ -387,6 +388,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirm = TextEditingController();
   int _step = 2;
   bool _busy = false;
+  LqLocation? _businessLocation;
 
   bool get merchant => widget.role == AccountRole.merchant;
 
@@ -490,10 +492,11 @@ class _SignupScreenState extends State<SignupScreen> {
           validator: _required,
         ),
         const SizedBox(height: 16),
-        LqField(
+        LqAddressField(
           controller: _address,
           label: 'Primary business address',
-          maxLines: 3,
+          initialLocation: _businessLocation,
+          onLocationChanged: (value) => _businessLocation = value,
           validator: _required,
         ),
       ] else ...[
@@ -601,6 +604,8 @@ class _SignupScreenState extends State<SignupScreen> {
           category: _category.text,
           address: _address.text,
           phone: _phone.text,
+          latitude: _businessLocation?.latitude,
+          longitude: _businessLocation?.longitude,
         );
       } else {
         await AuthService.instance.registerTourist(
