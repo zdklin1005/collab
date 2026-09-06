@@ -8,6 +8,9 @@ import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
 
+import 'interactive_map/interactive_map_screen.dart';
+
+
 class TouristHome extends StatefulWidget {
   const TouristHome({super.key, required this.user});
   final AppUser user;
@@ -23,10 +26,7 @@ class _TouristHomeState extends State<TouristHome> {
   Widget build(BuildContext context) {
     final profile = TouristProfileScreen(user: widget.user);
     final pages = [
-      const _ModulePlaceholder(
-        title: 'Discover',
-        subtitle: 'The interactive map belongs to the Map & Navigation module.',
-      ),
+      InteractiveMapScreen(user: widget.user),
       const _ModulePlaceholder(
         title: 'Rewards',
         subtitle: 'Rewards and missions belong to the Reward & Review module.',

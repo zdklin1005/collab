@@ -129,11 +129,8 @@ class LqCard extends StatelessWidget {
         : null,
     child: Container(
       width: double.infinity,
-      padding: padding,
       decoration: BoxDecoration(
-        color: color,
         borderRadius: BorderRadius.circular(25),
-        border: dashed ? null : Border.all(color: borderColor, width: 1.35),
         boxShadow: const [
           BoxShadow(
             color: Color(0x10293C62),
@@ -142,7 +139,17 @@ class LqCard extends StatelessWidget {
           ),
         ],
       ),
-      child: child,
+      child: Material(
+        color: color,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(25),
+          side: dashed
+              ? BorderSide.none
+              : BorderSide(color: borderColor, width: 1.35),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(padding: padding, child: child),
+      ),
     ),
   );
 }
