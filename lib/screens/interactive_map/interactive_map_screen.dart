@@ -1,10 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../models/localquest_models.dart';
+import 'map_action_buttons.dart';
+import 'map_location_permission.dart';
+import 'map_progress_card.dart';
+import 'map_tiles_with_status.dart';
+import 'compass_user_marker.dart';
+import 'location_quality.dart';
 
-class InteractiveMapScreen extends StatelessWidget {
+class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({
     super.key,
     required this.user,
@@ -12,31 +21,445 @@ class InteractiveMapScreen extends StatelessWidget {
 
   final AppUser user;
 
-  // Temporary starting position: central Kuala Lumpur.
-  // This is not the phone's current location.
-  static const LatLng initialPosition = LatLng(3.1390, 101.6869);
+  @override
+  State<InteractiveMapScreen> createState() =>
+      _InteractiveMapScreenState();
+}
+
+class _InteractiveMapScreenState extends State<InteractiveMapScreen>
+    with WidgetsBindingObserver {
+  static const _initialPosition = LatLng(3.1390, 101.6869);
+
+  final MapController _mapController = MapController();
+
+  StreamSubscription<Position>? _positionSubscription;
+  Timer? _firstFixTimer;
+  Timer? _qualityTimer;
+  Future<void> _pendingStop = Future<void>.value();
+
+  Position? _position;
+  bool _locationAllowed = false;
+  bool _locating = false;
+  bool _mapReady = false;
+  bool _centredOnce = false;
+  bool _recenterWhenReady = false;
+  bool _foreground = true;
+  String? _locationError;
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground =
+        lifecycle == null || lifecycle == AppLifecycleState.resumed;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+
+    if (!_foreground) {
+      _stopLiveLocation();
+
+      setState(() {
+        _position = null;
+        _locationError = null;
+      });
+    }
+
+    // On resume, MapLocationPermission rechecks access and calls
+    // _onAccessChanged. Do not restart using an old permission result.
+  }
+
+  bool _isCurrentRequest(int id) {
+    return mounted &&
+        _foreground &&
+        _locationAllowed &&
+        id == _requestId;
+  }
+
+  void _onAccessChanged(bool allowed) {
+    if (!mounted) return;
+
+    if (!allowed) {
+      _stopLiveLocation();
+    }
+
+    setState(() {
+      _locationAllowed = allowed;
+
+      if (!allowed) {
+        _position = null;
+        _locationError = null;
+        _centredOnce = false;
+      }
+    });
+
+    if (allowed && _foreground) {
+      _readPosition();
+    }
+  }
+
+  // Starts one live subscription. Repeated calls do not create duplicates.
+  Future<void> _readPosition() async {
+    if (!mounted ||
+        !_foreground ||
+        !_locationAllowed ||
+        _locating ||
+        _positionSubscription != null) {
+      return;
+    }
+
+    final requestId = ++_requestId;
+
+    setState(() {
+      _locating = true;
+      _position = null;
+      _locationError = null;
+    });
+
+    try {
+      // Let the previous subscription finish cancelling before restarting.
+      await _pendingStop;
+      if (!_isCurrentRequest(requestId)) return;
+
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      final permission = await Geolocator.checkPermission();
+
+      if (!_isCurrentRequest(requestId)) return;
+
+      final granted = permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always;
+
+      if (!enabled || !granted) {
+        _failLocation(
+          'Location access is unavailable. Check your location settings.',
+        );
+        return;
+      }
+
+      // Only time out the initial fix. Standing still afterward should
+      // not be treated as a failure.
+      _firstFixTimer = Timer(const Duration(seconds: 20), () {
+        if (_isCurrentRequest(requestId) && _position == null) {
+          _failLocation(
+            'Location is taking too long. Try again somewhere '
+            'with a clearer view of the sky.',
+          );
+        }
+      });
+
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 3,
+        ),
+      ).listen(
+        (position) {
+          if (!_isCurrentRequest(requestId)) return;
+
+          if (!position.latitude.isFinite ||
+              !position.longitude.isFinite ||
+              position.latitude.abs() > 90 ||
+              position.longitude.abs() > 180) {
+            return;
+          }
+
+          _firstFixTimer?.cancel();
+          _firstFixTimer = null;
+
+          setState(() {
+            _position = position;
+            _locating = false;
+            _locationError = null;
+          });
+
+          _centreOnFirstPosition();
+          debugPrint('Map location updated');
+        },
+        onError: (Object error) {
+          if (!_isCurrentRequest(requestId)) return;
+
+          debugPrint('Map location stream failed: $error');
+          _failLocation(
+            'Location updates stopped. Check your location settings '
+            'and try again.',
+          );
+        },
+        onDone: () {
+          if (!_isCurrentRequest(requestId)) return;
+
+          _failLocation('Location updates ended. Tap Retry location.');
+        },
+        cancelOnError: true,
+      );
+
+    // Refresh the age warning even when no new position arrives.
+    // This timer does not request additional GPS readings.
+    _qualityTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_isCurrentRequest(requestId) && _position != null) {
+        setState(() {});
+      }
+    });
+
+      debugPrint('Map location updates started');
+    } catch (error) {
+      if (!_isCurrentRequest(requestId)) return;
+
+      debugPrint('Could not start live location: $error');
+      _failLocation('Could not start location updates. Please try again.');
+    }
+  }
+
+  void _stopLiveLocation() {
+    // Invalidate callbacks before cancelling the native subscription.
+    _requestId++;
+    _qualityTimer?.cancel();
+    _qualityTimer = null;
+    _firstFixTimer?.cancel();
+    _firstFixTimer = null;
+    _locating = false;
+    _recenterWhenReady = false;
+
+    final subscription = _positionSubscription;
+    _positionSubscription = null;
+
+    if (subscription != null) {
+      _pendingStop = _pendingStop
+          .then((_) => subscription.cancel())
+          .catchError((Object error) {
+        debugPrint('Could not cancel location subscription: $error');
+      });
+
+      debugPrint('Map location updates stopped');
+    }
+  }
+
+  void _failLocation(String message) {
+    _stopLiveLocation();
+    if (!mounted) return;
+
+    setState(() {
+      _position = null;
+      _locationError = message;
+    });
+  }
+
+  void _centreOnFirstPosition() {
+    final position = _position;
+
+    if (!_mapReady || position == null) return;
+    if (_centredOnce && !_recenterWhenReady) return;
+
+    _mapController.move(
+      LatLng(position.latitude, position.longitude),
+      _centredOnce ? _mapController.camera.zoom : 16,
+    );
+
+    _centredOnce = true;
+    _recenterWhenReady = false;
+  }
+
+  void _recenter() {
+    if (!_foreground) return;
+
+    if (!_locationAllowed) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enable location using the notice above the map first.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    _recenterWhenReady = true;
+
+    if (_position != null) {
+      _centreOnFirstPosition();
+    } else {
+      // If already waiting, the next reading will recenter the map.
+      // Otherwise start a new subscription.
+      _readPosition();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _foreground = false;
+    _stopLiveLocation();
+    _mapController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final position = _position;
+    final point = position == null
+        ? null
+        : LatLng(position.latitude, position.longitude);
+
+    final accuracy = position?.accuracy;
+    final hasAccuracy =
+    accuracy != null && accuracy.isFinite && accuracy > 0;
+
+    final quality = assessLocationQuality(
+      accuracy: accuracy,
+      recordedAt: position?.timestamp,
+      now: DateTime.now(),
+    );
+
+    final qualityMessage = switch (quality) {
+      LocationQuality.unavailable =>
+        'Your location is not available yet.',
+      LocationQuality.stale =>
+        'Showing an older location reading. '
+            'Waiting for a new update.',
+      LocationQuality.unknownAccuracy =>
+        'Location accuracy is unavailable. '
+            'Treat this position as approximate.',
+      LocationQuality.inaccurate =>
+        'Low location accuracy: about '
+            '${accuracy!.toStringAsFixed(0)} m. '
+            'Try somewhere with a clearer view of the sky.',
+      LocationQuality.recent =>
+        'Latest location · estimated accuracy: '
+            '${accuracy!.toStringAsFixed(0)} m',
+    };
+
+    final showQualityWarning = position != null &&
+        quality != LocationQuality.recent;
+
     return Stack(
       children: [
         FlutterMap(
+          mapController: _mapController,
           options: MapOptions(
-            initialCenter: initialPosition,
+            initialCenter: _initialPosition,
             initialZoom: 15,
             minZoom: 3,
             maxZoom: 19,
+            onMapReady: () {
+              _mapReady = true;
+
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _centreOnFirstPosition();
+                }
+              });
+            },
           ),
           children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.localquest.app',
-            ),
+            const MapTilesWithStatus(),
+
+            // Accuracy is measured in metres, not screen pixels.
+            if (point != null && hasAccuracy)
+              IgnorePointer(
+                child: CircleLayer(
+                  circles: [
+                    CircleMarker(
+                      point: point,
+                      radius: accuracy,
+                      useRadiusInMeter: true,
+                      color: const Color(0x223267D8),
+                      borderColor: const Color(0x663267D8),
+                      borderStrokeWidth: 1,
+                    ),
+                  ],
+                ),
+              ),
+
+            if (point != null)
+              IgnorePointer(
+                child: MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: point,
+                      width: 120,
+                      height: 120,
+                      alignment: Alignment.center,
+                      rotate: false,
+                      child: const CompassUserMarker(),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
 
-        // Keep attribution visible above the floating navigation.
+        Positioned(
+          top: 16,
+          left: 16,
+          right: 16,
+          child: MapProgressCard(user: widget.user),
+        ),
+
+        Positioned(
+          top: 130,
+          left: 16,
+          right: 84,
+          child: MapLocationPermission(
+            onAccessChanged: _onAccessChanged,
+          ),
+        ),
+
+        // The permission notice is hidden when access is granted,
+        // so this status card can use the same space.
+        if (_locationAllowed)
+          Positioned(
+            top: 130,
+            left: 16,
+            right: 84,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _locating
+                          ? 'Finding your location…'
+                          : _locationError ?? qualityMessage,
+                      style: TextStyle(
+                        color: showQualityWarning && _locationError == null
+                            ? const Color(0xFF8A4B00)
+                            : Colors.black87,
+                        fontSize: 13,
+                      ),
+                    ),
+                    if (_locationError != null && !_locating)
+                      TextButton(
+                        onPressed: _readPosition,
+                        child: const Text('Retry location'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        Positioned(
+          top: 130,
+          bottom: 150,
+          right: 16,
+          child: Center(
+            child: MapActionButtons(
+              onCurrentLocation: _recenter,
+            ),
+          ),
+        ),
+
         const Positioned(
           left: 12,
           bottom: 110,
