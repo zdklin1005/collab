@@ -14,6 +14,9 @@ import 'compass_user_marker.dart';
 import 'location_quality.dart';
 import '../../core/map_test_config.dart';
 import 'demo_map_markers.dart';
+import 'map_style.dart';
+import 'map_attribution.dart';
+import 'map_style_preferences.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({
@@ -38,8 +41,11 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Timer? _firstFixTimer;
   Timer? _qualityTimer;
   Future<void> _pendingStop = Future<void>.value();
+  MapStyle _mapStyle = MapStyle.standard;
 
   Position? _position;
+  bool _restoringMapStyle = true;
+  bool _savingMapStyle = false;
   bool _locationAllowed = false;
   bool _locating = false;
   bool _mapReady = false;
@@ -57,6 +63,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground =
         lifecycle == null || lifecycle == AppLifecycleState.resumed;
+
+    unawaited(_restoreMapStyle());
   }
 
   @override
@@ -102,6 +110,122 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     if (allowed && _foreground) {
       _readPosition();
+    }
+  }
+
+  Future<void> _selectMapStyle() async {
+    if (_restoringMapStyle || _savingMapStyle) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait while the map preference is updated.'),
+        ),
+      );
+      return;
+    }
+
+    final selected = await showModalBottomSheet<MapStyle>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Map style',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                for (final style in MapStyle.values)
+                  ListTile(
+                    enabled: style == MapStyle.standard ||
+                        MapStyleConfig.satelliteAvailable,
+                    leading: Icon(
+                      style == MapStyle.standard
+                          ? Icons.map_outlined
+                          : Icons.satellite_alt,
+                    ),
+                    title: Text(MapStyleConfig.label(style)),
+                    subtitle: Text(
+                      style == MapStyle.standard
+                          ? 'OpenStreetMap street map'
+                          : MapStyleConfig.satelliteAvailable
+                              ? 'MapTiler imagery with road and place labels'
+                              : 'Satellite key missing. Restart with your '
+                                  'private configuration.',
+                    ),
+                    trailing: _mapStyle == style
+                        ? const Icon(Icons.check_circle, color: Colors.blue)
+                        : null,
+                    onTap: () => Navigator.of(sheetContext).pop(style),
+                  ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null || selected == _mapStyle) return;
+
+    if (selected == MapStyle.satellite &&
+        !MapStyleConfig.satelliteAvailable) {
+      return;
+    }
+
+    setState(() {
+      _mapStyle = selected;
+      _savingMapStyle = true;
+    });
+
+    try {
+      await MapStylePreferences.save(selected);
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Map style changed, but the preference could not be saved.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingMapStyle = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restoreMapStyle() async {
+    try {
+      final savedStyle = await MapStylePreferences.load(
+        satelliteAvailable: MapStyleConfig.satelliteAvailable,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _mapStyle = savedStyle;
+      });
+    } catch (_) {
+      // Keep the default Standard map usable if storage fails.
+      debugPrint('Could not restore the map-style preference.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _restoringMapStyle = false;
+        });
+      }
     }
   }
 
@@ -370,7 +494,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
             },
           ),
           children: [
-            const MapTilesWithStatus(),
+            MapTilesWithStatus(
+              key: ValueKey(_mapStyle),
+              style: _mapStyle,
+            ),
 
             if (MapTestConfig.enabled)
               const DemoMapMarkers(),
@@ -472,35 +599,17 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           child: Center(
             child: MapActionButtons(
               onCurrentLocation: _recenter,
+              onMapStyle: _selectMapStyle,
               onDemoArea: MapTestConfig.enabled ? _showDemoArea : null,
             ),
           ),
         ),
 
-        const Positioned(
+        Positioned(
           left: 12,
+          right: 12,
           bottom: 110,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.all(Radius.circular(6)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                child: Text(
-                  '© OpenStreetMap contributors',
-                  style: TextStyle(
-                    color: Colors.black87,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          child: MapAttribution(style: _mapStyle),
         ),
       ],
     );

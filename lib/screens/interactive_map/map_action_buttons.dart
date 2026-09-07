@@ -7,10 +7,12 @@ class MapActionButtons extends StatelessWidget {
     super.key,
     required this.onCurrentLocation,
     this.onDemoArea,
+    this.onMapStyle,
   });
 
   final VoidCallback onCurrentLocation;
   final VoidCallback? onDemoArea;
+  final VoidCallback? onMapStyle;
 
   void _showMessage(BuildContext context, String message) {
     final messenger = ScaffoldMessenger.of(context);
@@ -35,10 +37,8 @@ class MapActionButtons extends StatelessWidget {
         _MapActionButton(
           icon: Icons.layers_outlined,
           tooltip: 'Map layers',
-          onPressed: () => _showMessage(
-            context,
-            'Map-style selection is not available yet.',
-          ),
+          onPressed: onMapStyle ??
+              () => _showMessage(context, 'Map-style selection is unavailable.'),
         ),
 
         const SizedBox(height: 12),

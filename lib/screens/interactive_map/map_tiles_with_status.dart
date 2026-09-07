@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 
+import 'map_style.dart';
+
 class MapTilesWithStatus extends StatefulWidget {
-  const MapTilesWithStatus({super.key});
+  const MapTilesWithStatus({
+    super.key,
+    this.style = MapStyle.standard,
+  });
+
+final MapStyle style;
 
   @override
   State<MapTilesWithStatus> createState() =>
@@ -67,13 +74,14 @@ class _MapTilesWithStatusState extends State<MapTilesWithStatus> {
           // Replace only the tile layer when retrying.
           // The parent map keeps its position and zoom.
           key: ValueKey(attempt),
-          urlTemplate:
-              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          urlTemplate: MapStyleConfig.tileUrl(widget.style),
+          maxNativeZoom: 19,
           userAgentPackageName: 'com.localquest.app',
           errorTileCallback: (tile, error, stackTrace) {
+            // Do not print the error object: its URL may contain the API key.
             debugPrint(
-              'Map tile failed: ${tile.coordinates}; '
-              'attempt: $attempt; error: $error',
+              '${MapStyleConfig.label(widget.style)} tile failed; '
+              'attempt: $attempt',
             );
             _reportError(attempt);
           },
@@ -142,7 +150,8 @@ class _MapTilesWithStatusState extends State<MapTilesWithStatus> {
                     if (_hasError) ...[
                       const SizedBox(height: 6),
                       const Text(
-                        'Try again with connections available or change the zoom level.',
+                        'Try again with connections available or change the zoom level.'
+                        'If Satellite remains unavailable, select Standard.',
                         style: TextStyle(
                           color: Colors.black54,
                           fontSize: 12,
