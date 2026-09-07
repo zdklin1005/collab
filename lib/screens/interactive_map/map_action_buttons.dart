@@ -6,9 +6,11 @@ class MapActionButtons extends StatelessWidget {
   const MapActionButtons({
     super.key,
     required this.onCurrentLocation,
+    this.onDemoArea,
   });
 
   final VoidCallback onCurrentLocation;
+  final VoidCallback? onDemoArea;
 
   void _showMessage(BuildContext context, String message) {
     final messenger = ScaffoldMessenger.of(context);
@@ -28,6 +30,7 @@ class MapActionButtons extends StatelessWidget {
           tooltip: 'Current location',
           onPressed: onCurrentLocation,
         ),
+
         const SizedBox(height: 12),
         _MapActionButton(
           icon: Icons.layers_outlined,
@@ -37,6 +40,7 @@ class MapActionButtons extends StatelessWidget {
             'Map-style selection is not available yet.',
           ),
         ),
+
         const SizedBox(height: 12),
         _MapActionButton(
           icon: Icons.search,
@@ -47,6 +51,15 @@ class MapActionButtons extends StatelessWidget {
             'Business search is not available yet.',
           ),
         ),
+
+        if (onDemoArea != null) ...[
+          const SizedBox(height: 12),
+          _MapActionButton(
+            icon: Icons.science_outlined,
+            tooltip: 'Demo area — fictional markers',
+            onPressed: onDemoArea!,
+          ),
+        ],
       ],
     );
   }

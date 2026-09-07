@@ -12,6 +12,8 @@ import 'map_progress_card.dart';
 import 'map_tiles_with_status.dart';
 import 'compass_user_marker.dart';
 import 'location_quality.dart';
+import '../../core/map_test_config.dart';
+import 'demo_map_markers.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({
@@ -249,6 +251,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _centreOnFirstPosition() {
+    // Keep the demo area visible until the user requests GPS recentering.
+    if (MapTestConfig.enabled && !_recenterWhenReady) return;
+
     final position = _position;
 
     if (!_mapReady || position == null) return;
@@ -261,6 +266,14 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     _centredOnce = true;
     _recenterWhenReady = false;
+  }
+
+  void _showDemoArea() {
+    final centre = MapTestConfig.centre;
+    if (!_mapReady || centre == null) return;
+
+    _recenterWhenReady = false;
+    _mapController.move(centre, 16);
   }
 
   void _recenter() {
@@ -342,7 +355,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-            initialCenter: _initialPosition,
+            initialCenter: MapTestConfig.centre ?? _initialPosition,
             initialZoom: 15,
             minZoom: 3,
             maxZoom: 19,
@@ -358,6 +371,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           ),
           children: [
             const MapTilesWithStatus(),
+
+            if (MapTestConfig.enabled)
+              const DemoMapMarkers(),
 
             // Accuracy is measured in metres, not screen pixels.
             if (point != null && hasAccuracy)
@@ -456,6 +472,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           child: Center(
             child: MapActionButtons(
               onCurrentLocation: _recenter,
+              onDemoArea: MapTestConfig.enabled ? _showDemoArea : null,
             ),
           ),
         ),
