@@ -9,15 +9,20 @@ import '../../models/map_location.dart';
 import '../../models/reward_marker.dart';
 
 import '../../services/daily_reward_generator.dart';
+import '../../services/map_category_filter.dart';
 
 class DemoMapMarkers extends StatefulWidget {
   const DemoMapMarkers({
     super.key,
     this.now,
+    this.selectedCategory,
+    this.onLocationSelected,
   });
 
   // Tests can supply a clock. Normal app usage uses real time.
   final DateTime Function()? now;
+  final String? selectedCategory;
+  final ValueChanged<MapLocation>? onLocationSelected;
 
   @override
   State<DemoMapMarkers> createState() => _DemoMapMarkersState();
@@ -129,6 +134,7 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
     required String details,
     required IconData icon,
     required Color color,
+    VoidCallback? onTap,
   }) {
     return Marker(
       key: ValueKey(id),
@@ -148,7 +154,7 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             customBorder: const CircleBorder(),
-            onTap: () => _showRecord(title, details),
+            onTap: onTap ?? () => _showRecord(title, details),
             child: Icon(icon, color: Colors.white, size: 24),
           ),
         ),
@@ -162,9 +168,15 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
 
     return MarkerLayer(
       markers: [
-        for (final location in _locations.where((item) => item.canDisplay))
+        for (final location in filterMapLocations(
+          _locations,
+          widget.selectedCategory,
+        ))
           _marker(
             id: location.id,
+            onTap: widget.onLocationSelected == null
+                ? null
+                : () => widget.onLocationSelected!(location),
             latitude: location.latitude,
             longitude: location.longitude,
             title: location.title,

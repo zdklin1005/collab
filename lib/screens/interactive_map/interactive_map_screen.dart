@@ -5,18 +5,28 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/map_test_config.dart';
+
+import '../../data/mock_map_data.dart';
+
+import '../../models/map_location.dart';
 import '../../models/localquest_models.dart';
+
+import '../../services/map_category_filter.dart';
+
 import 'map_action_buttons.dart';
 import 'map_location_permission.dart';
 import 'map_progress_card.dart';
 import 'map_tiles_with_status.dart';
 import 'compass_user_marker.dart';
 import 'location_quality.dart';
-import '../../core/map_test_config.dart';
+
 import 'demo_map_markers.dart';
 import 'map_style.dart';
 import 'map_attribution.dart';
 import 'map_style_preferences.dart';
+import 'map_search_delegate.dart';
+import 'map_location_details.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({
@@ -44,14 +54,18 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   MapStyle _mapStyle = MapStyle.standard;
 
   Position? _position;
+  String? _selectedBusinessCategory;
+  bool _filterSheetOpen = false;
   bool _restoringMapStyle = true;
   bool _savingMapStyle = false;
+  bool _searchOpen = false;
   bool _locationAllowed = false;
   bool _locating = false;
   bool _mapReady = false;
   bool _centredOnce = false;
   bool _recenterWhenReady = false;
   bool _foreground = true;
+  bool _locationDetailsOpen = false;
   String? _locationError;
   int _requestId = 0;
 
@@ -226,6 +240,166 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           _restoringMapStyle = false;
         });
       }
+    }
+  }
+
+  Future<void> _openMapSearch() async {
+    if (!_mapReady || _searchOpen) return;
+
+    if (!MapTestConfig.enabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Demo search requires your development configuration. '
+            'Live place search is not connected yet.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    _searchOpen = true;
+
+    try {
+      final selected = await showSearch<MapLocation?>(
+        context: context,
+        delegate: MapSearchDelegate(
+          locations: filterMapLocations(
+            MockMapData.createLocations(),
+            _selectedBusinessCategory,
+          ),
+        ),
+      );
+
+      if (!mounted ||
+          !_mapReady ||
+          selected == null ||
+          !selected.canDisplay) {
+        return;
+      }
+
+      // Do not let the next initial GPS fix override this selection.
+      _centredOnce = true;
+      _recenterWhenReady = false;
+
+      _mapController.move(
+        LatLng(selected.latitude, selected.longitude),
+        17,
+      );
+
+      await _showLocationDetails(selected);
+
+    } finally {
+      _searchOpen = false;
+    }
+  }
+
+  Future<void> _selectBusinessCategory() async {
+    if (!MapTestConfig.enabled || _filterSheetOpen) return;
+
+    _filterSheetOpen = true;
+
+    try {
+      final categories = availableBusinessCategories(
+        MockMapData.createLocations(),
+      );
+
+      final selected = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) {
+          return SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Filter businesses',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Applies to business markers and search. '
+                          'Landmarks and rewards stay visible.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.apps),
+                    title: const Text('All businesses'),
+                    subtitle: const Text('Clear the category filter'),
+                    trailing: _selectedBusinessCategory == null
+                        ? const Icon(Icons.check, color: Colors.blue)
+                        : null,
+                    // Empty string means clear. Null means cancelled.
+                    onTap: () => Navigator.of(sheetContext).pop(''),
+                  ),
+                  for (final category in categories)
+                    ListTile(
+                      leading: const Icon(Icons.storefront_outlined),
+                      title: Text(category),
+                      trailing: _selectedBusinessCategory == category
+                          ? const Icon(Icons.check, color: Colors.blue)
+                          : null,
+                      onTap: () =>
+                          Navigator.of(sheetContext).pop(category),
+                    ),
+                  if (categories.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No business categories are available.'),
+                    ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+      if (!mounted || selected == null) return;
+
+      setState(() {
+        _selectedBusinessCategory = selected.isEmpty ? null : selected;
+      });
+    } finally {
+      _filterSheetOpen = false;
+    }
+  }
+
+Future<void> _showLocationDetails(MapLocation location) async {
+    if (!mounted || _locationDetailsOpen || !location.canDisplay) return;
+
+    _locationDetailsOpen = true;
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        backgroundColor: Colors.white,
+        builder: (sheetContext) {
+          return FractionallySizedBox(
+            heightFactor: 0.85,
+            child: MapLocationDetails(
+              location: location,
+              onClose: () => Navigator.of(sheetContext).pop(),
+            ),
+          );
+        },
+      );
+    } finally {
+      _locationDetailsOpen = false;
     }
   }
 
@@ -500,7 +674,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
             ),
 
             if (MapTestConfig.enabled)
-              const DemoMapMarkers(),
+              DemoMapMarkers(
+                selectedCategory: _selectedBusinessCategory,
+                onLocationSelected: _showLocationDetails,
+              ),
 
             // Accuracy is measured in metres, not screen pixels.
             if (point != null && hasAccuracy)
@@ -600,6 +777,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
             child: MapActionButtons(
               onCurrentLocation: _recenter,
               onMapStyle: _selectMapStyle,
+              onSearch: _openMapSearch,
+              onFilter: MapTestConfig.enabled ? _selectBusinessCategory : null,
+              filterActive: _selectedBusinessCategory != null,
               onDemoArea: MapTestConfig.enabled ? _showDemoArea : null,
             ),
           ),

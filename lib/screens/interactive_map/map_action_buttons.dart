@@ -8,11 +8,17 @@ class MapActionButtons extends StatelessWidget {
     required this.onCurrentLocation,
     this.onDemoArea,
     this.onMapStyle,
+    this.onSearch,
+    this.onFilter,
+    this.filterActive = false,
   });
 
   final VoidCallback onCurrentLocation;
   final VoidCallback? onDemoArea;
   final VoidCallback? onMapStyle;
+  final VoidCallback? onSearch;
+  final VoidCallback? onFilter;
+  final bool filterActive;
 
   void _showMessage(BuildContext context, String message) {
     final messenger = ScaffoldMessenger.of(context);
@@ -27,6 +33,18 @@ class MapActionButtons extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onFilter != null) ...[
+          const SizedBox(height: 12),
+          _MapActionButton(
+            icon: Icons.filter_alt_outlined,
+            tooltip: filterActive
+                ? 'Business filter active'
+                : 'Filter businesses',
+            primary: filterActive,
+            onPressed: onFilter!,
+          ),
+        ],
+
         _MapActionButton(
           icon: Icons.my_location,
           tooltip: 'Current location',
@@ -44,12 +62,10 @@ class MapActionButtons extends StatelessWidget {
         const SizedBox(height: 12),
         _MapActionButton(
           icon: Icons.search,
-          tooltip: 'Search businesses',
+          tooltip: 'Search places',
           primary: true,
-          onPressed: () => _showMessage(
-            context,
-            'Business search is not available yet.',
-          ),
+          onPressed: onSearch ??
+              () => _showMessage(context, 'Place search is unavailable.'),
         ),
 
         if (onDemoArea != null) ...[
