@@ -17,12 +17,14 @@ class DemoMapMarkers extends StatefulWidget {
     this.now,
     this.selectedCategory,
     this.onLocationSelected,
+    this.onRewardSelected,
   });
 
   // Tests can supply a clock. Normal app usage uses real time.
   final DateTime Function()? now;
   final String? selectedCategory;
   final ValueChanged<MapLocation>? onLocationSelected;
+  final ValueChanged<RewardMarker>? onRewardSelected;
 
   @override
   State<DemoMapMarkers> createState() => _DemoMapMarkersState();
@@ -180,7 +182,8 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
             latitude: location.latitude,
             longitude: location.longitude,
             title: location.title,
-            details: 'Type: ${location.type.name}\n'
+            details:
+                'Type: ${location.type.name}\n'
                 'Record: ${location.id}\n'
                 'Category: ${location.category}',
             icon: location.type == MapLocationType.business
@@ -194,13 +197,18 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
         for (final reward in _rewards.where((item) => item.canDisplayAt(now)))
           _marker(
             id: reward.id,
+            onTap: widget.onRewardSelected == null
+                ? null
+                : () => widget.onRewardSelected!(reward),
             latitude: reward.latitude,
             longitude: reward.longitude,
             title: reward.title,
-            details: 'Type: ${reward.type.name}\n'
+            details:
+                'Type: ${reward.type.name}\n'
                 'Record: ${reward.id}\n'
                 'Checkpoint: ${reward.checkpointId}\n'
-                'Business: ${reward.businessId}\n'
+                'Location type: ${reward.locationType.name}\n'
+                'Location ID: ${reward.locationId}\n'
                 '${reward.type == RewardType.exp ? 'EXP: ${reward.expAmount}' : 'Voucher: ${reward.voucherId}'}',
             icon: reward.type == RewardType.exp
                 ? Icons.star_rounded

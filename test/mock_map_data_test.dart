@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:collab/data/mock_map_data.dart';
 import 'package:collab/models/reward_marker.dart';
 
+import 'package:collab/models/map_location.dart';
+
 void main() {
   test('Mock locations have valid coordinates', () {
     final locations = MockMapData.createLocations();
@@ -21,8 +23,9 @@ void main() {
       );
 
       expect(checkpoint.canSpawn, isTrue);
-      expect(businessIds.contains(checkpoint.businessId), isTrue);
-      expect(reward.businessId, checkpoint.businessId);
+      expect(businessIds.contains(checkpoint.locationId), isTrue);
+      expect(reward.locationId, checkpoint.locationId);
+      expect(reward.locationType, checkpoint.locationType);
       expect(reward.latitude, checkpoint.latitude);
       expect(reward.longitude, checkpoint.longitude);
       expect(reward.hasValidDefinition, isTrue);
@@ -65,7 +68,8 @@ void main() {
           [
             reward.id,
             reward.checkpointId,
-            reward.businessId,
+            reward.locationId,
+            reward.locationType,
             reward.type,
             reward.title,
             reward.latitude,
@@ -93,9 +97,31 @@ void main() {
         (checkpoint) => checkpoint.id == reward.checkpointId,
       );
 
-      expect(reward.businessId, checkpoint.businessId);
+      expect(reward.locationId, checkpoint.locationId);
+      expect(reward.locationType, checkpoint.locationType);
       expect(reward.latitude, checkpoint.latitude);
       expect(reward.longitude, checkpoint.longitude);
     }
   });
+
+  test(
+    'mock landmark checkpoint references an existing displayable landmark',
+    () {
+      final landmarkCheckpoints = MockMapData.checkpoints.where(
+        (checkpoint) => checkpoint.locationType == MapLocationType.landmark,
+      );
+
+      expect(landmarkCheckpoints, isNotEmpty);
+
+      for (final checkpoint in landmarkCheckpoints) {
+        final landmark = MockMapData.landmarks.singleWhere(
+          (location) => location.id == checkpoint.locationId,
+        );
+
+        expect(checkpoint.canSpawn, isTrue);
+        expect(landmark.type, MapLocationType.landmark);
+        expect(landmark.canDisplay, isTrue);
+      }
+    },
+  );
 }

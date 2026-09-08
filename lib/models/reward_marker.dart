@@ -1,13 +1,13 @@
-enum RewardType {
-  exp,
-  voucher,
-}
+import 'map_location.dart';
+
+enum RewardType { exp, voucher }
 
 class RewardMarker {
   const RewardMarker({
     required this.id,
     required this.checkpointId,
-    required this.businessId,
+    required this.locationType,
+    required this.locationId,
     required this.type,
     required this.title,
     required this.latitude,
@@ -26,8 +26,11 @@ class RewardMarker {
   // Stable checkpoint identifier, unchanged when a new reward spawns.
   final String checkpointId;
 
-  // Registered local business associated with this checkpoint.
-  final String businessId;
+  // Place associated with the checkpoint.
+  // For vouchers, the issuing merchant is identified through voucherId,
+  // not through this location association.
+  final MapLocationType locationType;
+  final String locationId;
 
   final RewardType type;
   final String title;
@@ -62,16 +65,14 @@ class RewardMarker {
     return switch (type) {
       RewardType.exp => expAmount > 0 && voucherId == null,
       RewardType.voucher =>
-        expAmount == 0 &&
-            voucherId != null &&
-            voucherId!.trim().isNotEmpty,
+        expAmount == 0 && voucherId != null && voucherId!.trim().isNotEmpty,
     };
   }
 
   bool get hasValidDefinition {
     return id.trim().isNotEmpty &&
         checkpointId.trim().isNotEmpty &&
-        businessId.trim().isNotEmpty &&
+        locationId.trim().isNotEmpty &&
         title.trim().isNotEmpty &&
         hasValidCoordinates &&
         hasValidRewardData &&

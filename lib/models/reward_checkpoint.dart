@@ -1,7 +1,10 @@
+import 'map_location.dart';
+
 class RewardCheckpoint {
   const RewardCheckpoint({
     required this.id,
-    required this.businessId,
+    required this.locationType,
+    required this.locationId,
     required this.label,
     required this.latitude,
     required this.longitude,
@@ -11,7 +14,11 @@ class RewardCheckpoint {
   // Stable across different reward spawns.
   final String id;
 
-  final String businessId;
+  // Parent place: a registered business or a landmark.
+  // locationId is the original record ID, not a prefixed map UI ID.
+  final MapLocationType locationType;
+  final String locationId;
+
   final String label;
   final double latitude;
   final double longitude;
@@ -27,11 +34,11 @@ class RewardCheckpoint {
   }
 
   // Structural eligibility only.
-  // Real placement approval and business status are checked separately.
+  // Real placement approval and parent-place status are checked separately.
   bool get canSpawn {
     return active &&
         id.trim().isNotEmpty &&
-        businessId.trim().isNotEmpty &&
+        locationId.trim().isNotEmpty &&
         hasValidCoordinates;
   }
 }

@@ -1,6 +1,8 @@
 import 'package:collab/models/reward_marker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:collab/models/map_location.dart';
+
 void main() {
   // Fixed times make these tests repeatable without waiting.
   final start = DateTime.utc(2026, 9, 7, 8);
@@ -12,7 +14,8 @@ void main() {
     RewardType type = RewardType.exp,
     String id = 'test-reward',
     String checkpointId = 'test-checkpoint',
-    String businessId = 'test-business',
+    String locationId = 'test-business',
+    MapLocationType locationType = MapLocationType.business,
     String title = 'Test reward',
     double latitude = 3,
     double longitude = 101,
@@ -25,7 +28,8 @@ void main() {
     return RewardMarker(
       id: id,
       checkpointId: checkpointId,
-      businessId: businessId,
+      locationId: locationId,
+      locationType: locationType,
       type: type,
       title: title,
       latitude: latitude,
@@ -50,10 +54,7 @@ void main() {
       }
 
       test('hidden before its start time', () {
-        expect(
-          validReward().canDisplayAt(start.subtract(tick)),
-          isFalse,
-        );
+        expect(validReward().canDisplayAt(start.subtract(tick)), isFalse);
       });
 
       test('visible exactly at start and during availability', () {
@@ -117,11 +118,7 @@ void main() {
     test('invalid voucher data prevents display', () {
       final invalidRewards = [
         makeReward(type: RewardType.voucher, expAmount: 0),
-        makeReward(
-          type: RewardType.voucher,
-          expAmount: 0,
-          voucherId: '   ',
-        ),
+        makeReward(type: RewardType.voucher, expAmount: 0, voucherId: '   '),
         makeReward(
           type: RewardType.voucher,
           expAmount: 100,
@@ -144,7 +141,7 @@ void main() {
       final invalidRewards = [
         makeReward(id: ''),
         makeReward(checkpointId: '   '),
-        makeReward(businessId: ''),
+        makeReward(locationId: ''),
         makeReward(title: '   '),
       ];
 
@@ -165,5 +162,17 @@ void main() {
         expect(reward.canDisplayAt(start), isFalse);
       }
     });
+  });
+
+  test('landmark EXP reward has a valid location association', () {
+    final reward = makeReward(
+      locationType: MapLocationType.landmark,
+      locationId: 'test-landmark',
+    );
+
+    expect(reward.hasValidDefinition, isTrue);
+    expect(reward.canDisplayAt(during), isTrue);
+    expect(reward.locationType, MapLocationType.landmark);
+    expect(reward.locationId, 'test-landmark');
   });
 }

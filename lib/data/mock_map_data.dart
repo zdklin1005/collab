@@ -9,12 +9,10 @@ import '../services/daily_reward_generator.dart';
 
 class MockMapData {
   // Fictional records for development only.
-  static final double _baseLat =
-      MapTestConfig.centre?.latitude ?? 3.1390;
+  static final double _baseLat = MapTestConfig.centre?.latitude ?? 3.1390;
 
-  static final double _baseLng =
-      MapTestConfig.centre?.longitude ?? 101.6869;
-  
+  static final double _baseLng = MapTestConfig.centre?.longitude ?? 101.6869;
+
   static final businesses = <Business>[
     Business(
       id: 'mock-business-cafe',
@@ -54,31 +52,44 @@ class MockMapData {
   static final checkpoints = <RewardCheckpoint>[
     RewardCheckpoint(
       id: 'mock-checkpoint-cafe-1',
-      businessId: 'mock-business-cafe',
+      locationType: MapLocationType.business,
+      locationId: 'mock-business-cafe',
       label: 'Café checkpoint A',
       latitude: _baseLat + 0.0003,
       longitude: _baseLng + 0.0003,
     ),
     RewardCheckpoint(
       id: 'mock-checkpoint-crafts-1',
-      businessId: 'mock-business-crafts',
+      locationType: MapLocationType.business,
+      locationId: 'mock-business-crafts',
       label: 'Artisan checkpoint A',
       latitude: _baseLat + 0.0023,
       longitude: _baseLng + 0.0024,
     ),
     RewardCheckpoint(
       id: 'mock-checkpoint-cafe-2',
-      businessId: 'mock-business-cafe',
+      locationType: MapLocationType.business,
+      locationId: 'mock-business-cafe',
       label: 'Café checkpoint B',
       latitude: _baseLat - 0.0003,
       longitude: _baseLng - 0.0003,
     ),
     RewardCheckpoint(
       id: 'mock-checkpoint-crafts-2',
-      businessId: 'mock-business-crafts',
+      locationType: MapLocationType.business,
+      locationId: 'mock-business-crafts',
       label: 'Artisan checkpoint B',
       latitude: _baseLat + 0.0017,
       longitude: _baseLng + 0.0018,
+    ),
+
+    RewardCheckpoint(
+      id: 'mock-checkpoint-landmark-1',
+      locationType: MapLocationType.landmark,
+      locationId: 'mock-landmark-1',
+      label: 'Heritage checkpoint A',
+      latitude: _baseLat - 0.0010,
+      longitude: _baseLng + 0.0015,
     ),
   ];
 
@@ -87,48 +98,55 @@ class MockMapData {
         .map(MapLocation.fromBusiness)
         .whereType<MapLocation>();
 
-    return [
-      ...businessLocations,
-      ...landmarks,
-    ];
+    return [...businessLocations, ...landmarks];
   }
 
-//Uses a generator exisitng prototype settings with 80% spawn chance, and 10% voucher chance.
-static List<RewardMarker> createDailyRewards(DateTime instant) {
-  final start = DailyRewardGenerator.dayStartUtc(instant);
-  final end = start.add(const Duration(days: 1));
+  //Uses a generator exisitng prototype settings with 80% spawn chance, and 10% voucher chance.
+  static List<RewardMarker> createDailyRewards(DateTime instant) {
+    final start = DailyRewardGenerator.dayStartUtc(instant);
+    final end = start.add(const Duration(days: 1));
 
-  // Fictional offers recreated for each demo day.
-  // Real merchant offers must retain their actual validity dates and stock.
-  final demoOffers = [
-    MapVoucherOffer(
-      id: 'mock-voucher-cafe-1',
-      businessId: 'mock-business-cafe',
-      title: 'Demo café voucher',
-      validFrom: start,
-      expiresAt: end,
-      remainingStock: 100,
-    ),
-    MapVoucherOffer(
-      id: 'mock-voucher-artisan-1',
-      businessId: 'mock-business-crafts',
-      title: 'Demo artisan voucher',
-      validFrom: start,
-      expiresAt: end,
-      remainingStock: 100,
-    ),
-  ];
+    // Fictional offers recreated for each demo day.
+    // Real merchant offers must retain their actual validity dates and stock.
+    final demoOffers = [
+      MapVoucherOffer(
+        id: 'mock-voucher-cafe-1',
+        businessId: 'mock-business-cafe',
+        title: 'Demo café voucher',
+        validFrom: start,
+        expiresAt: end,
+        remainingStock: 100,
+      ),
+      MapVoucherOffer(
+        id: 'mock-voucher-artisan-1',
+        businessId: 'mock-business-crafts',
+        title: 'Demo artisan voucher',
+        validFrom: start,
+        expiresAt: end,
+        remainingStock: 100,
+      ),
+    ];
 
-  return DailyRewardGenerator().generate(
-    instant: instant,
-    checkpoints: checkpoints,
-    activeBusinessIds: businesses
-        .where((business) => business.active)
-        .map((business) => business.id)
-        .toSet(),
-    voucherOffers: demoOffers,
-  );
-}
+    return DailyRewardGenerator().generate(
+      activeLandmarkIds: landmarks
+          .where(
+            (landmark) =>
+                landmark.type == MapLocationType.landmark &&
+                landmark.canDisplay,
+          )
+          .map((landmark) => landmark.id)
+          .toSet(),
+
+      instant: instant,
+      checkpoints: checkpoints,
+      activeBusinessIds: businesses
+          .where((business) => business.active)
+          .map((business) => business.id)
+          .toSet(),
+      voucherOffers: demoOffers,
+    );
+  }
+
   // Creates a predictable test snapshot, not the production spawner.
   // Pass the time explicitly so tests do not depend on today's date.
   static List<RewardMarker> createRewards(DateTime referenceTime) {
@@ -146,7 +164,8 @@ static List<RewardMarker> createDailyRewards(DateTime instant) {
       return RewardMarker(
         id: id,
         checkpointId: checkpoint.id,
-        businessId: checkpoint.businessId,
+        locationType: checkpoint.locationType,
+        locationId: checkpoint.locationId,
         type: voucherId == null ? RewardType.exp : RewardType.voucher,
         title: title,
         description: 'Development sample only. Not a real reward.',

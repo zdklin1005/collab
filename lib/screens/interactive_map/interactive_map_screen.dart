@@ -11,8 +11,10 @@ import '../../data/mock_map_data.dart';
 
 import '../../models/map_location.dart';
 import '../../models/localquest_models.dart';
+import '../../models/reward_marker.dart';
 
 import '../../services/map_category_filter.dart';
+import '../../services/reward_proximity.dart';
 
 import 'map_action_buttons.dart';
 import 'map_location_permission.dart';
@@ -27,6 +29,9 @@ import 'map_attribution.dart';
 import 'map_style_preferences.dart';
 import 'map_search_delegate.dart';
 import 'map_location_details.dart';
+
+import 'reward_preview_dialog.dart';
+import 'out_of_range_dialog.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({
@@ -66,6 +71,12 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   bool _recenterWhenReady = false;
   bool _foreground = true;
   bool _locationDetailsOpen = false;
+
+    // Temporary demo value, not the final collection policy.
+  static const double _demoCollectionRadiusMeters = 50;
+
+  bool _rewardDistanceDialogOpen = false;
+
   String? _locationError;
   int _requestId = 0;
 
@@ -610,6 +621,151 @@ Future<void> _showLocationDetails(MapLocation location) async {
     super.dispose();
   }
 
+  Future<void> _showRewardDistance(RewardMarker reward) async {
+    if (!mounted || !_foreground || _rewardDistanceDialogOpen) {
+      return;
+    }
+
+    // This dialog reports a snapshot taken when the marker is tapped.
+    // Reopen it to check an updated position.
+    final now = DateTime.now();
+    final position = _position;
+
+    String heading;
+    String message;
+    double? checkedDistance;
+    bool? checkedWithinRange;
+
+    if (!reward.canDisplayAt(now)) {
+      heading = 'Reward unavailable';
+      message = 'This reward is inactive, expired or no longer displayable.';
+    } else if (!_locationAllowed) {
+      heading = 'Location access needed';
+      message =
+          'Enable location permission and location services '
+          'before checking your distance.';
+    } else if (_locationError != null || position == null) {
+      heading = 'Location unavailable';
+      message =
+          'A current location reading is not available. '
+          'Return to the map and wait for an update.';
+    } else {
+      final quality = assessLocationQuality(
+        accuracy: position.accuracy,
+        recordedAt: position.timestamp,
+        now: now,
+      );
+
+      if (quality != LocationQuality.recent) {
+        heading = 'Location not reliable enough';
+        message = switch (quality) {
+          LocationQuality.unavailable =>
+            'Your location is not available yet.',
+          LocationQuality.stale =>
+            'Your location reading is too old. Wait for a fresh update.',
+          LocationQuality.unknownAccuracy =>
+            'The accuracy of your location is unknown.',
+          LocationQuality.inaccurate =>
+            'GPS accuracy is currently too low for a reliable range check.',
+          LocationQuality.recent => '',
+        };
+      } else {
+        try {
+          final distance = RewardProximity.distanceMeters(
+            userLatitude: position.latitude,
+            userLongitude: position.longitude,
+            rewardLatitude: reward.latitude,
+            rewardLongitude: reward.longitude,
+          );
+
+          final withinRange = RewardProximity.isWithinRadius(
+            distanceMeters: distance,
+            radiusMeters: _demoCollectionRadiusMeters,
+          );
+
+          checkedDistance = distance;
+          checkedWithinRange = withinRange;
+
+          heading = withinRange
+              ? 'Within demo range'
+              : 'Too far away';
+
+          final distanceLabel = distance < 1000
+              ? '${distance.toStringAsFixed(1)} m'
+              : '${(distance / 1000).toStringAsFixed(2)} km';
+
+          message =
+              'Approximate straight-line distance: $distanceLabel\n'
+              'Demo radius: '
+              '${_demoCollectionRadiusMeters.toStringAsFixed(0)} m\n\n'
+              '${withinRange
+                  ? 'The distance check passed. This does not yet authorize collection.'
+                  : 'You are outside the current demo radius.'}';
+        } on ArgumentError {
+          heading = 'Distance unavailable';
+          message =
+              'The location coordinates are invalid. '
+              'Return to the map and try again after a new location update.';
+        }
+      }
+    }
+
+    String locationName = reward.locationType == MapLocationType.business
+        ? 'this business'
+        : 'this landmark';
+
+    for (final location in MockMapData.createLocations()) {
+      final recordId = location.businessId ?? location.id;
+
+      if (location.type == reward.locationType &&
+          recordId == reward.locationId) {
+        locationName = location.title;
+        break;
+      }
+    }
+
+    _rewardDistanceDialogOpen = true;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (dialogContext) {
+          if (checkedWithinRange == true) {
+            return RewardPreviewDialog(
+              reward: reward,
+              locationName: locationName,
+            );
+          }
+
+          if (checkedWithinRange == false && checkedDistance != null) {
+            return OutOfRangeDialog(
+              distanceMeters: checkedDistance,
+              radiusMeters: _demoCollectionRadiusMeters,
+            );
+          }
+
+          // Permission, unavailable reward, invalid coordinates or poor GPS:
+          // keep an explanatory dialog instead of showing a reward preview.
+          return AlertDialog(
+            title: Text(heading),
+            content: SingleChildScrollView(
+              child: Text(message),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Back to map'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      _rewardDistanceDialogOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final position = _position;
@@ -677,6 +833,7 @@ Future<void> _showLocationDetails(MapLocation location) async {
               DemoMapMarkers(
                 selectedCategory: _selectedBusinessCategory,
                 onLocationSelected: _showLocationDetails,
+                onRewardSelected: _showRewardDistance,
               ),
 
             // Accuracy is measured in metres, not screen pixels.

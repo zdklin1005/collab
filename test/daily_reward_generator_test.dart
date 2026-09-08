@@ -3,6 +3,8 @@ import 'package:collab/models/reward_marker.dart';
 import 'package:collab/services/daily_reward_generator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:collab/models/map_location.dart';
+
 void main() {
   // 10:00 AM in Malaysia.
   final morning = DateTime.utc(2026, 9, 7, 2);
@@ -11,7 +13,8 @@ void main() {
 
   const checkpoint = RewardCheckpoint(
     id: 'checkpoint-a',
-    businessId: 'business-a',
+    locationType: MapLocationType.business,
+    locationId: 'business-a',
     label: 'Fictional checkpoint',
     latitude: 3,
     longitude: 101,
@@ -19,7 +22,8 @@ void main() {
 
   const secondCheckpoint = RewardCheckpoint(
     id: 'checkpoint-b',
-    businessId: 'business-a',
+    locationType: MapLocationType.business,
+    locationId: 'business-a',
     label: 'Second fictional checkpoint',
     latitude: 3.001,
     longitude: 101.001,
@@ -53,7 +57,8 @@ void main() {
         [
           reward.id,
           reward.checkpointId,
-          reward.businessId,
+          reward.locationId,
+          reward.locationType,
           reward.type,
           reward.title,
           reward.latitude,
@@ -89,16 +94,19 @@ void main() {
     );
 
     RewardMarker generate(DateTime time) {
-      return generator.generate(
-        instant: time,
-        checkpoints: [checkpoint],
-        activeBusinessIds: {'business-a'},
-      ).single;
+      return generator
+          .generate(
+            instant: time,
+            checkpoints: [checkpoint],
+            activeBusinessIds: {'business-a'},
+          )
+          .single;
     }
 
     final today = generate(morning);
-    final beforeMidnight =
-        generate(end.subtract(const Duration(microseconds: 1)));
+    final beforeMidnight = generate(
+      end.subtract(const Duration(microseconds: 1)),
+    );
     final tomorrow = generate(end);
 
     expect(today.availableFrom, start);
@@ -136,19 +144,18 @@ void main() {
   });
 
   test('eligible voucher can be selected', () {
-    final reward = DailyRewardGenerator(
-      spawnPercent: 100,
-      voucherPercent: 100,
-    ).generate(
-      instant: morning,
-      checkpoints: [checkpoint],
-      activeBusinessIds: {'business-a'},
-      voucherOffers: [offer()],
-    ).single;
+    final reward = DailyRewardGenerator(spawnPercent: 100, voucherPercent: 100)
+        .generate(
+          instant: morning,
+          checkpoints: [checkpoint],
+          activeBusinessIds: {'business-a'},
+          voucherOffers: [offer()],
+        )
+        .single;
 
     expect(reward.type, RewardType.voucher);
     expect(reward.voucherId, 'voucher-a');
-    expect(reward.businessId, 'business-a');
+    expect(reward.locationId, 'business-a');
     expect(reward.expAmount, 0);
   });
 
@@ -168,12 +175,14 @@ void main() {
     );
 
     for (final invalidOffer in invalidOffers) {
-      final reward = generator.generate(
-        instant: morning,
-        checkpoints: [checkpoint],
-        activeBusinessIds: {'business-a'},
-        voucherOffers: [invalidOffer],
-      ).single;
+      final reward = generator
+          .generate(
+            instant: morning,
+            checkpoints: [checkpoint],
+            activeBusinessIds: {'business-a'},
+            voucherOffers: [invalidOffer],
+          )
+          .single;
 
       expect(reward.type, RewardType.exp);
       expect(reward.expAmount, 100);
@@ -207,7 +216,8 @@ void main() {
       checkpoints: [
         const RewardCheckpoint(
           id: 'inactive',
-          businessId: 'business-a',
+          locationType: MapLocationType.business,
+          locationId: 'business-a',
           label: 'Inactive',
           latitude: 3,
           longitude: 101,
@@ -215,7 +225,8 @@ void main() {
         ),
         const RewardCheckpoint(
           id: 'invalid',
-          businessId: 'business-a',
+          locationType: MapLocationType.business,
+          locationId: 'business-a',
           label: 'Invalid',
           latitude: 91,
           longitude: 101,
@@ -239,17 +250,75 @@ void main() {
   });
 
   test('invalid settings are rejected', () {
-    expect(
-      () => DailyRewardGenerator(spawnPercent: 101),
-      throwsArgumentError,
+    expect(() => DailyRewardGenerator(spawnPercent: 101), throwsArgumentError);
+    expect(() => DailyRewardGenerator(voucherPercent: -1), throwsArgumentError);
+    expect(() => DailyRewardGenerator(expAmount: 0), throwsArgumentError);
+  });
+
+  test('active landmark generates stable EXP without assigning a voucher', () {
+    const landmarkCheckpoint = RewardCheckpoint(
+      id: 'checkpoint-landmark',
+      locationType: MapLocationType.landmark,
+      locationId: 'landmark-a',
+      label: 'Fictional landmark checkpoint',
+      latitude: 3.002,
+      longitude: 101.002,
     );
-    expect(
-      () => DailyRewardGenerator(voucherPercent: -1),
-      throwsArgumentError,
+
+    final generator = DailyRewardGenerator(
+      spawnPercent: 100,
+      voucherPercent: 100,
     );
+
+    List<RewardMarker> generate(DateTime instant) {
+      return generator.generate(
+        instant: instant,
+        checkpoints: [landmarkCheckpoint],
+        activeBusinessIds: {'business-a'},
+        activeLandmarkIds: {'landmark-a'},
+        voucherOffers: [offer()],
+      );
+    }
+
+    final first = generate(morning);
+    final reward = first.single;
+
+    expect(reward.locationType, MapLocationType.landmark);
+    expect(reward.locationId, 'landmark-a');
+    expect(reward.checkpointId, landmarkCheckpoint.id);
+    expect(reward.latitude, landmarkCheckpoint.latitude);
+    expect(reward.longitude, landmarkCheckpoint.longitude);
+    expect(reward.type, RewardType.exp);
+    expect(reward.expAmount, 100);
+    expect(reward.voucherId, isNull);
+    expect(reward.hasValidDefinition, isTrue);
+
     expect(
-      () => DailyRewardGenerator(expAmount: 0),
-      throwsArgumentError,
+      snapshot(first),
+      snapshot(generate(morning.add(const Duration(hours: 8)))),
     );
   });
+
+  test(
+    'landmark requires an active landmark ID, not a matching business ID',
+    () {
+      const landmarkCheckpoint = RewardCheckpoint(
+        id: 'checkpoint-landmark',
+        locationType: MapLocationType.landmark,
+        locationId: 'shared-id',
+        label: 'Fictional landmark checkpoint',
+        latitude: 3,
+        longitude: 101,
+      );
+
+      final rewards = DailyRewardGenerator(spawnPercent: 100).generate(
+        instant: morning,
+        checkpoints: [landmarkCheckpoint],
+        activeBusinessIds: {'shared-id'},
+        activeLandmarkIds: {},
+      );
+
+      expect(rewards, isEmpty);
+    },
+  );
 }

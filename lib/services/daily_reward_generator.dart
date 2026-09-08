@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../models/reward_checkpoint.dart';
 import '../models/reward_marker.dart';
+import '../models/map_location.dart';
 
 // Prototype input only, not a replacement for the team's voucher model.
 class MapVoucherOffer {
@@ -100,6 +101,7 @@ class DailyRewardGenerator {
     required DateTime instant,
     required List<RewardCheckpoint> checkpoints,
     required Set<String> activeBusinessIds,
+    Set<String> activeLandmarkIds = const <String>{},
     List<MapVoucherOffer> voucherOffers = const [],
   }) {
     _requireUniqueIds(checkpoints.map((c) => c.id), 'checkpoint');
@@ -115,8 +117,16 @@ class DailyRewardGenerator {
     final rewards = <RewardMarker>[];
 
     for (final checkpoint in sortedCheckpoints) {
-      if (!checkpoint.canSpawn ||
-          !activeBusinessIds.contains(checkpoint.businessId)) {
+      final parentIsActive = switch (checkpoint.locationType) {
+        MapLocationType.business => activeBusinessIds.contains(
+          checkpoint.locationId,
+        ),
+        MapLocationType.landmark => activeLandmarkIds.contains(
+          checkpoint.locationId,
+        ),
+      };
+
+      if (!checkpoint.canSpawn || !parentIsActive) {
         continue;
       }
 
@@ -128,18 +138,23 @@ class DailyRewardGenerator {
       }
 
       final eligibleOffers = voucherOffers.where((offer) {
-        return offer.businessId == checkpoint.businessId &&
+        // Temporary policy: landmark rewards fall back to EXP.
+        // Landmark voucher distribution needs an explicit agreement.
+        if (checkpoint.locationType != MapLocationType.business) {
+          return false;
+        }
+
+        return offer.businessId == checkpoint.locationId &&
+            activeBusinessIds.contains(offer.businessId) &&
             offer.coversDay(start, end);
-      }).toList()
-        ..sort((a, b) => a.id.compareTo(b.id));
+      }).toList()..sort((a, b) => a.id.compareTo(b.id));
 
       MapVoucherOffer? selectedOffer;
       final chooseVoucher =
           _selectionValue('$seed:type') % 100 < voucherPercent;
 
       if (chooseVoucher && eligibleOffers.isNotEmpty) {
-        final index =
-            _selectionValue('$seed:offer') % eligibleOffers.length;
+        final index = _selectionValue('$seed:offer') % eligibleOffers.length;
         selectedOffer = eligibleOffers[index];
       }
 
@@ -147,10 +162,12 @@ class DailyRewardGenerator {
 
       rewards.add(
         RewardMarker(
-          id: 'daily-$_version-${start.millisecondsSinceEpoch}-'
+          id:
+              'daily-$_version-${start.millisecondsSinceEpoch}-'
               '${Uri.encodeComponent(checkpoint.id)}',
           checkpointId: checkpoint.id,
-          businessId: checkpoint.businessId,
+          locationType: checkpoint.locationType,
+          locationId: checkpoint.locationId,
           type: isVoucher ? RewardType.voucher : RewardType.exp,
           title: selectedOffer?.title ?? '$expAmount EXP',
           description: 'Generated development reward. Not redeemable.',
