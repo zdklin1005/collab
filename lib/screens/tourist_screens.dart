@@ -13,7 +13,6 @@ import '../services/localquest_services.dart';
 
 import 'interactive_map/interactive_map_screen.dart';
 
-
 class TouristHome extends StatefulWidget {
   const TouristHome({super.key, required this.user});
   final AppUser user;
@@ -119,11 +118,11 @@ class TouristProfileScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
           ),
           child: LqCard(
-            color: LqColors.primarySoft,
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                Padding(
+                Container(
+                  color: LqColors.primarySoft,
                   padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
@@ -131,6 +130,7 @@ class TouristProfileScreen extends StatelessWidget {
                         radius: 36,
                         initials: initialsFor(user.displayName),
                         photoUrl: user.photoUrl,
+                        shape: LqAvatarShape.roundedSquare,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -178,6 +178,12 @@ class TouristProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: LqColors.primary,
+                        size: 24,
                       ),
                     ],
                   ),

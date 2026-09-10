@@ -448,105 +448,10 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                   ...campaigns.map(
                     (item) => Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: LqCard(
-                        color: item.status == 'active'
-                            ? LqColors.primarySoft
-                            : (item.status == 'scheduled'
-                                  ? LqColors.peachSoft
-                                  : const Color(0xFFF0F1F4)),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (item.imageUrl != null) ...[
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: Image.network(
-                                  item.imageUrl!,
-                                  height: 160,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, error, stack) =>
-                                      const SizedBox(
-                                        height: 80,
-                                        child: Center(
-                                          child: Text('Poster unavailable'),
-                                        ),
-                                      ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-                            CircleAvatar(
-                              backgroundColor: Colors.white,
-                              foregroundColor: LqColors.primary,
-                              child: Icon(
-                                item.type == 'voucher'
-                                    ? Icons.confirmation_num_outlined
-                                    : Icons.auto_awesome_outlined,
-                              ),
-                            ),
-                            const SizedBox(height: 28),
-                            Text(
-                              item.name,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: LqColors.primaryDark,
-                                height: 1.05,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              item.description.toUpperCase(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: monoLabel.copyWith(
-                                color: LqColors.primaryDark,
-                              ),
-                            ),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: LqDashedDivider(),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '${item.status[0].toUpperCase()}${item.status.substring(1)} · Ends ${DateFormat('d MMM').format(item.endDate)}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${item.views} views · ${item.claims} claims',
-                                        style: monoLabel,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => CampaignEditor(
-                                        user: widget.user,
-                                        businessId: widget.business?.id ?? '',
-                                        campaign: item,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Text('Edit'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                      child: _CampaignCreativeCard(
+                        campaign: item,
+                        user: widget.user,
+                        businessId: widget.business?.id ?? '',
                       ),
                     ),
                   ),
@@ -577,6 +482,138 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
         ],
       );
     },
+  );
+}
+
+/// A campaign poster fills the creative area; the white area below is reserved
+/// for live status and edit actions so campaign text remains readable.
+class _CampaignCreativeCard extends StatelessWidget {
+  const _CampaignCreativeCard({
+    required this.campaign,
+    required this.user,
+    required this.businessId,
+  });
+
+  final Campaign campaign;
+  final AppUser user;
+  final String businessId;
+
+  Color get _fallbackColor => switch (campaign.status) {
+    'scheduled' => LqColors.peachSoft,
+    'active' => LqColors.primarySoft,
+    _ => const Color(0xFFF0F1F4),
+  };
+
+  @override
+  Widget build(BuildContext context) => LqCard(
+    color: Colors.white,
+    padding: EdgeInsets.zero,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 178,
+          width: double.infinity,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: _fallbackColor),
+              if (campaign.imageUrl != null)
+                Image.network(
+                  campaign.imageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.expand(),
+                ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x08FFFFFF), Color(0xB3FFFFFF)],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Colors.white,
+                      foregroundColor: LqColors.primary,
+                      child: Icon(
+                        campaign.type == 'voucher'
+                            ? Icons.confirmation_num_outlined
+                            : Icons.auto_awesome_outlined,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      campaign.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: LqColors.primaryDark,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      campaign.description.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: monoLabel.copyWith(color: LqColors.primaryDark),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const LqDashedDivider(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${campaign.status[0].toUpperCase()}${campaign.status.substring(1)} · Ends ${DateFormat('d MMM').format(campaign.endDate)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      '${campaign.views} views · ${campaign.claims} claims',
+                      style: monoLabel,
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CampaignEditor(
+                      user: user,
+                      businessId: businessId,
+                      campaign: campaign,
+                    ),
+                  ),
+                ),
+                child: const Text('Edit'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
   );
 }
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
@@ -10,10 +11,15 @@ import 'localquest_theme.dart';
 import 'localquest_widgets.dart';
 
 class LqLocation {
-  const LqLocation({required this.latitude, required this.longitude});
+  const LqLocation({
+    required this.latitude,
+    required this.longitude,
+    this.address,
+  });
 
   final double latitude;
   final double longitude;
+  final String? address;
 }
 
 class AddressSuggestion {
@@ -64,6 +70,33 @@ class AddressSuggestion {
 
 class PhotonAddressService {
   const PhotonAddressService();
+
+  Future<AddressSuggestion?> reverse(LqLocation location) async {
+    final uri = Uri.https('photon.komoot.io', '/reverse', {
+      'lat': '${location.latitude}',
+      'lon': '${location.longitude}',
+      'limit': '1',
+      'lang': 'en',
+      'radius': '1',
+    });
+    final response = await http
+        .get(uri, headers: const {'User-Agent': 'LocalQuest/0.1'})
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      throw StateError('Address service returned ${response.statusCode}.');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final features = List<Object?>.from(
+      payload['features'] as List? ?? const [],
+    );
+    for (final feature in features.whereType<Map>()) {
+      final result = AddressSuggestion.fromPhotonFeature(
+        Map<String, dynamic>.from(feature),
+      );
+      if (result.label.isNotEmpty) return result;
+    }
+    return null;
+  }
 
   Future<List<AddressSuggestion>> search(String query) async {
     if (query.trim().length < 3) return const [];
@@ -181,6 +214,7 @@ class _LqAddressFieldState extends State<LqAddressField> {
     final location = LqLocation(
       latitude: suggestion.latitude,
       longitude: suggestion.longitude,
+      address: suggestion.label,
     );
     widget.controller.text = suggestion.label;
     FocusScope.of(context).unfocus();
@@ -199,10 +233,18 @@ class _LqAddressFieldState extends State<LqAddressField> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _LocationPickerSheet(initialLocation: _location),
+      builder: (_) => _LocationPickerSheet(
+        initialLocation: _location,
+        addressService: widget.service,
+      ),
     );
     if (result == null || !mounted) return;
-    setState(() => _location = result);
+    widget.controller.text = result.address ?? widget.controller.text;
+    setState(() {
+      _location = result;
+      _suggestions = const [];
+      _message = null;
+    });
     widget.onLocationChanged?.call(result);
   }
 
@@ -282,7 +324,7 @@ class _LqAddressFieldState extends State<LqAddressField> {
               ),
               const SizedBox(width: 5),
               Text(
-                'Map pin saved · ${_location!.latitude.toStringAsFixed(5)}, ${_location!.longitude.toStringAsFixed(5)}',
+                'Map pin saved',
                 style: const TextStyle(
                   color: Color(0xFF46815B),
                   fontSize: 10,
@@ -297,21 +339,125 @@ class _LqAddressFieldState extends State<LqAddressField> {
 }
 
 class _LocationPickerSheet extends StatefulWidget {
-  const _LocationPickerSheet({this.initialLocation});
+  const _LocationPickerSheet({
+    this.initialLocation,
+    required this.addressService,
+  });
 
   final LqLocation? initialLocation;
+  final PhotonAddressService addressService;
 
   @override
   State<_LocationPickerSheet> createState() => _LocationPickerSheetState();
 }
 
 class _LocationPickerSheetState extends State<_LocationPickerSheet> {
+  final _mapController = MapController();
   late LatLng _pin = widget.initialLocation == null
       ? const LatLng(3.1390, 101.6869)
       : LatLng(
           widget.initialLocation!.latitude,
           widget.initialLocation!.longitude,
         );
+  String? _address;
+  String? _addressError;
+  bool _resolvingAddress = false;
+  bool _findingCurrentLocation = false;
+  int _lookupRequest = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _address = widget.initialLocation?.address;
+    if (_address == null || _address!.isEmpty) _resolveAddress();
+  }
+
+  Future<void> _resolveAddress() async {
+    final request = ++_lookupRequest;
+    setState(() {
+      _resolvingAddress = true;
+      _addressError = null;
+    });
+    try {
+      final result = await widget.addressService.reverse(
+        LqLocation(latitude: _pin.latitude, longitude: _pin.longitude),
+      );
+      if (!mounted || request != _lookupRequest) return;
+      setState(() {
+        _address = result?.label;
+        _addressError = result == null
+            ? 'No nearby address was found. Move the pin and try again.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted || request != _lookupRequest) return;
+      setState(() {
+        _address = null;
+        _addressError =
+            'Could not look up this address. Check your connection and retry.';
+      });
+    } finally {
+      if (mounted && request == _lookupRequest) {
+        setState(() => _resolvingAddress = false);
+      }
+    }
+  }
+
+  void _setPin(LatLng point) {
+    setState(() {
+      _pin = point;
+      _address = null;
+    });
+    _resolveAddress();
+  }
+
+  Future<void> _useCurrentLocation() async {
+    if (_findingCurrentLocation) return;
+    setState(() => _findingCurrentLocation = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Location permission was not granted.');
+      }
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw StateError('Turn on Location on this device, then try again.');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      if (!mounted) return;
+      final point = LatLng(position.latitude, position.longitude);
+      _mapController.move(point, 16);
+      _setPin(point);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _addressError = error is StateError
+            ? error.message
+            : 'Could not retrieve the current location. Please retry.';
+      });
+    } finally {
+      if (mounted) setState(() => _findingCurrentLocation = false);
+    }
+  }
+
+  void _confirm() {
+    if (_address == null || _address!.isEmpty) return;
+    Navigator.pop(
+      context,
+      LqLocation(
+        latitude: _pin.latitude,
+        longitude: _pin.longitude,
+        address: _address,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Container(
@@ -344,36 +490,76 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
         ),
         const LqDashedDivider(),
         Expanded(
-          child: FlutterMap(
-            options: MapOptions(
-              initialCenter: _pin,
-              initialZoom: widget.initialLocation == null ? 11 : 16,
-              onTap: (_, point) => setState(() => _pin = point),
-            ),
+          child: Stack(
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.localquest.app',
-              ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: _pin,
-                    width: 52,
-                    height: 52,
-                    alignment: Alignment.topCenter,
-                    child: const Icon(
-                      Icons.location_pin,
-                      size: 48,
-                      color: LqColors.primary,
-                    ),
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _pin,
+                  initialZoom: widget.initialLocation == null ? 11 : 16,
+                  onTap: (_, point) => _setPin(point),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.localquest.app',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _pin,
+                        width: 52,
+                        height: 52,
+                        alignment: Alignment.topCenter,
+                        child: const Icon(
+                          Icons.location_pin,
+                          size: 48,
+                          color: LqColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const RichAttributionWidget(
+                    attributions: [
+                      TextSourceAttribution('OpenStreetMap contributors'),
+                    ],
                   ),
                 ],
               ),
-              const RichAttributionWidget(
-                attributions: [
-                  TextSourceAttribution('OpenStreetMap contributors'),
-                ],
+              Positioned(
+                top: 14,
+                right: 14,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 4,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _findingCurrentLocation ? null : _useCurrentLocation,
+                    child: Tooltip(
+                      message: 'Use my current location',
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: _findingCurrentLocation
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.my_location,
+                                  color: LqColors.primary,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -382,21 +568,51 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              Text(
-                '${_pin.latitude.toStringAsFixed(6)}, ${_pin.longitude.toStringAsFixed(6)}',
-                style: monoLabel.copyWith(color: LqColors.primary),
-              ),
+              if (_resolvingAddress)
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Finding the nearest address…'),
+                  ],
+                )
+              else if (_address != null)
+                Text(
+                  _address!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: LqColors.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                )
+              else
+                Text(
+                  _addressError ?? 'Tap the map to choose a location.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: LqColors.muted, fontSize: 12),
+                ),
+              if (_addressError != null && !_resolvingAddress) ...[
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  onPressed: _resolveAddress,
+                  icon: const Icon(Icons.refresh, size: 17),
+                  label: const Text('Retry address lookup'),
+                ),
+              ],
               const SizedBox(height: 10),
               LqButton(
                 label: 'Use this location',
                 icon: Icons.location_on_outlined,
-                onPressed: () => Navigator.pop(
-                  context,
-                  LqLocation(
-                    latitude: _pin.latitude,
-                    longitude: _pin.longitude,
-                  ),
-                ),
+                onPressed: _resolvingAddress || _address == null
+                    ? null
+                    : _confirm,
               ),
             ],
           ),

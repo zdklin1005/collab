@@ -33,6 +33,18 @@ Widget app(Widget home) => MaterialApp(
   home: Scaffold(body: home),
 );
 
+class _AddressLookupForTest extends PhotonAddressService {
+  const _AddressLookupForTest();
+
+  @override
+  Future<AddressSuggestion?> reverse(LqLocation location) async =>
+      const AddressSuggestion(
+        label: '18 Jalan Example, Kuala Lumpur, Malaysia',
+        latitude: 3.139,
+        longitude: 101.6869,
+      );
+}
+
 void main() {
   testWidgets(
     'campaign create action stays fixed above nav while list scrolls',
@@ -87,6 +99,49 @@ void main() {
     },
   );
 
+  testWidgets('campaign poster fills the creative section edge to edge', (
+    tester,
+  ) async {
+    const business = Business(
+      id: 'b1',
+      ownerId: 'merchant-1',
+      name: 'Test Cafe',
+      category: 'Cafe',
+      address: 'Kuala Lumpur',
+      phone: '0312345678',
+    );
+    await tester.pumpWidget(
+      app(
+        CampaignsScreen(
+          user: merchant,
+          business: business,
+          campaignStream: Stream.value([
+            Campaign(
+              id: 'poster-campaign',
+              ownerId: merchant.id,
+              businessId: business.id,
+              name: 'Full-bleed poster',
+              description: 'This poster should be the creative background.',
+              type: 'ad',
+              imageUrl: 'https://res.cloudinary.com/example/image.jpg',
+              startDate: DateTime(2026),
+              endDate: DateTime(2027),
+            ),
+          ]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final image = find.byType(Image);
+    final card = find.byType(LqCard);
+    expect(image, findsOneWidget);
+    expect(card, findsOneWidget);
+    expect(tester.getRect(image).left, tester.getRect(card).left);
+    expect(tester.getRect(image).right, tester.getRect(card).right);
+    expect(tester.getRect(image).height, 178);
+  });
+
   testWidgets('voucher form rejects blank offer before reaching review', (
     tester,
   ) async {
@@ -129,6 +184,36 @@ void main() {
     expect(suggestion.label, contains('Kuala Lumpur'));
     expect(suggestion.latitude, 3.1478);
     expect(suggestion.longitude, 101.7080);
+  });
+
+  testWidgets('map picker offers current location and hides coordinates', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      app(
+        LqAddressField(
+          controller: controller,
+          label: 'Business address',
+          initialLocation: const LqLocation(
+            latitude: 3.139,
+            longitude: 101.6869,
+            address: '18 Jalan Example, Kuala Lumpur, Malaysia',
+          ),
+          service: const _AddressLookupForTest(),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Pin location on map'));
+    await tester.pump();
+
+    expect(find.byTooltip('Use my current location'), findsOneWidget);
+    expect(
+      find.text('18 Jalan Example, Kuala Lumpur, Malaysia'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('3.139000'), findsNothing);
   });
 
   testWidgets('account selection fits a compact phone without overflow', (
@@ -185,6 +270,15 @@ void main() {
     expect(find.text('Reviews & ratings'), findsOneWidget);
     expect(find.text('Visited places'), findsOneWidget);
     expect(find.byType(LqTierBadge), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.icon == Icons.chevron_right &&
+            widget.color == LqColors.primary,
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: find.byType(LqTierBadge),

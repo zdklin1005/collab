@@ -760,6 +760,8 @@ class LqStatusPill extends StatelessWidget {
   }
 }
 
+enum LqAvatarShape { circle, roundedSquare }
+
 /// Shared profile image with an initials fallback for absent or broken photos.
 class LqAvatar extends StatelessWidget {
   const LqAvatar({
@@ -767,10 +769,12 @@ class LqAvatar extends StatelessWidget {
     required this.initials,
     this.photoUrl,
     this.radius = 36,
+    this.shape = LqAvatarShape.circle,
   });
   final String initials;
   final String? photoUrl;
   final double radius;
+  final LqAvatarShape shape;
 
   @override
   Widget build(BuildContext context) {
@@ -788,24 +792,28 @@ class LqAvatar extends StatelessWidget {
       ),
     );
     final url = Uri.tryParse(photoUrl ?? '');
+    final child = SizedBox(
+      width: radius * 2,
+      height: radius * 2,
+      child: url?.scheme == 'https' && url!.host.isNotEmpty
+          ? Image.network(
+              photoUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => fallback,
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : fallback,
+            )
+          : fallback,
+    );
     return Semantics(
       label: 'Profile picture',
       image: true,
-      child: ClipOval(
-        child: SizedBox(
-          width: radius * 2,
-          height: radius * 2,
-          child: url?.scheme == 'https' && url!.host.isNotEmpty
-              ? Image.network(
-                  photoUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => fallback,
-                  loadingBuilder: (_, child, progress) =>
-                      progress == null ? child : fallback,
-                )
-              : fallback,
-        ),
-      ),
+      child: shape == LqAvatarShape.circle
+          ? ClipOval(child: child)
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(radius * .45),
+              child: child,
+            ),
     );
   }
 }
@@ -908,18 +916,22 @@ class LqFloatingNavBar extends StatelessWidget {
         width: 76,
         height: 52,
         decoration: BoxDecoration(
-          color: selected ? LqColors.primarySoft : Colors.transparent,
+          color: selected ? LqColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(32),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(items[index].$1, size: 19, color: LqColors.ink),
+            Icon(
+              items[index].$1,
+              size: 19,
+              color: selected ? Colors.white : LqColors.ink,
+            ),
             const SizedBox(height: 2),
             Text(
               items[index].$2,
-              style: const TextStyle(
-                color: LqColors.ink,
+              style: TextStyle(
+                color: selected ? Colors.white : LqColors.ink,
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
               ),

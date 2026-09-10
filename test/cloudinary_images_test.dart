@@ -109,7 +109,7 @@ void main() {
             ),
           ),
         );
-        expect(find.text('Add profile photo'), findsOneWidget);
+        expect(find.byTooltip('Add profile photo'), findsOneWidget);
         expect(find.text('PU'), findsOneWidget);
       }
     },

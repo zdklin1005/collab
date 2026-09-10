@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'localquest_theme.dart';
 import 'localquest_widgets.dart';
 import 'merchant_validation.dart';
 import '../models/localquest_models.dart';
@@ -109,31 +110,64 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      LqAvatar(initials: initialsFor(widget.user.displayName), photoUrl: _url),
-      const SizedBox(height: 8),
-      OutlinedButton.icon(
-        onPressed: _busy ? null : _choose,
-        icon: _busy
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.add_a_photo_outlined),
-        label: Text(
-          _busy
-              ? 'Uploading…'
-              : _url == null
-              ? 'Add profile photo'
-              : 'Change profile photo',
+  Widget build(BuildContext context) {
+    final label = _url == null ? 'Add profile photo' : 'Change profile photo';
+    return Column(
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            LqAvatar(
+              initials: initialsFor(widget.user.displayName),
+              photoUrl: _url,
+              shape: LqAvatarShape.roundedSquare,
+            ),
+            Positioned(
+              right: -7,
+              bottom: -7,
+              child: Material(
+                color: LqColors.primary,
+                elevation: 3,
+                shape: const CircleBorder(
+                  side: BorderSide(color: Colors.white, width: 3),
+                ),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _busy ? null : _choose,
+                  child: Tooltip(
+                    message: label,
+                    child: SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: Center(
+                        child: _busy
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.add_a_photo_outlined,
+                                color: Colors.white,
+                                size: 19,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-      ),
-      const Text(
-        'JPG, PNG or WEBP · under 5 MB',
-        style: TextStyle(fontSize: 12),
-      ),
-    ],
-  );
+        const SizedBox(height: 16),
+        const Text(
+          'JPG, PNG or WEBP · under 5 MB',
+          style: TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
 }
