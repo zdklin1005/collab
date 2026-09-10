@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'rewards_tab.dart';
 import '../core/localquest_theme.dart';
 import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
@@ -27,12 +28,10 @@ class _TouristHomeState extends State<TouristHome> {
         title: 'Discover',
         subtitle: 'The interactive map belongs to the Map & Navigation module.',
       ),
-      const _ModulePlaceholder(
-        title: 'Rewards',
-        subtitle: 'Rewards and missions belong to the Reward & Review module.',
-      ),
+      RewardsTab(user: widget.user),
       profile,
     ];
+    
     return LqPage(
       bottomNavigationBar: LqFloatingNavBar(
         selectedIndex: _index,
