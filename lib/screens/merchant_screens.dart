@@ -6,7 +6,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../core/localquest_theme.dart';
+import '../core/localquest_location.dart';
 import '../core/localquest_widgets.dart';
+import '../core/merchant_validation.dart';
+import '../core/certificate_scan.dart';
+import '../core/business_photo_field.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
 import 'tourist_screens.dart';
@@ -70,6 +74,7 @@ class _MerchantHomeState extends State<MerchantHome> {
             (Icons.person_outline, 'Profile'),
           ],
           profileInitials: initialsFor(widget.user.displayName),
+          profilePhotoUrl: widget.user.photoUrl,
         ),
         child: pages[_index],
       );
@@ -100,173 +105,179 @@ class MerchantOverview extends StatelessWidget {
           .toList();
       final views = campaigns.fold<int>(0, (sum, item) => sum + item.views);
       final claims = campaigns.fold<int>(0, (sum, item) => sum + item.claims);
-      return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 44, 16, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const LqTitleBlock(
-              eyebrow: 'Merchant portal',
-              title: 'Business\noverview',
-            ),
-            if (business != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                business!.name,
-                style: monoLabel.copyWith(color: LqColors.primary),
-              ),
-            ],
-            const SizedBox(height: 28),
-            Row(
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 44, 16, 170),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _MetricCard(
-                    icon: Icons.confirmation_num_outlined,
-                    color: LqColors.greenSoft,
-                    value: '$claims',
-                    label: 'Vouchers claimed',
-                  ),
+                const LqTitleBlock(
+                  eyebrow: 'Merchant portal',
+                  title: 'Business\noverview',
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricCard(
-                    icon: Icons.people_outline,
-                    color: LqColors.primarySoft,
-                    value: '$views',
-                    label: 'Campaign views',
+                if (business != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    business!.name,
+                    style: monoLabel.copyWith(color: LqColors.primary),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _MetricCard(
-              icon: Icons.auto_awesome_outlined,
-              color: LqColors.peachSoft,
-              value: active.length.toString().padLeft(2, '0'),
-              label: 'Active campaigns',
-            ),
-            const SizedBox(height: 40),
-            if (active.isNotEmpty)
-              LqCard(
-                color: LqColors.primarySoft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                ],
+                const SizedBox(height: 28),
+                Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('LIVE CAMPAIGN', style: monoLabel),
-                        Switch(
-                          value: true,
-                          onChanged: (value) =>
-                              _setCampaignActive(context, active.first, value),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      active.first.name,
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
+                    Expanded(
+                      child: _MetricCard(
+                        icon: Icons.confirmation_num_outlined,
+                        color: LqColors.greenSoft,
+                        value: '$claims',
+                        label: 'Vouchers claimed',
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'ACTIVE · ENDS ${DateFormat('d MMM').format(active.first.endDate).toUpperCase()}',
-                      style: monoLabel.copyWith(color: LqColors.success),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      active.first.description,
-                      style: const TextStyle(
-                        color: LqColors.muted,
-                        height: 1.5,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _MetricCard(
+                        icon: Icons.people_outline,
+                        color: LqColors.primarySoft,
+                        value: '$views',
+                        label: 'Campaign views',
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: openCampaigns,
-                      child: const Text('Edit details'),
                     ),
                   ],
                 ),
-              )
-            else
-              const LqCard(
-                child: Text(
-                  'No active campaigns yet. Create one to reach nearby LocalQuest explorers.',
-                  style: TextStyle(color: LqColors.muted),
+                const SizedBox(height: 12),
+                _MetricCard(
+                  icon: Icons.auto_awesome_outlined,
+                  color: LqColors.peachSoft,
+                  value: active.length.toString().padLeft(2, '0'),
+                  label: 'Active campaigns',
                 ),
-              ),
-            const SizedBox(height: 28),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('RECENT CAMPAIGNS', style: monoLabel),
-                FilledButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CampaignEditor(
-                        user: user,
-                        businessId: business?.id ?? '',
-                      ),
+                const SizedBox(height: 40),
+                if (active.isNotEmpty)
+                  LqCard(
+                    color: LqColors.primarySoft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('LIVE CAMPAIGN', style: monoLabel),
+                            Switch(
+                              value: true,
+                              onChanged: (value) => _setCampaignActive(
+                                context,
+                                active.first,
+                                value,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          active.first.name,
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'ACTIVE · ENDS ${DateFormat('d MMM').format(active.first.endDate).toUpperCase()}',
+                          style: monoLabel.copyWith(color: LqColors.success),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          active.first.description,
+                          style: const TextStyle(
+                            color: LqColors.muted,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: openCampaigns,
+                          child: const Text('Edit details'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  const LqCard(
+                    child: Text(
+                      'No active campaigns yet. Create one to reach nearby LocalQuest explorers.',
+                      style: TextStyle(color: LqColors.muted),
                     ),
                   ),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create campaign'),
+                const SizedBox(height: 28),
+                Text('RECENT CAMPAIGNS', style: monoLabel),
+                const SizedBox(height: 10),
+                LqCard(
+                  child: campaigns.isEmpty
+                      ? const Text(
+                          'Your campaigns will appear here.',
+                          style: TextStyle(color: LqColors.muted),
+                        )
+                      : Column(
+                          children: campaigns
+                              .take(4)
+                              .map(
+                                (item) => ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const CircleAvatar(
+                                    backgroundColor: LqColors.primarySoft,
+                                    foregroundColor: LqColors.primary,
+                                    child: Icon(Icons.auto_awesome),
+                                  ),
+                                  title: Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    '${item.status.toUpperCase()} · ${item.views} views',
+                                    style: const TextStyle(
+                                      color: LqColors.muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CampaignEditor(
+                                        user: user,
+                                        businessId: business?.id ?? '',
+                                        campaign: item,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            LqCard(
-              child: campaigns.isEmpty
-                  ? const Text(
-                      'Your campaigns will appear here.',
-                      style: TextStyle(color: LqColors.muted),
-                    )
-                  : Column(
-                      children: campaigns
-                          .take(4)
-                          .map(
-                            (item) => ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const CircleAvatar(
-                                backgroundColor: LqColors.primarySoft,
-                                foregroundColor: LqColors.primary,
-                                child: Icon(Icons.auto_awesome),
-                              ),
-                              title: Text(
-                                item.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${item.status.toUpperCase()} · ${item.views} views',
-                                style: const TextStyle(
-                                  color: LqColors.muted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => CampaignEditor(
-                                    user: user,
-                                    businessId: business?.id ?? '',
-                                    campaign: item,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
+          ),
+          if (business?.active == true)
+            Positioned(
+              right: 16,
+              bottom: 96,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        CampaignEditor(user: user, businessId: business!.id),
+                  ),
+                ),
+                icon: const Icon(Icons.add),
+                label: const Text('Create campaign'),
+              ),
             ),
-          ],
-        ),
+        ],
       );
     },
   );
@@ -277,22 +288,7 @@ class MerchantOverview extends StatelessWidget {
     bool active,
   ) async {
     try {
-      await MerchantRepository.instance.saveCampaign(
-        Campaign(
-          id: campaign.id,
-          ownerId: campaign.ownerId,
-          name: campaign.name,
-          description: campaign.description,
-          type: campaign.type,
-          startDate: campaign.startDate,
-          endDate: campaign.endDate,
-          status: active ? 'active' : 'inactive',
-          businessId: campaign.businessId,
-          views: campaign.views,
-          claims: campaign.claims,
-          imageUrl: campaign.imageUrl,
-        ),
-      );
+      await MerchantRepository.instance.setCampaignStatus(campaign.id, active);
     } catch (_) {
       if (context.mounted) {
         showLqMessage(
@@ -347,10 +343,12 @@ class CampaignsScreen extends StatefulWidget {
     required this.user,
     required this.business,
     this.initialType = 'ad',
+    this.campaignStream,
   });
   final AppUser user;
   final Business? business;
   final String initialType;
+  final Stream<List<Campaign>>? campaignStream;
   @override
   State<CampaignsScreen> createState() => _CampaignsScreenState();
 }
@@ -359,18 +357,21 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
   late String type = widget.initialType;
   @override
   Widget build(BuildContext context) => StreamBuilder<List<Campaign>>(
-    stream: MerchantRepository.instance.campaigns(
-      widget.user.id,
-      businessId: widget.business?.id,
-    ),
+    stream:
+        widget.campaignStream ??
+        MerchantRepository.instance.campaigns(
+          widget.user.id,
+          businessId: widget.business?.id,
+        ),
     builder: (context, snapshot) {
       final campaigns = (snapshot.data ?? [])
           .where((item) => item.type == type)
           .toList();
       return Stack(
+        fit: StackFit.expand,
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 44, 16, 110),
+            padding: const EdgeInsets.fromLTRB(16, 44, 16, 170),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -397,7 +398,15 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                if (campaigns.isEmpty)
+                if (snapshot.hasError)
+                  const LqCard(
+                    child: Text(
+                      'Could not load offers. Check your connection and reopen this page.',
+                    ),
+                  )
+                else if (snapshot.connectionState == ConnectionState.waiting)
+                  const LinearProgressIndicator()
+                else if (campaigns.isEmpty)
                   LqCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,30 +441,6 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                             height: 1.45,
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: widget.business == null
-                                ? null
-                                : () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => CampaignEditor(
-                                        user: widget.user,
-                                        businessId: widget.business!.id,
-                                        initialType: type,
-                                      ),
-                                    ),
-                                  ),
-                            icon: const Icon(Icons.add),
-                            label: Text(
-                              type == 'ad'
-                                  ? 'Create campaign'
-                                  : 'Create voucher',
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   )
@@ -463,93 +448,20 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
                   ...campaigns.map(
                     (item) => Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: LqCard(
-                        color: item.status == 'active'
-                            ? LqColors.primarySoft
-                            : (item.status == 'scheduled'
-                                  ? LqColors.peachSoft
-                                  : const Color(0xFFF0F1F4)),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: Colors.white,
-                              foregroundColor: LqColors.primary,
-                              child: Icon(
-                                item.type == 'voucher'
-                                    ? Icons.confirmation_num_outlined
-                                    : Icons.auto_awesome_outlined,
-                              ),
-                            ),
-                            const SizedBox(height: 28),
-                            Text(
-                              item.name,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: LqColors.primaryDark,
-                                height: 1.05,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              item.description.toUpperCase(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: monoLabel.copyWith(
-                                color: LqColors.primaryDark,
-                              ),
-                            ),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: LqDashedDivider(),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${item.status[0].toUpperCase()}${item.status.substring(1)} · Ends ${DateFormat('d MMM').format(item.endDate)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${item.views} views · ${item.claims} claims',
-                                      style: monoLabel,
-                                    ),
-                                  ],
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => CampaignEditor(
-                                        user: widget.user,
-                                        businessId: widget.business?.id ?? '',
-                                        campaign: item,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Text('Edit'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                      child: _CampaignCreativeCard(
+                        campaign: item,
+                        user: widget.user,
+                        businessId: widget.business?.id ?? '',
                       ),
                     ),
                   ),
               ],
             ),
           ),
-          if (campaigns.isNotEmpty)
+          if (widget.business?.active == true)
             Positioned(
               right: 16,
-              bottom: 22,
+              bottom: 96,
               child: FilledButton.icon(
                 onPressed: () => Navigator.push(
                   context,
@@ -573,6 +485,138 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
   );
 }
 
+/// A campaign poster fills the creative area; the white area below is reserved
+/// for live status and edit actions so campaign text remains readable.
+class _CampaignCreativeCard extends StatelessWidget {
+  const _CampaignCreativeCard({
+    required this.campaign,
+    required this.user,
+    required this.businessId,
+  });
+
+  final Campaign campaign;
+  final AppUser user;
+  final String businessId;
+
+  Color get _fallbackColor => switch (campaign.status) {
+    'scheduled' => LqColors.peachSoft,
+    'active' => LqColors.primarySoft,
+    _ => const Color(0xFFF0F1F4),
+  };
+
+  @override
+  Widget build(BuildContext context) => LqCard(
+    color: Colors.white,
+    padding: EdgeInsets.zero,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 178,
+          width: double.infinity,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: _fallbackColor),
+              if (campaign.imageUrl != null)
+                Image.network(
+                  campaign.imageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.expand(),
+                ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x08FFFFFF), Color(0xB3FFFFFF)],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Colors.white,
+                      foregroundColor: LqColors.primary,
+                      child: Icon(
+                        campaign.type == 'voucher'
+                            ? Icons.confirmation_num_outlined
+                            : Icons.auto_awesome_outlined,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      campaign.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: LqColors.primaryDark,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      campaign.description.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: monoLabel.copyWith(color: LqColors.primaryDark),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const LqDashedDivider(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${campaign.status[0].toUpperCase()}${campaign.status.substring(1)} · Ends ${DateFormat('d MMM').format(campaign.endDate)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      '${campaign.views} views · ${campaign.claims} claims',
+                      style: monoLabel,
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CampaignEditor(
+                      user: user,
+                      businessId: businessId,
+                      campaign: campaign,
+                    ),
+                  ),
+                ),
+                child: const Text('Edit'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class CampaignEditor extends StatefulWidget {
   const CampaignEditor({
     super.key,
@@ -590,6 +634,21 @@ class CampaignEditor extends StatefulWidget {
 }
 
 class _CampaignEditorState extends State<CampaignEditor> {
+  final _form = GlobalKey<FormState>();
+  late final _terms = TextEditingController(text: widget.campaign?.terms ?? '');
+  late final _discount = TextEditingController(
+    text: '${widget.campaign?.discountValue ?? 10}',
+  );
+  late final _minimum = TextEditingController(
+    text: '${widget.campaign?.minimumSpend ?? 0}',
+  );
+  late final _quantity = TextEditingController(
+    text: '${widget.campaign?.quantity ?? 100}',
+  );
+  late final _limit = TextEditingController(
+    text: '${widget.campaign?.perCustomerLimit ?? 1}',
+  );
+  late String discountType = widget.campaign?.discountType ?? 'percentage';
   late final _name = TextEditingController(text: widget.campaign?.name ?? '');
   late final _description = TextEditingController(
     text: widget.campaign?.description ?? '',
@@ -602,6 +661,22 @@ class _CampaignEditorState extends State<CampaignEditor> {
   Uint8List? poster;
   String? extension;
   bool busy = false;
+
+  @override
+  void dispose() {
+    for (final controller in [
+      _name,
+      _description,
+      _terms,
+      _discount,
+      _minimum,
+      _quantity,
+      _limit,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => LqPage(
@@ -619,117 +694,229 @@ class _CampaignEditorState extends State<CampaignEditor> {
           ),
           const SizedBox(height: 20),
           LqCard(
-            child: Column(
-              children: [
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'ad', label: Text('Promotional ad')),
-                    ButtonSegment(value: 'voucher', label: Text('Voucher')),
-                  ],
-                  selected: {type},
-                  onSelectionChanged: (value) =>
-                      setState(() => type = value.first),
-                ),
-                const SizedBox(height: 22),
-                InkWell(
-                  onTap: _pickPoster,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    height: 160,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: LqColors.field,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: LqColors.primary),
-                    ),
-                    child: poster == null
-                        ? const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.upload_file, color: LqColors.primary),
-                              SizedBox(height: 8),
-                              Text(
-                                'Upload campaign poster',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                              Text(
-                                'PNG, JPG or WEBP · recommended 4:3',
-                                style: TextStyle(
-                                  color: LqColors.muted,
-                                  fontSize: 11,
+            child: Form(
+              key: _form,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: Column(
+                children: [
+                  const Text(
+                    '1 · Offer details',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'ad', label: Text('Promotional ad')),
+                      ButtonSegment(value: 'voucher', label: Text('Voucher')),
+                    ],
+                    selected: {type},
+                    onSelectionChanged: (value) =>
+                        setState(() => type = value.first),
+                  ),
+                  const SizedBox(height: 22),
+                  InkWell(
+                    onTap: busy ? null : _pickPoster,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: LqColors.field,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: LqColors.primary),
+                      ),
+                      child: poster == null && widget.campaign?.imageUrl != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(19),
+                              child: Image.network(
+                                widget.campaign!.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, error, stack) => const Center(
+                                  child: Text(
+                                    'Poster unavailable. Tap to replace.',
+                                  ),
                                 ),
                               ),
-                            ],
-                          )
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(19),
-                            child: Image.memory(poster!, fit: BoxFit.cover),
-                          ),
+                            )
+                          : poster == null
+                          ? const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.upload_file,
+                                  color: LqColors.primary,
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Upload campaign poster',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                Text(
+                                  'JPG, PNG, WEBP · under 5 MB · 4:3',
+                                  style: TextStyle(
+                                    color: LqColors.muted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(19),
+                              child: Image.memory(poster!, fit: BoxFit.cover),
+                            ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                LqField(
-                  controller: _name,
-                  label: type == 'ad' ? 'Campaign name' : 'Voucher name',
-                ),
-                const SizedBox(height: 16),
-                LqField(
-                  controller: _description,
-                  label: 'Description',
-                  maxLines: 4,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DateButton(
-                        label: 'Start date',
-                        date: startDate,
-                        onTap: () => _date(true),
+                  const SizedBox(height: 18),
+                  if (poster != null)
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () => setState(() {
+                              poster = null;
+                              extension = null;
+                            }),
+                      child: const Text('Discard selected image'),
+                    ),
+                  LqField(
+                    controller: _name,
+                    label: type == 'ad' ? 'Campaign name' : 'Voucher name',
+                    validator: (value) =>
+                        MerchantValidation.text(value, 'Name', 3, 80),
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _description,
+                    label: 'Description',
+                    maxLines: 4,
+                    validator: (value) =>
+                        MerchantValidation.text(value, 'Description', 20, 1500),
+                  ),
+                  if (type == 'voucher') ...[
+                    const SizedBox(height: 20),
+                    const Text(
+                      '2 · Voucher value & limits',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateButton(
-                        label: 'End date',
-                        date: endDate,
-                        onTap: () => _date(false),
+                    const SizedBox(height: 16),
+                    LqDropdownField(
+                      label: 'Discount type',
+                      value: discountType,
+                      items: const ['percentage', 'fixed'],
+                      onChanged: (value) =>
+                          setState(() => discountType = value ?? 'percentage'),
+                    ),
+                    const SizedBox(height: 16),
+                    LqField(
+                      controller: _discount,
+                      label: discountType == 'percentage'
+                          ? 'Discount (%)'
+                          : 'Discount (RM)',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) => MerchantValidation.amount(
+                        value,
+                        percentage: discountType == 'percentage',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    LqField(
+                      controller: _minimum,
+                      label: 'Minimum spend (RM)',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (value) =>
+                          MerchantValidation.amount(value, zero: true),
+                    ),
+                    const SizedBox(height: 16),
+                    LqField(
+                      controller: _quantity,
+                      label: 'Total vouchers available',
+                      keyboardType: TextInputType.number,
+                      validator: MerchantValidation.quantity,
+                    ),
+                    const SizedBox(height: 16),
+                    LqField(
+                      controller: _limit,
+                      label: 'Limit per customer',
+                      keyboardType: TextInputType.number,
+                      validator: MerchantValidation.quantity,
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Schedule & redemption terms',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _terms,
+                    label: 'Terms & conditions',
+                    maxLines: 3,
+                    hint:
+                        'Eligibility, exclusions and how to redeem at this business.',
+                    validator: (value) =>
+                        MerchantValidation.text(value, 'Terms', 10, 2000),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DateButton(
+                          label: 'Start date',
+                          date: startDate,
+                          onTap: () => _date(true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateButton(
+                          label: 'End date',
+                          date: endDate,
+                          onTap: () => _date(false),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  LqDropdownField(
+                    label: 'Status',
+                    value: status,
+                    items: const ['active', 'scheduled', 'inactive'],
+                    onChanged: (value) {
+                      if (value != null) setState(() => status = value);
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  LqButton(
+                    label: 'Save changes',
+                    busy: busy,
+                    icon: Icons.save_outlined,
+                    onPressed: _save,
+                  ),
+                  if (widget.campaign != null) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : _delete,
+                      icon: const Icon(Icons.delete_outline),
+                      label: Text(
+                        type == 'voucher'
+                            ? 'Delete voucher'
+                            : 'Delete campaign',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: LqColors.danger,
+                        side: const BorderSide(color: LqColors.danger),
+                        minimumSize: const Size.fromHeight(50),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                LqDropdownField(
-                  label: 'Status',
-                  value: status,
-                  items: const ['active', 'scheduled', 'inactive'],
-                  onChanged: (value) {
-                    if (value != null) setState(() => status = value);
-                  },
-                ),
-                const SizedBox(height: 24),
-                LqButton(
-                  label: 'Save changes',
-                  busy: busy,
-                  icon: Icons.save_outlined,
-                  onPressed: _save,
-                ),
-                if (widget.campaign != null) ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: busy ? null : _delete,
-                    icon: const Icon(Icons.delete_outline),
-                    label: Text(
-                      type == 'voucher' ? 'Delete voucher' : 'Delete campaign',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: LqColors.danger,
-                      side: const BorderSide(color: LqColors.danger),
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -738,15 +925,37 @@ class _CampaignEditorState extends State<CampaignEditor> {
   );
 
   Future<void> _pickPoster() async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 88,
-    );
-    if (file == null) return;
-    poster = await file.readAsBytes();
-    extension = file.name.split('.').last.toLowerCase();
-    if (mounted) setState(() {});
+    try {
+      final file = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 88,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      final format = MerchantValidation.imageType(bytes);
+      if (!mounted) return;
+      if (format == null) {
+        showLqMessage(
+          context,
+          'Choose a JPG, PNG or WEBP image smaller than 5 MB.',
+          error: true,
+        );
+        return;
+      }
+      setState(() {
+        poster = bytes;
+        extension = format;
+      });
+    } catch (_) {
+      if (mounted) {
+        showLqMessage(
+          context,
+          'Could not open that image. Try another photo.',
+          error: true,
+        );
+      }
+    }
   }
 
   Future<void> _date(bool start) async {
@@ -764,14 +973,74 @@ class _CampaignEditorState extends State<CampaignEditor> {
   }
 
   Future<void> _save() async {
-    if (_name.text.trim().isEmpty || endDate.isBefore(startDate)) {
-      showLqMessage(
-        context,
-        'Add a name and choose a valid date range.',
-        error: true,
-      );
+    if (busy || !_form.currentState!.validate()) return;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    String? problem;
+    if (endDate.isBefore(startDate) || !endDate.isAfter(today)) {
+      problem =
+          'The end date must be after today and on or after the start date.';
+    } else if (status == 'scheduled' && !startDate.isAfter(today)) {
+      problem = 'Scheduled offers need a future start date.';
+    } else if (status == 'active' && startDate.isAfter(now)) {
+      problem = 'Choose scheduled status for a future start date.';
+    } else if (type == 'voucher' &&
+        int.parse(_limit.text) > int.parse(_quantity.text)) {
+      problem = 'The per-customer limit cannot exceed the total quantity.';
+    } else if (type == 'voucher' &&
+        int.parse(_quantity.text) < (widget.campaign?.claims ?? 0)) {
+      problem = 'Quantity cannot be lower than vouchers already claimed.';
+    }
+    if (problem != null) {
+      showLqMessage(context, problem, error: true);
       return;
     }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: LqCard(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const LqTitleBlock(
+                  eyebrow: 'Final check',
+                  title: 'Review your offer',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _name.text.trim(),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(_description.text.trim()),
+                const SizedBox(height: 12),
+                Text(
+                  '${DateFormat('d MMM yyyy').format(startDate)} – ${DateFormat('d MMM yyyy').format(endDate)} · $status',
+                ),
+                if (type == 'voucher')
+                  Text(
+                    '${_discount.text}${discountType == 'percentage' ? '%' : ' RM'} off · Minimum RM ${_minimum.text}\n${_quantity.text} vouchers · ${_limit.text} per customer',
+                  ),
+                const SizedBox(height: 12),
+                Text(_terms.text.trim()),
+                const SizedBox(height: 18),
+                LqButton(
+                  label: 'Confirm & save',
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Back to editing'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => busy = true);
     final existing = widget.campaign;
     try {
@@ -791,6 +1060,12 @@ class _CampaignEditorState extends State<CampaignEditor> {
           views: existing?.views ?? 0,
           claims: existing?.claims ?? 0,
           imageUrl: existing?.imageUrl,
+          terms: _terms.text,
+          discountType: discountType,
+          discountValue: type == 'voucher' ? double.parse(_discount.text) : 0,
+          minimumSpend: type == 'voucher' ? double.parse(_minimum.text) : 0,
+          quantity: type == 'voucher' ? int.parse(_quantity.text) : 0,
+          perCustomerLimit: type == 'voucher' ? int.parse(_limit.text) : 1,
         ),
         posterBytes: poster,
         posterExtension: extension,
@@ -805,7 +1080,9 @@ class _CampaignEditorState extends State<CampaignEditor> {
       if (mounted) {
         showLqMessage(
           context,
-          error.message ?? 'Could not save this item.',
+          error.code == 'permission-denied'
+              ? 'You do not have permission to save this offer for that business.'
+              : 'Could not save this offer. Check your connection and retry.',
           error: true,
         );
         setState(() => busy = false);
@@ -919,13 +1196,10 @@ class MerchantProfile extends StatelessWidget {
             color: LqColors.primarySoft,
             child: Row(
               children: [
-                CircleAvatar(
+                LqAvatar(
                   radius: 34,
-                  backgroundColor: const Color(0xFFE4C8B7),
-                  child: Text(
-                    initialsFor(user.displayName),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
+                  initials: initialsFor(user.displayName),
+                  photoUrl: user.photoUrl,
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -1054,10 +1328,12 @@ class _BusinessSelector extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            const CircleAvatar(
-              backgroundColor: LqColors.greenSoft,
-              foregroundColor: Color(0xFF42723B),
-              child: Icon(Icons.storefront_outlined),
+            LqAvatar(
+              radius: 20,
+              initials: initialsFor(
+                (selectedBusiness ?? businesses.first).name,
+              ),
+              photoUrl: (selectedBusiness ?? businesses.first).photoUrl,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1151,13 +1427,10 @@ class BusinessRegistrationsScreen extends StatelessWidget {
                             padding: const EdgeInsets.all(16),
                             child: Row(
                               children: [
-                                CircleAvatar(
+                                LqAvatar(
                                   radius: 24,
-                                  backgroundColor: index.isEven
-                                      ? const Color(0xFFE4C8B7)
-                                      : LqColors.primarySoft,
-                                  foregroundColor: LqColors.primaryDark,
-                                  child: const Icon(Icons.storefront_outlined),
+                                  initials: initialsFor(item.name),
+                                  photoUrl: item.photoUrl,
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -1300,6 +1573,8 @@ class _BusinessStatusSelector extends StatelessWidget {
 }
 
 class _BusinessEditorState extends State<BusinessEditor> {
+  final _form = GlobalKey<FormState>();
+  Uint8List? _photo;
   late final _name = TextEditingController(text: widget.business?.name ?? '');
   late final _category = TextEditingController(
     text: widget.business?.category ?? '',
@@ -1311,8 +1586,26 @@ class _BusinessEditorState extends State<BusinessEditor> {
     text: widget.business?.address ?? '',
   );
   late final _phone = TextEditingController(text: widget.business?.phone ?? '');
+  late LqLocation? _location =
+      widget.business?.latitude == null || widget.business?.longitude == null
+      ? null
+      : LqLocation(
+          latitude: widget.business!.latitude!,
+          longitude: widget.business!.longitude!,
+        );
   late bool active = widget.business?.active ?? true;
   bool busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _category.dispose();
+    _registration.dispose();
+    _address.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SingleChildScrollView(
@@ -1329,79 +1622,108 @@ class _BusinessEditorState extends State<BusinessEditor> {
           ),
           const SizedBox(height: 22),
           LqCard(
-            child: Column(
-              children: [
-                LqField(controller: _name, label: 'Business name'),
-                const SizedBox(height: 16),
-                LqDropdownField(
-                  value: _category.text.isEmpty ? null : _category.text,
-                  label: 'Business category',
-                  items: lqBusinessCategories,
-                  onChanged: (value) =>
-                      setState(() => _category.text = value ?? ''),
-                ),
-                const SizedBox(height: 16),
-                LqField(
-                  controller: _registration,
-                  label: 'Registration number',
-                ),
-                const SizedBox(height: 16),
-                LqField(
-                  controller: _address,
-                  label: 'Street address',
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                LqField(controller: _phone, label: 'Contact number'),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Business status',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            'Only active businesses can run ads and issue vouchers.',
-                            style: TextStyle(
-                              color: LqColors.muted,
-                              fontSize: 11,
+            child: Form(
+              key: _form,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: Column(
+                children: [
+                  LqField(
+                    controller: _name,
+                    label: 'Business name',
+                    validator: (v) =>
+                        MerchantValidation.text(v, 'Business name', 3, 120),
+                  ),
+                  const SizedBox(height: 16),
+                  BusinessPhotoField(
+                    url: widget.business?.photoUrl,
+                    enabled: !busy,
+                    onChanged: (bytes) => _photo = bytes,
+                  ),
+                  const SizedBox(height: 16),
+                  LqDropdownField(
+                    value: _category.text.isEmpty ? null : _category.text,
+                    label: 'Business category',
+                    items: lqBusinessCategories,
+                    onChanged: (value) =>
+                        setState(() => _category.text = value ?? ''),
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _registration,
+                    label: 'Registration number',
+                    validator: MerchantValidation.registration,
+                  ),
+                  const SizedBox(height: 8),
+                  CertificateScanButton(
+                    onRegistration: (number) =>
+                        setState(() => _registration.text = number),
+                  ),
+                  const SizedBox(height: 16),
+                  LqAddressField(
+                    controller: _address,
+                    label: 'Street address',
+                    validator: (v) =>
+                        MerchantValidation.text(v, 'Address', 10, 500),
+                    initialLocation: _location,
+                    onLocationChanged: (value) => _location = value,
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _phone,
+                    label: 'Contact number',
+                    validator: MerchantValidation.phone,
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Business status',
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
-                          ),
-                        ],
+                            Text(
+                              'Only active businesses can run ads and issue vouchers.',
+                              style: TextStyle(
+                                color: LqColors.muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      _BusinessStatusSelector(
+                        active: active,
+                        onChanged: (value) => setState(() => active = value),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  LqButton(
+                    label: 'Save business',
+                    busy: busy,
+                    icon: Icons.save_outlined,
+                    onPressed: _save,
+                  ),
+                  if (widget.business != null) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : _delete,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Remove business'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: LqColors.danger,
+                        side: const BorderSide(color: LqColors.danger),
+                        minimumSize: const Size.fromHeight(50),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    _BusinessStatusSelector(
-                      active: active,
-                      onChanged: (value) => setState(() => active = value),
-                    ),
                   ],
-                ),
-                const SizedBox(height: 18),
-                LqButton(
-                  label: 'Save business',
-                  busy: busy,
-                  icon: Icons.save_outlined,
-                  onPressed: _save,
-                ),
-                if (widget.business != null) ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: busy ? null : _delete,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Remove business'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: LqColors.danger,
-                      side: const BorderSide(color: LqColors.danger),
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -1410,12 +1732,9 @@ class _BusinessEditorState extends State<BusinessEditor> {
   );
 
   Future<void> _save() async {
-    if (_name.text.trim().isEmpty || _address.text.trim().isEmpty) {
-      showLqMessage(
-        context,
-        'Business name and street address are required.',
-        error: true,
-      );
+    if (busy || !_form.currentState!.validate()) return;
+    if (!lqBusinessCategories.contains(_category.text)) {
+      showLqMessage(context, 'Choose a business category.', error: true);
       return;
     }
     setState(() => busy = true);
@@ -1430,9 +1749,17 @@ class _BusinessEditorState extends State<BusinessEditor> {
           phone: _phone.text,
           registrationNumber: _registration.text,
           active: active,
+          latitude: _location?.latitude,
+          longitude: _location?.longitude,
         ),
+        photoBytes: _photo,
       );
       if (mounted) Navigator.pop(context);
+    } on LocalQuestException catch (error) {
+      if (mounted) {
+        showLqMessage(context, error.message, error: true);
+        setState(() => busy = false);
+      }
     } on FirebaseException catch (error) {
       if (mounted) {
         showLqMessage(

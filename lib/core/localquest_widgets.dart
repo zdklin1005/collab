@@ -10,16 +10,26 @@ class LqPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    extendBody: bottomNavigationBar != null,
     backgroundColor: LqColors.background,
-    bottomNavigationBar: bottomNavigationBar,
-    body: SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: child,
+    body: Stack(
+      fit: StackFit.expand,
+      children: [
+        SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: child,
+            ),
+          ),
         ),
-      ),
+        if (bottomNavigationBar != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(ignoring: false, child: bottomNavigationBar!),
+          ),
+      ],
     ),
   );
 }
@@ -119,11 +129,8 @@ class LqCard extends StatelessWidget {
         : null,
     child: Container(
       width: double.infinity,
-      padding: padding,
       decoration: BoxDecoration(
-        color: color,
         borderRadius: BorderRadius.circular(25),
-        border: dashed ? null : Border.all(color: borderColor, width: 1.35),
         boxShadow: const [
           BoxShadow(
             color: Color(0x10293C62),
@@ -132,7 +139,17 @@ class LqCard extends StatelessWidget {
           ),
         ],
       ),
-      child: child,
+      child: Material(
+        color: color,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(25),
+          side: dashed
+              ? BorderSide.none
+              : BorderSide(color: borderColor, width: 1.35),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(padding: padding, child: child),
+      ),
     ),
   );
 }
@@ -214,38 +231,40 @@ class LqSegmentedControl<T> extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: segments.map((segment) {
           final isSelected = segment.$1 == selected;
-          return Semantics(
-            button: true,
-            selected: isSelected,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => onChanged(segment.$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? LqColors.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: isSelected
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x333267D4),
-                            blurRadius: 7,
-                            offset: Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  segment.$2,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : LqColors.muted,
-                    fontSize: 12,
-                    height: 16 / 12,
-                    fontWeight: FontWeight.w700,
+          return Flexible(
+            child: Semantics(
+              button: true,
+              selected: isSelected,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => onChanged(segment.$1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected ? LqColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: isSelected
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x333267D4),
+                              blurRadius: 7,
+                              offset: Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(
+                    segment.$2,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : LqColors.muted,
+                      fontSize: 12,
+                      height: 16 / 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -741,6 +760,64 @@ class LqStatusPill extends StatelessWidget {
   }
 }
 
+enum LqAvatarShape { circle, roundedSquare }
+
+/// Shared profile image with an initials fallback for absent or broken photos.
+class LqAvatar extends StatelessWidget {
+  const LqAvatar({
+    super.key,
+    required this.initials,
+    this.photoUrl,
+    this.radius = 36,
+    this.shape = LqAvatarShape.circle,
+  });
+  final String initials;
+  final String? photoUrl;
+  final double radius;
+  final LqAvatarShape shape;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = ColoredBox(
+      color: const Color(0xFFE4C8B7),
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: radius < 20 ? 10 : 18,
+            color: const Color(0xFF573725),
+          ),
+        ),
+      ),
+    );
+    final url = Uri.tryParse(photoUrl ?? '');
+    final child = SizedBox(
+      width: radius * 2,
+      height: radius * 2,
+      child: url?.scheme == 'https' && url!.host.isNotEmpty
+          ? Image.network(
+              photoUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => fallback,
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : fallback,
+            )
+          : fallback,
+    );
+    return Semantics(
+      label: 'Profile picture',
+      image: true,
+      child: shape == LqAvatarShape.circle
+          ? ClipOval(child: child)
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(radius * .45),
+              child: child,
+            ),
+    );
+  }
+}
+
 class LqFloatingNavBar extends StatelessWidget {
   const LqFloatingNavBar({
     super.key,
@@ -748,11 +825,13 @@ class LqFloatingNavBar extends StatelessWidget {
     required this.onSelected,
     required this.items,
     required this.profileInitials,
+    this.profilePhotoUrl,
   });
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final List<(IconData, String)> items;
   final String profileInitials;
+  final String? profilePhotoUrl;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -799,17 +878,10 @@ class LqFloatingNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircleAvatar(
+                      LqAvatar(
                         radius: 15,
-                        backgroundColor: const Color(0xFFE4C8B7),
-                        child: Text(
-                          profileInitials,
-                          style: const TextStyle(
-                            color: Color(0xFF573725),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        initials: profileInitials,
+                        photoUrl: profilePhotoUrl,
                       ),
                       const SizedBox(height: 1),
                       Text(
@@ -844,18 +916,22 @@ class LqFloatingNavBar extends StatelessWidget {
         width: 76,
         height: 52,
         decoration: BoxDecoration(
-          color: selected ? LqColors.primarySoft : Colors.transparent,
+          color: selected ? LqColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(32),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(items[index].$1, size: 19, color: LqColors.ink),
+            Icon(
+              items[index].$1,
+              size: 19,
+              color: selected ? Colors.white : LqColors.ink,
+            ),
             const SizedBox(height: 2),
             Text(
               items[index].$2,
-              style: const TextStyle(
-                color: LqColors.ink,
+              style: TextStyle(
+                color: selected ? Colors.white : LqColors.ink,
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
               ),

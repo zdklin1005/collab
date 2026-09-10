@@ -1,13 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../core/password_field.dart';
+import '../core/password_policy.dart';
 import 'package:intl/intl.dart';
 
-import 'rewards_tab.dart';
 import '../core/localquest_theme.dart';
 import '../core/localquest_widgets.dart';
+import '../core/profile_photo_editor.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
+
+import 'interactive_map/interactive_map_screen.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({super.key, required this.user});
@@ -24,14 +28,13 @@ class _TouristHomeState extends State<TouristHome> {
   Widget build(BuildContext context) {
     final profile = TouristProfileScreen(user: widget.user);
     final pages = [
+      InteractiveMapScreen(user: widget.user),
       const _ModulePlaceholder(
-        title: 'Discover',
-        subtitle: 'The interactive map belongs to the Map & Navigation module.',
+        title: 'Rewards',
+        subtitle: 'Rewards and missions belong to the Reward & Review module.',
       ),
-      RewardsTab(user: widget.user),
       profile,
     ];
-    
     return LqPage(
       bottomNavigationBar: LqFloatingNavBar(
         selectedIndex: _index,
@@ -42,6 +45,7 @@ class _TouristHomeState extends State<TouristHome> {
           (Icons.person_outline, 'Profile'),
         ],
         profileInitials: initialsFor(widget.user.displayName),
+        profilePhotoUrl: widget.user.photoUrl,
       ),
       child: pages[_index],
     );
@@ -114,25 +118,19 @@ class TouristProfileScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
           ),
           child: LqCard(
-            color: LqColors.primarySoft,
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                Padding(
+                Container(
+                  color: LqColors.primarySoft,
                   padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
-                      CircleAvatar(
+                      LqAvatar(
                         radius: 36,
-                        backgroundColor: const Color(0xFFE4C8B7),
-                        child: Text(
-                          initialsFor(user.displayName),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                            color: Color(0xFF573725),
-                          ),
-                        ),
+                        initials: initialsFor(user.displayName),
+                        photoUrl: user.photoUrl,
+                        shape: LqAvatarShape.roundedSquare,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -180,6 +178,12 @@ class TouristProfileScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: LqColors.primary,
+                        size: 24,
                       ),
                     ],
                   ),
@@ -568,16 +572,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
     eyebrow: 'Identity',
     title: 'Account details',
     children: [
-      Center(
-        child: CircleAvatar(
-          radius: 36,
-          backgroundColor: const Color(0xFFE4C8B7),
-          child: Text(
-            initialsFor(widget.user.displayName),
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
-      ),
+      ProfilePhotoEditor(user: widget.user),
       const SizedBox(height: 20),
       LqField(controller: _name, label: 'Display name'),
       const SizedBox(height: 16),
@@ -718,6 +713,14 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   final _confirm = TextEditingController();
   bool _busy = false;
   @override
+  void dispose() {
+    _current.dispose();
+    _next.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => _SimpleFormPage(
     eyebrow: 'Security',
     title: 'Password & security',
@@ -729,7 +732,7 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
         obscureText: true,
       ),
       const SizedBox(height: 16),
-      LqField(controller: _next, label: 'New password', obscureText: true),
+      LqNewPasswordField(controller: _next, label: 'New password'),
       const SizedBox(height: 16),
       LqField(
         controller: _confirm,
@@ -747,12 +750,16 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   );
 
   Future<void> _save() async {
-    if (_next.text.length < 8 || _next.text != _confirm.text) {
-      showLqMessage(
-        context,
-        'Passwords must match and use at least 8 characters.',
-        error: true,
-      );
+    if (_busy) return;
+    final error =
+        PasswordPolicy.validate(_next.text) ??
+        (_current.text.isEmpty ? 'Enter your current password.' : null) ??
+        (_next.text == _current.text
+            ? 'Choose a different password from your current one.'
+            : null) ??
+        (_next.text != _confirm.text ? 'Passwords do not match.' : null);
+    if (error != null) {
+      showLqMessage(context, error, error: true);
       return;
     }
     setState(() => _busy = true);
@@ -761,7 +768,12 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
         currentPassword: _current.text,
         newPassword: _next.text,
       );
-      if (mounted) showLqMessage(context, 'Password updated.');
+      if (mounted) {
+        _current.clear();
+        _next.clear();
+        _confirm.clear();
+        showLqMessage(context, 'Password updated.');
+      }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {

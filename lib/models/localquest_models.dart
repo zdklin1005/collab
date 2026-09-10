@@ -26,6 +26,8 @@ class AppUser {
     this.voucherCount = 0,
     this.reviewCount = 0,
     this.preferences = const {},
+    this.photoUrl,
+    this.photoPublicId,
   });
 
   final String id;
@@ -40,6 +42,8 @@ class AppUser {
   final int voucherCount;
   final int reviewCount;
   final Map<String, dynamic> preferences;
+  final String? photoUrl;
+  final String? photoPublicId;
 
   factory AppUser.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -50,6 +54,8 @@ class AppUser {
       username: data['username'] as String? ?? '@explorer',
       role: AccountRoleX.fromValue(data['role'] as String?),
       phone: data['phone'] as String? ?? '',
+      photoUrl: data['photoUrl'] as String?,
+      photoPublicId: data['photoPublicId'] as String?,
       birthday: (data['birthday'] as Timestamp?)?.toDate(),
       exp: (data['exp'] as num?)?.toInt() ?? 0,
       level: (data['level'] as num?)?.toInt() ?? 1,
@@ -71,7 +77,11 @@ class Business {
     required this.address,
     required this.phone,
     this.registrationNumber = '',
+    this.photoUrl,
+    this.photoPublicId,
     this.active = true,
+    this.latitude,
+    this.longitude,
   });
 
   final String id;
@@ -81,7 +91,11 @@ class Business {
   final String address;
   final String phone;
   final String registrationNumber;
+  final String? photoUrl;
+  final String? photoPublicId;
   final bool active;
+  final double? latitude;
+  final double? longitude;
 
   factory Business.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -93,7 +107,11 @@ class Business {
       address: data['address'] as String? ?? '',
       phone: data['phone'] as String? ?? '',
       registrationNumber: data['registrationNumber'] as String? ?? '',
+      photoUrl: data['photoUrl'] as String?,
+      photoPublicId: data['photoPublicId'] as String?,
       active: data['active'] as bool? ?? true,
+      latitude: (data['latitude'] as num?)?.toDouble(),
+      longitude: (data['longitude'] as num?)?.toDouble(),
     );
   }
 }
@@ -112,6 +130,12 @@ class Campaign {
     this.views = 0,
     this.claims = 0,
     this.imageUrl,
+    this.terms = '',
+    this.discountType = 'percentage',
+    this.discountValue = 0,
+    this.minimumSpend = 0,
+    this.quantity = 0,
+    this.perCustomerLimit = 1,
   });
 
   final String id;
@@ -126,6 +150,12 @@ class Campaign {
   final int views;
   final int claims;
   final String? imageUrl;
+  final String terms;
+  final String discountType;
+  final double discountValue;
+  final double minimumSpend;
+  final int quantity;
+  final int perCustomerLimit;
 
   factory Campaign.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -144,6 +174,12 @@ class Campaign {
       views: (data['views'] as num?)?.toInt() ?? 0,
       claims: (data['claims'] as num?)?.toInt() ?? 0,
       imageUrl: data['imageUrl'] as String?,
+      terms: data['terms'] as String? ?? '',
+      discountType: data['discountType'] as String? ?? 'percentage',
+      discountValue: (data['discountValue'] as num?)?.toDouble() ?? 0,
+      minimumSpend: (data['minimumSpend'] as num?)?.toDouble() ?? 0,
+      quantity: (data['quantity'] as num?)?.toInt() ?? 0,
+      perCustomerLimit: (data['perCustomerLimit'] as num?)?.toInt() ?? 1,
     );
   }
 }

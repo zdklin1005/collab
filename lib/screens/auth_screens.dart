@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../core/password_field.dart';
 
 import '../core/localquest_theme.dart';
+import '../core/localquest_location.dart';
 import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
@@ -387,6 +389,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirm = TextEditingController();
   int _step = 2;
   bool _busy = false;
+  LqLocation? _businessLocation;
 
   bool get merchant => widget.role == AccountRole.merchant;
 
@@ -490,10 +493,11 @@ class _SignupScreenState extends State<SignupScreen> {
           validator: _required,
         ),
         const SizedBox(height: 16),
-        LqField(
+        LqAddressField(
           controller: _address,
           label: 'Primary business address',
-          maxLines: 3,
+          initialLocation: _businessLocation,
+          onLocationChanged: (value) => _businessLocation = value,
           validator: _required,
         ),
       ] else ...[
@@ -534,12 +538,7 @@ class _SignupScreenState extends State<SignupScreen> {
         validator: _required,
       ),
       const SizedBox(height: 16),
-      LqField(
-        controller: _password,
-        label: 'Password',
-        obscureText: true,
-        validator: _passwordValidator,
-      ),
+      LqNewPasswordField(controller: _password),
       const SizedBox(height: 16),
       LqField(
         controller: _confirm,
@@ -565,8 +564,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? 'This field is required.' : null;
-  String? _passwordValidator(String? value) =>
-      value == null || value.length < 8 ? 'Use at least 8 characters.' : null;
 
   void _next() {
     if (_form.currentState!.validate()) setState(() => _step = 3);
@@ -601,6 +598,8 @@ class _SignupScreenState extends State<SignupScreen> {
           category: _category.text,
           address: _address.text,
           phone: _phone.text,
+          latitude: _businessLocation?.latitude,
+          longitude: _businessLocation?.longitude,
         );
       } else {
         await AuthService.instance.registerTourist(

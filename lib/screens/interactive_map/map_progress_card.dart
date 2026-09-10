@@ -1,0 +1,92 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../../core/localquest_theme.dart';
+import '../../models/localquest_models.dart';
+
+class MapProgressCard extends StatelessWidget {
+  const MapProgressCard({
+    super.key,
+    required this.user,
+  });
+
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    // Temporary target until the shared levelling rules are confirmed.
+    const targetExp = 3000;
+    final progress = (user.exp / targetExp).clamp(0.0, 1.0);
+    final numberFormat = NumberFormat('#,##0');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 16,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: LqColors.primary,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Text(
+              '${user.level}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'LEVEL ${user.level} · EXPLORER',
+                  style: const TextStyle(
+                    color: LqColors.muted,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${numberFormat.format(user.exp)} / '
+                  '${numberFormat.format(targetExp)} EXP',
+                  style: const TextStyle(
+                    color: LqColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  color: LqColors.primary,
+                  backgroundColor: LqColors.line,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
