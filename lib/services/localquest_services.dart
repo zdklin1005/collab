@@ -3,10 +3,12 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/localquest_models.dart';
+import '../core/merchant_validation.dart';
+import '../core/password_policy.dart';
+import 'cloudinary_images.dart';
 
 class LocalQuestException implements Exception {
   const LocalQuestException(this.message);
@@ -140,6 +142,8 @@ class AuthService {
     required String phone,
     DateTime? birthday,
   }) async {
+    final passwordError = PasswordPolicy.validate(password);
+    if (passwordError != null) throw LocalQuestException(passwordError);
     try {
       final result = await auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -184,6 +188,8 @@ class AuthService {
     double? latitude,
     double? longitude,
   }) async {
+    final passwordError = PasswordPolicy.validate(password);
+    if (passwordError != null) throw LocalQuestException(passwordError);
     try {
       final result = await auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -243,6 +249,13 @@ class AuthService {
     required String currentPassword,
     required String newPassword,
   }) async {
+    final passwordError = PasswordPolicy.validate(newPassword);
+    if (passwordError != null) throw LocalQuestException(passwordError);
+    if (currentPassword == newPassword) {
+      throw const LocalQuestException(
+        'Choose a different password from your current one.',
+      );
+    }
     final user = auth.currentUser!;
     try {
       final credential = EmailAuthProvider.credential(
@@ -354,6 +367,26 @@ class UserRepository {
   static final instance = UserRepository._();
   final FirebaseFirestore db = FirebaseFirestore.instance;
 
+  Future<UploadedPhoto> updatePhoto(String uid, Uint8List bytes) async {
+    if (FirebaseAuth.instance.currentUser?.uid != uid) {
+      throw const PhotoUploadException(
+        'Sign in again before changing your photo.',
+      );
+    }
+    final photo = await CloudinaryImages.instance.upload(bytes);
+    try {
+      await db.collection('users').doc(uid).update({
+        'photoUrl': photo.url,
+        'photoPublicId': photo.publicId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      await CloudinaryImages.instance.rollback(photo);
+      rethrow;
+    }
+    return photo;
+  }
+
   Stream<AppUser> watch(String uid) =>
       db.collection('users').doc(uid).snapshots().map(AppUser.fromDoc);
 
@@ -399,7 +432,6 @@ class MerchantRepository {
   MerchantRepository._();
   static final instance = MerchantRepository._();
   final FirebaseFirestore db = FirebaseFirestore.instance;
-  final FirebaseStorage storage = FirebaseStorage.instance;
 
   Stream<List<Business>> businesses(String uid) => db
       .collection('businesses')
@@ -423,65 +455,144 @@ class MerchantRepository {
         return values;
       });
 
-  Future<void> saveBusiness(Business value) async {
+  Future<void> saveBusiness(Business value, {Uint8List? photoBytes}) async {
+    if (FirebaseAuth.instance.currentUser?.uid != value.ownerId) {
+      throw const LocalQuestException(
+        'Sign in again before saving your business.',
+      );
+    }
     final ref = value.id.isEmpty
         ? db.collection('businesses').doc()
         : db.collection('businesses').doc(value.id);
-    await ref.set({
-      'ownerId': value.ownerId,
-      'name': value.name.trim(),
-      'category': value.category.trim(),
-      'address': value.address.trim(),
-      'phone': value.phone.trim(),
-      'registrationNumber': value.registrationNumber.trim(),
-      'active': value.active,
-      'latitude': ?value.latitude,
-      'longitude': ?value.longitude,
-      'updatedAt': FieldValue.serverTimestamp(),
-      if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    UploadedPhoto? uploaded;
+    if (photoBytes != null) {
+      try {
+        uploaded = await CloudinaryImages.instance.upload(photoBytes);
+      } on PhotoUploadException catch (error) {
+        throw LocalQuestException(error.message);
+      }
+    }
+    try {
+      await ref.set({
+        'ownerId': value.ownerId,
+        'name': value.name.trim(),
+        'category': value.category.trim(),
+        'address': value.address.trim(),
+        'phone': value.phone.trim(),
+        'registrationNumber': value.registrationNumber.trim(),
+        if (uploaded != null) 'photoUrl': uploaded.url,
+        if (uploaded != null) 'photoPublicId': uploaded.publicId,
+        'active': value.active,
+        'latitude': ?value.latitude,
+        'longitude': ?value.longitude,
+        'updatedAt': FieldValue.serverTimestamp(),
+        if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      if (uploaded != null) await CloudinaryImages.instance.rollback(uploaded);
+      rethrow;
+    }
   }
 
   Future<void> deleteBusiness(String id) =>
       db.collection('businesses').doc(id).delete();
+
+  Future<void> setCampaignStatus(String id, bool active) async {
+    await db.collection('campaigns').doc(id).update({
+      'status': active ? 'active' : 'inactive',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 
   Future<void> saveCampaign(
     Campaign value, {
     Uint8List? posterBytes,
     String? posterExtension,
   }) async {
+    if (value.businessId.isEmpty) {
+      throw const LocalQuestException(
+        'Select a business before creating a campaign.',
+      );
+    }
+    final validation =
+        MerchantValidation.text(value.name, 'Name', 3, 80) ??
+        MerchantValidation.text(value.description, 'Description', 20, 1500) ??
+        MerchantValidation.text(value.terms, 'Terms', 10, 2000);
+    if (validation != null) throw LocalQuestException(validation);
+    if (!['ad', 'voucher'].contains(value.type) ||
+        !['active', 'scheduled', 'inactive'].contains(value.status) ||
+        value.endDate.isBefore(value.startDate)) {
+      throw const LocalQuestException(
+        'Check the offer type, status and date range.',
+      );
+    }
+    if (value.type == 'voucher' &&
+        (!['percentage', 'fixed'].contains(value.discountType) ||
+            !value.discountValue.isFinite ||
+            value.discountValue <= 0 ||
+            value.discountValue >
+                (value.discountType == 'percentage' ? 100 : 100000) ||
+            !value.minimumSpend.isFinite ||
+            value.minimumSpend < 0 ||
+            value.minimumSpend > 100000 ||
+            value.quantity < 1 ||
+            value.quantity > 100000 ||
+            value.perCustomerLimit < 1 ||
+            value.perCustomerLimit > value.quantity)) {
+      throw const LocalQuestException(
+        'Check voucher value, minimum spend and quantity limits.',
+      );
+    }
+    final business = await db
+        .collection('businesses')
+        .doc(value.businessId)
+        .get();
+    if (business.data()?['ownerId'] != value.ownerId ||
+        business.data()?['active'] != true) {
+      throw const LocalQuestException(
+        'Choose an active business that belongs to your account.',
+      );
+    }
     final ref = value.id.isEmpty
         ? db.collection('campaigns').doc()
         : db.collection('campaigns').doc(value.id);
     String? imageUrl = value.imageUrl;
+    UploadedPhoto? uploaded;
     if (posterBytes != null) {
       try {
-        final upload = storage.ref(
-          'campaigns/${value.ownerId}/${ref.id}.${posterExtension ?? 'jpg'}',
-        );
-        await upload.putData(posterBytes);
-        imageUrl = await upload.getDownloadURL();
-      } on FirebaseException {
-        throw const LocalQuestException(
-          'Campaign image uploads require Firebase Storage and a Blaze billing account. Save without a poster or enable billing in Firebase.',
-        );
+        uploaded = await CloudinaryImages.instance.upload(posterBytes);
+        imageUrl = uploaded.url;
+      } on PhotoUploadException catch (error) {
+        throw LocalQuestException(error.message);
       }
     }
-    await ref.set({
-      'ownerId': value.ownerId,
-      'businessId': value.businessId,
-      'name': value.name.trim(),
-      'description': value.description.trim(),
-      'type': value.type,
-      'startDate': Timestamp.fromDate(value.startDate),
-      'endDate': Timestamp.fromDate(value.endDate),
-      'status': value.status,
-      'views': value.views,
-      'claims': value.claims,
-      'imageUrl': imageUrl,
-      'updatedAt': FieldValue.serverTimestamp(),
-      if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await ref.set({
+        'ownerId': value.ownerId,
+        'businessId': value.businessId,
+        'name': value.name.trim(),
+        'description': value.description.trim(),
+        'type': value.type,
+        'startDate': Timestamp.fromDate(value.startDate),
+        'endDate': Timestamp.fromDate(value.endDate),
+        'status': value.status,
+        if (value.id.isEmpty) 'views': value.views,
+        if (value.id.isEmpty) 'claims': value.claims,
+        'imageUrl': imageUrl,
+        if (uploaded != null) 'imagePublicId': uploaded.publicId,
+        'terms': value.terms.trim(),
+        'discountType': value.discountType,
+        'discountValue': value.discountValue,
+        'minimumSpend': value.minimumSpend,
+        'quantity': value.quantity,
+        'perCustomerLimit': value.perCustomerLimit,
+        'updatedAt': FieldValue.serverTimestamp(),
+        if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      if (uploaded != null) await CloudinaryImages.instance.rollback(uploaded);
+      rethrow;
+    }
   }
 
   Future<void> deleteCampaign(String id) =>

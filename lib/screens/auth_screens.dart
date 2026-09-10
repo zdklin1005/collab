@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/password_field.dart';
 
 import '../core/localquest_theme.dart';
 import '../core/localquest_location.dart';
@@ -537,12 +538,7 @@ class _SignupScreenState extends State<SignupScreen> {
         validator: _required,
       ),
       const SizedBox(height: 16),
-      LqField(
-        controller: _password,
-        label: 'Password',
-        obscureText: true,
-        validator: _passwordValidator,
-      ),
+      LqNewPasswordField(controller: _password),
       const SizedBox(height: 16),
       LqField(
         controller: _confirm,
@@ -568,8 +564,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? 'This field is required.' : null;
-  String? _passwordValidator(String? value) =>
-      value == null || value.length < 8 ? 'Use at least 8 characters.' : null;
 
   void _next() {
     if (_form.currentState!.validate()) setState(() => _step = 3);

@@ -34,6 +34,83 @@ Widget app(Widget home) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'campaign create action stays fixed above nav while list scrolls',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const business = Business(
+        id: 'b1',
+        ownerId: 'merchant-1',
+        name: 'Test Cafe',
+        category: 'Cafe',
+        address: 'Kuala Lumpur',
+        phone: '0312345678',
+      );
+      await tester.pumpWidget(
+        app(
+          CampaignsScreen(
+            user: merchant,
+            business: business,
+            campaignStream: Stream.value(
+              List.generate(
+                5,
+                (i) => Campaign(
+                  id: '$i',
+                  ownerId: merchant.id,
+                  businessId: business.id,
+                  name: 'Offer $i',
+                  description: 'Coffee special at this business',
+                  type: 'ad',
+                  startDate: DateTime(2026),
+                  endDate: DateTime(2027),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final create = find.text('Create campaign');
+      expect(create, findsOneWidget);
+      final before = tester.getRect(create);
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -450),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getRect(create), before);
+      expect(before.bottom, lessThanOrEqualTo(780 - 96));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('voucher form rejects blank offer before reaching review', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        const CampaignEditor(
+          user: merchant,
+          businessId: 'b1',
+          initialType: 'voucher',
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('Save changes'));
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Name must contain 3–80 characters.'), findsOneWidget);
+    expect(
+      find.text('Description must contain 20–1500 characters.'),
+      findsOneWidget,
+    );
+    expect(find.text('Review your offer'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   test('Photon address result preserves label and coordinates', () {
     final suggestion = AddressSuggestion.fromPhotonFeature({
       'properties': {
