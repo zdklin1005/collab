@@ -127,7 +127,12 @@ class MockMapData {
       ),
     ];
 
-    return DailyRewardGenerator().generate(
+    final forceVouchers = MapTestConfig.forceVoucherRewards;
+
+    return DailyRewardGenerator(
+      spawnPercent: forceVouchers ? 100 : 80,
+      voucherPercent: forceVouchers ? 100 : 10,
+    ).generate(
       activeLandmarkIds: landmarks
           .where(
             (landmark) =>

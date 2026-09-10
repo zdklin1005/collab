@@ -7,10 +7,12 @@ class OutOfRangeDialog extends StatelessWidget {
     super.key,
     required this.distanceMeters,
     required this.radiusMeters,
+    required this.onGetCloser,
   });
 
   final double distanceMeters;
   final double radiusMeters;
+  final VoidCallback onGetCloser;
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +24,7 @@ class OutOfRangeDialog extends StatelessWidget {
       heading: 'Too Far Away!',
       icon: Icons.star_rounded,
       locked: true,
-      colors: const [
-        Color(0xFFCDD0D5),
-        Color(0xFF9CA3AF),
-      ],
+      colors: const [Color(0xFFCDD0D5), Color(0xFF9CA3AF)],
       title: 'Out of Range',
       description: Text.rich(
         TextSpan(
@@ -54,11 +53,12 @@ class OutOfRangeDialog extends StatelessWidget {
         ),
       ),
       note:
-          'Do not enter unsafe or restricted areas to reach a reward.\n'
-          'Close and tap again to refresh the range check.',
-      buttonLabel: 'BACK TO MAP',
+          'Get Closer shows this reward on the map, not a walking route.\n'
+          'Do not enter unsafe or restricted areas. '
+          'Tap the marker again to refresh the range check.',
+      buttonLabel: 'GET CLOSER',
       buttonColor: const Color(0xFF6B7280),
-      onPressed: () => Navigator.of(context).pop(),
+      onPressed: onGetCloser,
     );
   }
 }

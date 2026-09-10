@@ -12,6 +12,12 @@ class MapTestConfig {
 
   static bool get enabled => centre != null;
 
+  static const _forceVoucherRewards =
+    bool.fromEnvironment('MAP_DEMO_FORCE_VOUCHERS');
+
+  static bool get forceVoucherRewards =>
+      kDebugMode && enabled && _forceVoucherRewards;
+
   static LatLng? _readCentre() {
     // Never enable this preview in profile or release builds.
     if (!kDebugMode || !_requested) return null;
@@ -32,6 +38,7 @@ class MapTestConfig {
       debugPrint('Map demo disabled: missing or invalid test centre.');
       return null;
     }
+    
 
     return LatLng(latitude, longitude);
   }

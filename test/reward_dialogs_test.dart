@@ -23,19 +23,14 @@ void main() {
     );
   }
 
-  Future<void> openDialog(
-    WidgetTester tester,
-    Widget dialog,
-  ) async {
+  Future<void> openDialog(WidgetTester tester, Widget dialog) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => dialog,
-              ),
+              onPressed: () =>
+                  showDialog<void>(context: context, builder: (_) => dialog),
               child: const Text('Open'),
             ),
           ),
@@ -84,24 +79,81 @@ void main() {
     expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
   });
 
-  testWidgets('out-of-range card displays radius and returns to map', (
-    tester,
-  ) async {
+  testWidgets('Get Closer requests reward focus', (tester) async {
+    var focusRequests = 0;
+
     await openDialog(
       tester,
-      const OutOfRangeDialog(
-        distanceMeters: 80,
-        radiusMeters: 25,
+      Builder(
+        builder: (dialogContext) => OutOfRangeDialog(
+          distanceMeters: 80,
+          radiusMeters: 25,
+          onGetCloser: () {
+            focusRequests++;
+            Navigator.of(dialogContext).pop();
+          },
+        ),
       ),
     );
 
     expect(find.text('Too Far Away!'), findsOneWidget);
-    expect(find.textContaining('25 metres', findRichText: true), findsOneWidget);
+    expect(
+      find.textContaining('25 metres', findRichText: true),
+      findsOneWidget,
+    );
 
-    await tester.ensureVisible(find.text('BACK TO MAP'));
-    await tester.tap(find.text('BACK TO MAP'));
+    await tester.ensureVisible(find.text('GET CLOSER'));
+    await tester.tap(find.text('GET CLOSER'));
     await tester.pumpAndSettle();
 
+    expect(focusRequests, 1);
     expect(find.byType(OutOfRangeDialog), findsNothing);
+  });
+
+  testWidgets('closing out-of-range dialog does not request focus', (
+    tester,
+  ) async {
+    var focusRequests = 0;
+
+    await openDialog(
+      tester,
+      OutOfRangeDialog(
+        distanceMeters: 80,
+        radiusMeters: 25,
+        onGetCloser: () => focusRequests++,
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+
+    expect(focusRequests, 0);
+    expect(find.byType(OutOfRangeDialog), findsNothing);
+  });
+
+  testWidgets('demo collection button calls its supplied callback', (
+    tester,
+  ) async {
+    var calls = 0;
+
+    await openDialog(
+      tester,
+      RewardPreviewDialog(
+        reward: reward(RewardType.exp),
+        locationName: 'Demo café',
+        onCollect: () => calls++,
+      ),
+    );
+
+    expect(
+      tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+      isNotNull,
+    );
+
+    await tester.ensureVisible(find.text('COLLECT DEMO REWARD'));
+    await tester.tap(find.text('COLLECT DEMO REWARD'));
+    await tester.pump();
+
+    expect(calls, 1);
   });
 }

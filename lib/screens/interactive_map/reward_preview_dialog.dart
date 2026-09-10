@@ -7,10 +7,12 @@ class RewardPreviewDialog extends StatelessWidget {
     super.key,
     required this.reward,
     required this.locationName,
+    this.onCollect,
   });
 
   final RewardMarker reward;
   final String locationName;
+  final VoidCallback? onCollect;
 
   @override
   Widget build(BuildContext context) {
@@ -44,13 +46,15 @@ class RewardPreviewDialog extends StatelessWidget {
           height: 1.5,
         ),
       ),
-      note:
-          'Preview only. Collection is not enabled yet.\n'
-          'Close and tap again to refresh the range check.',
-      buttonLabel: 'COLLECT REWARD',
+      note: onCollect == null
+          ? 'Preview only. Collection is not enabled yet.'
+          : 'Demo collection only. No real EXP or voucher is issued.\n'
+            'Your location and reward availability will be checked again.',
+      buttonLabel: onCollect == null
+          ? 'COLLECT REWARD'
+          : 'COLLECT DEMO REWARD',
       buttonColor: const Color(0xFF3267D8),
-      // Deliberately disabled until collection logic is implemented.
-      onPressed: null,
+      onPressed: onCollect,
     );
   }
 }
