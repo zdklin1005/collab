@@ -17,6 +17,11 @@ import '../../services/map_category_filter.dart';
 import '../../services/reward_proximity.dart';
 import '../../services/demo_map_claim_store.dart';
 import '../../services/demo_map_claim_persistence.dart';
+import '../../services/nearby_business_detector.dart';
+import '../../services/nearby_business_prompt_tracker.dart';
+import '../../services/daily_reward_generator.dart';
+import '../../services/demo_business_voucher_claim_store.dart';
+import '../../services/demo_business_voucher_claim_persistence.dart';
 
 import 'map_action_buttons.dart';
 import 'map_location_permission.dart';
@@ -36,6 +41,9 @@ import 'reward_preview_dialog.dart';
 import 'out_of_range_dialog.dart';
 import 'reward_collection_check.dart';
 import 'reward_success_screen.dart';
+
+import 'nearby_business_dialog.dart';
+import 'business_voucher_claim_check.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
@@ -75,12 +83,37 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   // Temporary demo value, not the final collection policy.
   static const double _demoCollectionRadiusMeters = 50;
 
+  // Temporary business discovery radius.
+  static const double _demoBusinessDiscoveryRadiusMeters = 100;
+
+  List<NearbyBusiness> _nearbyBusinesses = const [];
+  String? _lastNearbyDetectionKey;
+
+  static final _nearbyPromptTracker = NearbyBusinessPromptTracker();
+
+  // Courtesy interval between different businesses' reminders.
+  // This is not a reward or voucher cooldown.
+  static DateTime? _nextNearbyPromptAt;
+
+  bool _nearbyPromptScheduled = false;
+  bool _nearbyBusinessDialogOpen = false;
+
   // Shared by recreated map screens during this app session.
   // Claims remain separated by tourist ID.
   // Hot restart or a full app restart clears this in-memory data.
   // Shared across recreated Discover screens, separated by tourist ID.
   static DemoMapClaimStore _demoClaims = DemoMapClaimStore();
   static final _claimPersistence = DemoMapClaimPersistence();
+
+  static DemoBusinessVoucherClaimStore _businessVoucherClaims =
+      DemoBusinessVoucherClaimStore();
+
+  static final _businessVoucherPersistence =
+      DemoBusinessVoucherClaimPersistence();
+
+  static bool _businessVoucherClaimInProgress = false;
+
+  static Future<void> _pendingBusinessVoucherClaim = Future<void>.value();
 
   static Future<void>? _claimsLoadFuture;
   static Future<void> _pendingClaimSave = Future<void>.value();
@@ -94,6 +127,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
   String? _locationError;
   int _requestId = 0;
+
+  // Temporary claim radius, separate from business discovery.
+  static const double _demoBusinessVoucherClaimRadiusMeters = 50;
 
   @override
   void initState() {
@@ -489,6 +525,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                 _position = position;
                 _locating = false;
                 _locationError = null;
+                _updateNearbyBusinesses();
               });
 
               _centreOnFirstPosition();
@@ -515,7 +552,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       // This timer does not request additional GPS readings.
       _qualityTimer = Timer.periodic(const Duration(seconds: 5), (_) {
         if (_isCurrentRequest(requestId) && _position != null) {
-          setState(() {});
+          setState(() {
+            _updateNearbyBusinesses();
+          });
         }
       });
 
@@ -529,6 +568,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _stopLiveLocation() {
+    _publishNearbyBusinesses(const [], 'paused');
+
     // Invalidate callbacks before cancelling the native subscription.
     _requestId++;
     _qualityTimer?.cancel();
@@ -1046,8 +1087,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   static Future<void> _loadSharedDemoClaims() async {
-    final restored = await _claimPersistence.load();
-    _demoClaims = restored;
+    final restoredMapClaims = await _claimPersistence.load();
+
+    final restoredBusinessClaims = await _businessVoucherPersistence.load();
+
+    // Publish only when both histories have loaded successfully.
+    _demoClaims = restoredMapClaims;
+    _businessVoucherClaims = restoredBusinessClaims;
   }
 
   Future<void> _restoreDemoClaims() async {
@@ -1072,6 +1118,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       // If a previous Discover screen was saving when disposed,
       // wait until its shared history has been updated.
       await _pendingClaimSave;
+      await _pendingBusinessVoucherClaim;
 
       if (!mounted) return;
 
@@ -1079,6 +1126,16 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         _restoringClaims = false;
         _claimStorageError = null;
       });
+      final touristId = widget.user.id;
+
+      if (touristId.trim().isNotEmpty) {
+        final claimCount = _businessVoucherClaims.claimsFor(touristId).length;
+
+        debugPrint(
+          'Business-voucher demo history loaded: '
+          '$claimCount claim(s) for the current tourist.',
+        );
+      }
     } catch (_) {
       // Allow an explicit retry without deleting the saved data.
       if (identical(_claimsLoadFuture, loading)) {
@@ -1090,8 +1147,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       setState(() {
         _restoringClaims = false;
         _claimStorageError =
-            'Could not load demo collection history. '
-            'Collection is paused. Please retry.';
+            'Could not load demo claim history. '
+            'Map-reward collection and business-voucher actions are paused. '
+            'Please retry.';
       });
     }
   }
@@ -1128,6 +1186,467 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     // Publish only after the save completes successfully.
     // This must happen even if the original screen was disposed.
     _demoClaims = candidate;
+  }
+
+  void _updateNearbyBusinesses() {
+    if (!MapTestConfig.enabled) {
+      _publishNearbyBusinesses(const [], 'disabled');
+      return;
+    }
+
+    if (!mounted || !_foreground || !_locationAllowed) {
+      _publishNearbyBusinesses(const [], 'paused');
+      return;
+    }
+
+    final position = _position;
+
+    if (_locationError != null || position == null) {
+      _publishNearbyBusinesses(const [], 'waiting for location');
+      return;
+    }
+
+    final quality = assessLocationQuality(
+      accuracy: position.accuracy,
+      recordedAt: position.timestamp,
+      now: DateTime.now(),
+    );
+
+    if (quality != LocationQuality.recent) {
+      _publishNearbyBusinesses(const [], 'paused: GPS ${quality.name}');
+      return;
+    }
+
+    if (!position.latitude.isFinite ||
+        !position.longitude.isFinite ||
+        position.latitude.abs() > 90 ||
+        position.longitude.abs() > 180) {
+      _publishNearbyBusinesses(const [], 'invalid location');
+      return;
+    }
+
+    final results = findNearbyBusinesses(
+      businesses: MockMapData.businesses,
+      userLatitude: position.latitude,
+      userLongitude: position.longitude,
+      radiusMeters: _demoBusinessDiscoveryRadiusMeters,
+    );
+
+    _publishNearbyBusinesses(results, 'ready');
+  }
+
+  void _publishNearbyBusinesses(List<NearbyBusiness> results, String status) {
+    _nearbyBusinesses = results;
+
+    if (MapTestConfig.enabled && status == 'ready' && results.isNotEmpty) {
+      _scheduleNearbyBusinessPrompt();
+    }
+
+    if (!MapTestConfig.enabled) return;
+
+    // Log only status or ordered business-ID changes.
+    // Distances still refresh even when no new message is printed.
+    final key =
+        '$status|${_nearbyBusinesses.map((item) => item.business.id).join(",")}';
+
+    if (_lastNearbyDetectionKey == key) return;
+    _lastNearbyDetectionKey = key;
+
+    if (status != 'ready') {
+      debugPrint('Nearby businesses: $status');
+      return;
+    }
+
+    if (_nearbyBusinesses.isEmpty) {
+      debugPrint(
+        'Nearby businesses: none within '
+        '${_demoBusinessDiscoveryRadiusMeters.toStringAsFixed(0)} m',
+      );
+      return;
+    }
+
+    final summary = _nearbyBusinesses
+        .map((item) {
+          return '${item.business.name} '
+              '(approximately ${item.distanceMeters.toStringAsFixed(0)} m)';
+        })
+        .join(', ');
+
+    debugPrint('Nearby businesses: $summary');
+  }
+
+  void _scheduleNearbyBusinessPrompt() {
+    if (!mounted || _nearbyPromptScheduled || _nearbyBusinessDialogOpen) {
+      return;
+    }
+
+    _nearbyPromptScheduled = true;
+
+    // Detection can run inside setState. Open the dialog afterward.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _nearbyPromptScheduled = false;
+
+      if (!mounted) return;
+
+      unawaited(_tryShowNearbyBusinessPrompt());
+    });
+  }
+
+  Future<void> _tryShowNearbyBusinessPrompt() async {
+    if (!mounted ||
+        !MapTestConfig.enabled ||
+        !_foreground ||
+        !_mapReady ||
+        !_locationAllowed ||
+        _nearbyBusinessDialogOpen ||
+        _rewardDistanceDialogOpen ||
+        _locationDetailsOpen ||
+        _searchOpen ||
+        _filterSheetOpen ||
+        _restoringMapStyle ||
+        _savingMapStyle ||
+        _restoringClaims ||
+        _savingClaim ||
+        _claimStorageError != null) {
+      return;
+    }
+
+    // Do not open over another route, dialog, or bottom sheet.
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+
+    final touristId = widget.user.id;
+    if (touristId.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final nextAllowed = _nextNearbyPromptAt;
+
+    if (nextAllowed != null && now.isBefore(nextAllowed)) return;
+
+    final position = _position;
+
+    if (_locationError != null || position == null) return;
+
+    if (assessLocationQuality(
+          accuracy: position.accuracy,
+          recordedAt: position.timestamp,
+          now: now,
+        ) !=
+        LocationQuality.recent) {
+      return;
+    }
+
+    if (!position.latitude.isFinite ||
+        !position.longitude.isFinite ||
+        position.latitude.abs() > 90 ||
+        position.longitude.abs() > 180) {
+      return;
+    }
+
+    // Recalculate immediately before presenting—not from an old result.
+    final currentNearby = findNearbyBusinesses(
+      businesses: MockMapData.businesses,
+      userLatitude: position.latitude,
+      userLongitude: position.longitude,
+      radiusMeters: _demoBusinessDiscoveryRadiusMeters,
+    );
+
+    final candidate = _nearbyPromptTracker.nextCandidate(
+      touristId: touristId,
+      nearby: currentNearby,
+    );
+
+    if (candidate == null) return;
+
+    final location = MapLocation.fromBusiness(candidate.business);
+    if (location == null || !location.canDisplay) return;
+
+    final voucherCheckedAt = DateTime.now();
+
+    final previewMultipleVouchers =
+        MapTestConfig.enabled &&
+        const bool.fromEnvironment('MAP_DEMO_MULTIPLE_VOUCHERS');
+
+    final voucherOffers = [
+      ...MockMapData.createDemoVoucherOffers(voucherCheckedAt),
+      if (previewMultipleVouchers)
+        MapVoucherOffer(
+          id: 'debug-second-offer-${candidate.business.id}',
+          businessId: candidate.business.id,
+          title: 'Second demo voucher — short offer',
+          validFrom: voucherCheckedAt.subtract(const Duration(minutes: 1)),
+          expiresAt: voucherCheckedAt.add(const Duration(minutes: 5)),
+          remainingStock: 5,
+          mapEligible: false,
+        ),
+    ];
+
+    _nearbyBusinessDialogOpen = true;
+    bool actionTaken = false;
+    var previewOpen = true;
+
+    try {
+      final requestedDetails = showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          void closeWith(bool viewDetails) {
+            if (actionTaken) return;
+            actionTaken = true;
+            Navigator.of(dialogContext).pop(viewDetails);
+          }
+
+          return NearbyBusinessDialog(
+            business: candidate.business,
+            distanceMeters: candidate.distanceMeters,
+            offers: voucherOffers,
+            onDismiss: () => closeWith(false),
+            onViewDetails: () => closeWith(true),
+            onCheckEligibility: (voucherId) {
+              return _checkSelectedBusinessVoucher(
+                touristId: touristId,
+                businessId: candidate.business.id,
+                voucherId: voucherId,
+                offers: voucherOffers,
+              );
+            },
+            onClaim: (voucherId) {
+              return _claimSelectedBusinessVoucher(
+                touristId: touristId,
+                businessId: candidate.business.id,
+                voucherId: voucherId,
+                offers: voucherOffers,
+                isPreviewOpen: () => previewOpen && !actionTaken,
+              );
+            },
+          );
+        },
+      );
+
+      // The dialog route has now been opened.
+      // Dismissing it still counts as having seen this reminder.
+      _nearbyPromptTracker.markShown(
+        touristId: touristId,
+        businessId: candidate.business.id,
+      );
+
+      final viewDetails = await requestedDetails;
+      previewOpen = false;
+
+      if (viewDetails == true &&
+          mounted &&
+          _foreground &&
+          widget.user.id == touristId &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        await _showLocationDetails(location);
+      }
+    } finally {
+      previewOpen = false;
+      _nearbyBusinessDialogOpen = false;
+      _nextNearbyPromptAt = DateTime.now().add(const Duration(seconds: 30));
+    }
+  }
+
+  Future<BusinessVoucherClaimStatus> _checkSelectedBusinessVoucher({
+    required String touristId,
+    required String businessId,
+    required String voucherId,
+    required List<MapVoucherOffer> offers,
+  }) async {
+    if (!mounted || !_foreground) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    if (touristId.trim().isEmpty || widget.user.id != touristId) {
+      return BusinessVoucherClaimStatus.accountRequired;
+    }
+
+    if (_restoringClaims || _claimStorageError != null) {
+      return BusinessVoucherClaimStatus.historyUnavailable;
+    }
+
+    final requestId = _requestId;
+
+    final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+
+    if (!mounted || !_foreground) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    if (widget.user.id != touristId) {
+      return BusinessVoucherClaimStatus.accountRequired;
+    }
+
+    final accessAllowed =
+        _locationAllowed &&
+        servicesEnabled &&
+        (permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always);
+
+    if (!accessAllowed) {
+      return BusinessVoucherClaimStatus.locationAccessRequired;
+    }
+
+    if (requestId != _requestId) {
+      return BusinessVoucherClaimStatus.locationUnavailable;
+    }
+
+    Business? currentBusiness;
+
+    for (final business in MockMapData.businesses) {
+      if (business.id == businessId) {
+        currentBusiness = business;
+        break;
+      }
+    }
+
+    if (currentBusiness == null) {
+      return BusinessVoucherClaimStatus.voucherUnavailable;
+    }
+
+    // Use the latest stream reading after checking device access.
+    final position = _locationError == null ? _position : null;
+
+    // Recheck after the asynchronous device-permission checks.
+    if (_restoringClaims || _claimStorageError != null) {
+      return BusinessVoucherClaimStatus.historyUnavailable;
+    }
+
+    return checkBusinessVoucherClaim(
+      touristId: touristId,
+      business: currentBusiness,
+      selectedVoucherId: voucherId,
+      currentOffers: offers,
+      now: DateTime.now(),
+      appIsForeground: _foreground,
+      locationAllowed: accessAllowed,
+      radiusMeters: _demoBusinessVoucherClaimRadiusMeters,
+      userLatitude: position?.latitude,
+      userLongitude: position?.longitude,
+      accuracyMeters: position?.accuracy,
+      recordedAt: position?.timestamp,
+      hasAlreadyClaimed:
+          voucherId.trim().isNotEmpty &&
+          _businessVoucherClaims.hasClaimed(
+            touristId: touristId,
+            offerId: voucherId,
+          ),
+    );
+  }
+
+  Future<BusinessVoucherClaimStatus> _claimSelectedBusinessVoucher({
+    required String touristId,
+    required String businessId,
+    required String voucherId,
+    required List<MapVoucherOffer> offers,
+    required bool Function() isPreviewOpen,
+  }) {
+    if (_businessVoucherClaimInProgress) {
+      return Future.value(BusinessVoucherClaimStatus.claimInProgress);
+    }
+
+    // Lock before any asynchronous work starts.
+    _businessVoucherClaimInProgress = true;
+
+    final operation = _performBusinessVoucherClaim(
+      touristId: touristId,
+      businessId: businessId,
+      voucherId: voucherId,
+      offers: offers,
+      isPreviewOpen: isPreviewOpen,
+    );
+
+    // Recreated screens can safely await completion.
+    // The original operation still delivers errors to its caller.
+    _pendingBusinessVoucherClaim = operation
+        .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {})
+        .whenComplete(() {
+          _businessVoucherClaimInProgress = false;
+        });
+
+    return operation;
+  }
+
+  Future<BusinessVoucherClaimStatus> _performBusinessVoucherClaim({
+    required String touristId,
+    required String businessId,
+    required String voucherId,
+    required List<MapVoucherOffer> offers,
+    required bool Function() isPreviewOpen,
+  }) async {
+    if (!MapTestConfig.enabled || !isPreviewOpen()) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    // Always run fresh checks when Claim is tapped.
+    final eligibility = await _checkSelectedBusinessVoucher(
+      touristId: touristId,
+      businessId: businessId,
+      voucherId: voucherId,
+      offers: offers,
+    );
+
+    if (eligibility != BusinessVoucherClaimStatus.readyForDemo) {
+      return eligibility;
+    }
+
+    if (!mounted || !_foreground || !isPreviewOpen()) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    if (widget.user.id != touristId) {
+      return BusinessVoucherClaimStatus.accountRequired;
+    }
+
+    if (_restoringClaims || _claimStorageError != null) {
+      return BusinessVoucherClaimStatus.historyUnavailable;
+    }
+
+    final businesses = MockMapData.businesses
+        .where((business) => business.id == businessId)
+        .toList();
+
+    final selectedOffers = offers
+        .where((offer) => offer.id == voucherId)
+        .toList();
+
+    if (businesses.length != 1 || selectedOffers.length != 1) {
+      return BusinessVoucherClaimStatus.voucherUnavailable;
+    }
+
+    try {
+      final result = await _businessVoucherPersistence.recordAndSave(
+        currentStore: _businessVoucherClaims,
+        touristId: touristId,
+        business: businesses.single,
+        offer: selectedOffers.single,
+        now: DateTime.now(),
+      );
+
+      // Publish saved history even if the original screen was closed.
+      // Otherwise another screen could use outdated eligibility.
+      if (result.status == DemoBusinessVoucherClaimStatus.recorded) {
+        _businessVoucherClaims = result.store;
+      }
+
+      if (!mounted || !_foreground || !isPreviewOpen()) {
+        return BusinessVoucherClaimStatus.appInactive;
+      }
+
+      if (widget.user.id != touristId) {
+        return BusinessVoucherClaimStatus.accountRequired;
+      }
+
+      return switch (result.status) {
+        DemoBusinessVoucherClaimStatus.recorded =>
+          BusinessVoucherClaimStatus.demoRecorded,
+        DemoBusinessVoucherClaimStatus.alreadyClaimed =>
+          BusinessVoucherClaimStatus.alreadyClaimed,
+        DemoBusinessVoucherClaimStatus.unavailable =>
+          BusinessVoucherClaimStatus.voucherUnavailable,
+      };
+    } catch (_) {
+      return BusinessVoucherClaimStatus.saveFailed;
+    }
   }
 
   @override
@@ -1319,7 +1838,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                               _claimStorageError ??
                                   (_savingClaim
                                       ? 'Saving demo collection…'
-                                      : 'Loading demo collection history…'),
+                                      : 'Loading demo claim histories…'),
                               textAlign: TextAlign.center,
                             ),
                             if (_claimStorageError != null) ...[

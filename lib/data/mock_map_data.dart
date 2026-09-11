@@ -103,29 +103,7 @@ class MockMapData {
 
   //Uses a generator exisitng prototype settings with 80% spawn chance, and 10% voucher chance.
   static List<RewardMarker> createDailyRewards(DateTime instant) {
-    final start = DailyRewardGenerator.dayStartUtc(instant);
-    final end = start.add(const Duration(days: 1));
-
-    // Fictional offers recreated for each demo day.
-    // Real merchant offers must retain their actual validity dates and stock.
-    final demoOffers = [
-      MapVoucherOffer(
-        id: 'mock-voucher-cafe-1',
-        businessId: 'mock-business-cafe',
-        title: 'Demo café voucher',
-        validFrom: start,
-        expiresAt: end,
-        remainingStock: 100,
-      ),
-      MapVoucherOffer(
-        id: 'mock-voucher-artisan-1',
-        businessId: 'mock-business-crafts',
-        title: 'Demo artisan voucher',
-        validFrom: start,
-        expiresAt: end,
-        remainingStock: 100,
-      ),
-    ];
+    final demoOffers = createDemoVoucherOffers(instant);
 
     final forceVouchers = MapTestConfig.forceVoucherRewards;
 
@@ -278,5 +256,30 @@ class MockMapData {
       availableFrom: start,
       expiresAt: start.add(const Duration(days: 2)),
     );
+  }
+
+  static List<MapVoucherOffer> createDemoVoucherOffers(DateTime instant) {
+    final start = DailyRewardGenerator.dayStartUtc(instant);
+    final end = start.add(const Duration(days: 1));
+
+    // Fictional daily fixtures, not persistent merchant stock.
+    return [
+      MapVoucherOffer(
+        id: 'mock-voucher-cafe-1',
+        businessId: 'mock-business-cafe',
+        title: 'Demo café voucher',
+        validFrom: start,
+        expiresAt: end,
+        remainingStock: 100,
+      ),
+      MapVoucherOffer(
+        id: 'mock-voucher-artisan-1',
+        businessId: 'mock-business-crafts',
+        title: 'Demo artisan voucher',
+        validFrom: start,
+        expiresAt: end,
+        remainingStock: 100,
+      ),
+    ];
   }
 }
