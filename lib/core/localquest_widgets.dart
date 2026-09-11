@@ -411,6 +411,8 @@ class LqField extends StatelessWidget {
     this.readOnly = false,
     this.onTap,
     this.suffixIcon,
+    this.suffixWidget,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -423,6 +425,8 @@ class LqField extends StatelessWidget {
   final bool readOnly;
   final VoidCallback? onTap;
   final IconData? suffixIcon;
+  final Widget? suffixWidget;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) => TextFormField(
@@ -433,10 +437,12 @@ class LqField extends StatelessWidget {
     maxLines: maxLines,
     readOnly: readOnly,
     onTap: onTap,
+    onChanged: onChanged,
     decoration: InputDecoration(
       labelText: label,
       hintText: hint,
-      suffixIcon: suffixIcon == null ? null : Icon(suffixIcon),
+      suffixIcon:
+          suffixWidget ?? (suffixIcon == null ? null : Icon(suffixIcon)),
     ),
   );
 }

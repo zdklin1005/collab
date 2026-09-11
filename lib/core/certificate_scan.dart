@@ -3,35 +3,141 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'localquest_theme.dart';
 import 'localquest_widgets.dart';
+import 'ssm_verification.dart';
 
-/// OCR extracts candidates only; it never establishes registration authenticity.
+/// Legacy candidate extraction for backward compatibility
 String? registrationCandidate(String text) {
-  final modern = RegExp(r'\b\d{12}\b').firstMatch(text);
-  if (modern != null) return modern.group(0);
-  return RegExp(
-    r'\b(?:[A-Z]{1,3}\d{6,10}|\d{5,10})-[A-Z0-9]\b',
-  ).firstMatch(text.toUpperCase())?.group(0);
+  final analysis = SsmVerificationEngine.analyze(text: text);
+  return analysis.formattedRegistrationNumber ??
+      analysis.modernRegistrationNumber ??
+      analysis.legacyRegistrationNumber;
 }
 
 class CertificateScanButton extends StatefulWidget {
-  const CertificateScanButton({super.key, required this.onRegistration});
+  const CertificateScanButton({
+    super.key,
+    required this.onRegistration,
+    this.businessName,
+    this.onVerificationResult,
+  });
+
   final ValueChanged<String> onRegistration;
+  final String? businessName;
+  final ValueChanged<SsmAnalysisResult>? onVerificationResult;
+
   @override
   State<CertificateScanButton> createState() => _CertificateScanButtonState();
 }
 
 class _CertificateScanButtonState extends State<CertificateScanButton> {
   bool busy = false;
+
+  static const String prototypeSsmSample = '''
+SURUHANJAYA SYARIKAT MALAYSIA
+COMPANIES COMMISSION OF MALAYSIA
+PERAKUAN PENDAFTARAN
+BORANG D (KAEDAH 13)
+AKTA PENDAFTARAN PERNIAGAAN 1956
+NOMBOR PENDAFTARAN: 202403108899 (003198899-K)
+NAMA PERNIAGAAN: LOCALQUEST CAFE ENTERPRISE
+ALAMAT PERNIAGAAN: 18 JALAN BUKIT BINTANG, KUALA LUMPUR
+TARIKH MULA: 10/01/2024
+TARIKH LUPUT: 10/01/2028
+STATUS: AKTIF (SAMPLE SPECIMEN)
+''';
+
   Future<void> scan() async {
     if (busy) return;
+
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        decoration: const BoxDecoration(
+          color: LqColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCBD5E1),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Select SSM Certificate Source',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Upload an image from your device or test with a realistic Malaysian Borang D prototype sample.',
+              style: TextStyle(color: LqColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: LqColors.primarySoft,
+                foregroundColor: LqColors.primary,
+                child: Icon(Icons.photo_library_outlined),
+              ),
+              title: const Text(
+                'Upload photo from gallery',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: const Text(
+                'Select any saved or web-downloaded SSM image',
+                style: TextStyle(fontSize: 11, color: LqColors.muted),
+              ),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: LqColors.greenSoft,
+                foregroundColor: Color(0xFF42723B),
+                child: Icon(Icons.auto_awesome_outlined),
+              ),
+              title: const Text(
+                'Use prototype sample SSM certificate',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: const Text(
+                'Instant demo verification without needing an image file',
+                style: TextStyle(fontSize: 11, color: LqColors.muted),
+              ),
+              onTap: () => Navigator.pop(ctx, 'sample'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == 'sample') {
+      await _processTextAndReview(prototypeSsmSample);
+    } else if (source == 'gallery') {
+      await _scanFromGallery();
+    }
+  }
+
+  Future<void> _scanFromGallery() async {
     if (kIsWeb ||
         (defaultTargetPlatform != TargetPlatform.android &&
             defaultTargetPlatform != TargetPlatform.iOS)) {
       showLqMessage(
         context,
-        'Certificate scanning is available in the Android and iOS app. Enter details manually here.',
+        'Device photo scanning is available on Android/iOS. Using prototype sample for preview.',
       );
+      await _processTextAndReview(prototypeSsmSample);
       return;
     }
     setState(() => busy = true);
@@ -46,67 +152,12 @@ class _CertificateScanButtonState extends State<CertificateScanButton> {
         InputImage.fromFilePath(photo.path),
       );
       if (!mounted) return;
-      final candidate = registrationCandidate(result.text);
-      final accepted = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => Dialog(
-          backgroundColor: Colors.transparent,
-          child: LqCard(
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Review certificate scan',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Text is read on your device. The certificate image is not uploaded. This does not verify SSM registration or certificate authenticity.',
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    candidate == null
-                        ? 'No registration number detected. Enter it manually.'
-                        : 'Possible registration number: $candidate',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 180,
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        result.text.isEmpty
-                            ? 'No readable text. Try a sharper, well-lit photo.'
-                            : result.text,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (candidate != null)
-                    LqButton(
-                      label: 'Use this number',
-                      onPressed: () => Navigator.pop(dialogContext, true),
-                    ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext, false),
-                    child: const Text('Close'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-      if (accepted == true && candidate != null && mounted) {
-        widget.onRegistration(candidate);
-      }
+      await _processTextAndReview(result.text);
     } catch (_) {
       if (mounted) {
         showLqMessage(
           context,
-          'Could not read this certificate. Choose a clear photo or enter the details manually.',
+          'Could not read this certificate. Choose a clear photo or enter details manually.',
           error: true,
         );
       }
@@ -114,6 +165,178 @@ class _CertificateScanButtonState extends State<CertificateScanButton> {
       await recognizer.close();
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> _processTextAndReview(String text) async {
+    final analysis = SsmVerificationEngine.analyze(
+      text: text,
+      userEnteredBusinessName: widget.businessName,
+    );
+    final candidate = analysis.formattedRegistrationNumber ??
+        analysis.modernRegistrationNumber ??
+        analysis.legacyRegistrationNumber;
+
+    if (!mounted) return;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'SSM Certificate Analysis',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (analysis.isVerified)
+                      const SsmVerifiedBadge(compact: true),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: analysis.isVerified
+                        ? LqColors.greenSoft
+                        : (analysis.isExpired
+                              ? const Color(0xFFFEE2E2)
+                              : const Color(0xFFF1F5F9)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    analysis.statusExplanation,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                      color: analysis.isVerified
+                          ? const Color(0xFF2C5E26)
+                          : (analysis.isExpired
+                                ? const Color(0xFF991B1B)
+                                : LqColors.primaryDark),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (candidate != null) ...[
+                  const Text(
+                    'Detected SSM Number:',
+                    style: TextStyle(fontSize: 12, color: LqColors.muted),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    candidate,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ] else ...[
+                  const Text(
+                    'No registration number detected. Enter manually.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: LqColors.muted,
+                    ),
+                  ),
+                ],
+                if (analysis.expiryDate != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        analysis.isExpired
+                            ? Icons.warning_amber_rounded
+                            : Icons.check_circle_outline,
+                        size: 14,
+                        color: analysis.isExpired
+                            ? Colors.red
+                            : const Color(0xFF42723B),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        analysis.isExpired
+                            ? 'Expired on ${_formatDate(analysis.expiryDate)}'
+                            : 'Valid until ${_formatDate(analysis.expiryDate)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: analysis.isExpired
+                              ? Colors.red
+                              : const Color(0xFF42723B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 14),
+                const Text(
+                  'Extracted Document Text:',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: LqColors.muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 110,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      text.isEmpty
+                          ? 'No readable text found. Please upload a clear photo.'
+                          : text,
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (candidate != null)
+                  LqButton(
+                    label: analysis.isVerified
+                        ? 'Apply verified SSM number'
+                        : 'Use this number',
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (accepted == true && candidate != null && mounted) {
+      widget.onRegistration(candidate);
+      widget.onVerificationResult?.call(analysis);
+    }
+  }
+
+  static String _formatDate(DateTime? dt) {
+    if (dt == null) return '';
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
   }
 
   @override
@@ -127,7 +350,7 @@ class _CertificateScanButtonState extends State<CertificateScanButton> {
           )
         : const Icon(Icons.document_scanner_outlined),
     label: Text(
-      busy ? 'Reading certificate…' : 'Scan registration certificate',
+      busy ? 'Analyzing certificate…' : 'Scan registration certificate',
     ),
   );
 }
