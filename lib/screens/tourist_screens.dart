@@ -10,6 +10,7 @@ import '../core/localquest_widgets.dart';
 import '../core/profile_photo_editor.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
+import '../services/biometric_auth_service.dart';
 
 import 'interactive_map/interactive_map_screen.dart';
 
@@ -195,17 +196,23 @@ class TouristProfileScreen extends StatelessWidget {
                       child: _Stat(
                         label: 'Vouchers',
                         value: '${user.voucherCount}',
+                        badgeText: user.voucherCount > 0
+                            ? '${user.voucherCount > 3 ? 3 : user.voucherCount} expiring soon'
+                            : '0 expiring soon',
                         icon: Icons.confirmation_num_outlined,
                       ),
                     ),
                     const SizedBox(
-                      height: 92,
+                      height: 104,
                       child: LqDashedDivider(vertical: true),
                     ),
                     Expanded(
                       child: _Stat(
                         label: 'Reviews',
                         value: '${user.reviewCount}',
+                        badgeText: user.reviewCount > 0
+                            ? 'Top 8% storyteller'
+                            : 'Top storyteller',
                         icon: Icons.star_border,
                       ),
                     ),
@@ -225,21 +232,53 @@ class TouristProfileScreen extends StatelessWidget {
                 icon: Icons.confirmation_num_outlined,
                 title: 'My vouchers',
                 subtitle: '${user.voucherCount} ready to use',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'My vouchers',
+                  eyebrow: 'Rewards',
+                  icon: Icons.confirmation_num_outlined,
+                  message:
+                      'You currently have ${user.voucherCount} voucher${user.voucherCount == 1 ? '' : 's'} ready in your passport. Present active voucher barcodes in-store to participating local merchants.',
+                ),
               ),
               _JourneyItem(
                 icon: Icons.star_outline,
                 title: 'Reviews & ratings',
                 subtitle: '${user.reviewCount} posted',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'Reviews & ratings',
+                  eyebrow: 'Storyteller',
+                  icon: Icons.star_outline,
+                  message:
+                      'You have contributed ${user.reviewCount} verified review${user.reviewCount == 1 ? '' : 's'}. Reviews can only be posted after visiting physical merchant checkpoints to safeguard authentic feedback.',
+                ),
               ),
-              const _JourneyItem(
+              _JourneyItem(
                 icon: Icons.auto_awesome_outlined,
                 title: 'Missions',
-                subtitle: 'View current progress',
+                subtitle: '2 in progress',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'Dynamic Missions',
+                  eyebrow: 'Side quests',
+                  icon: Icons.auto_awesome_outlined,
+                  message:
+                      '2 location missions currently in progress! Complete heritage photo check-ins and merchant explorations to earn bonus experience points.',
+                ),
               ),
-              const _JourneyItem(
+              _JourneyItem(
                 icon: Icons.calendar_month_outlined,
                 title: 'Daily check-in',
                 subtitle: 'Keep your streak',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'Daily check-in streak',
+                  eyebrow: 'Activity',
+                  icon: Icons.calendar_month_outlined,
+                  message:
+                      'Daily check-ins reward +100 EXP every day. Log in each day during your Visit Malaysia exploration to maintain your multiplier streak!',
+                ),
               ),
               _JourneyItem(
                 icon: Icons.history,
@@ -266,10 +305,17 @@ class TouristProfileScreen extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.icon});
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.badgeText,
+  });
   final String label;
   final String value;
   final IconData icon;
+  final String? badgeText;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(18),
@@ -288,7 +334,80 @@ class _Stat extends StatelessWidget {
           value,
           style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
         ),
+        if (badgeText != null && badgeText!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            badgeText!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: LqColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ],
+    ),
+  );
+}
+
+void _showJourneySheet(
+  BuildContext context, {
+  required String title,
+  required String eyebrow,
+  required IconData icon,
+  required String message,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      decoration: const BoxDecoration(
+        color: LqColors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFCBD5E1),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          LqTitleBlock(eyebrow: eyebrow, title: title),
+          const SizedBox(height: 16),
+          LqCard(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  backgroundColor: LqColors.primarySoft,
+                  foregroundColor: LqColors.primary,
+                  child: Icon(icon),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: LqColors.muted,
+                      height: 1.5,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -712,6 +831,37 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   final _next = TextEditingController();
   final _confirm = TextEditingController();
   bool _busy = false;
+  bool _biometricsEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricState();
+  }
+
+  Future<void> _loadBiometricState() async {
+    final enabled = await BiometricAuthService.instance.isEnabled();
+    if (mounted) setState(() => _biometricsEnabled = enabled);
+  }
+
+  Future<void> _toggleBiometrics(bool value) async {
+    if (value) {
+      final authenticated = await BiometricAuthService.instance.authenticate(
+        localizedReason:
+            'Verify biometric identity to enable biometric sign-in',
+      );
+      if (!authenticated) return;
+    }
+    await BiometricAuthService.instance.setEnabled(value);
+    if (mounted) {
+      setState(() => _biometricsEnabled = value);
+      showLqMessage(
+        context,
+        value ? 'Biometric sign-in enabled.' : 'Biometric sign-in disabled.',
+      );
+    }
+  }
+
   @override
   void dispose() {
     _current.dispose();
@@ -745,6 +895,33 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
         busy: _busy,
         icon: Icons.lock_outline,
         onPressed: _save,
+      ),
+      const SizedBox(height: 28),
+      const Divider(),
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Biometric sign-in',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Use fingerprint or Face ID for quicker sign in.',
+                  style: TextStyle(color: LqColors.muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _biometricsEnabled,
+            onChanged: _toggleBiometrics,
+          ),
+        ],
       ),
     ],
   );

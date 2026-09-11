@@ -76,7 +76,9 @@ class Business {
     required this.category,
     required this.address,
     required this.phone,
+    this.area = '',
     this.registrationNumber = '',
+    this.verificationStatus = 'unverified',
     this.photoUrl,
     this.photoPublicId,
     this.active = true,
@@ -90,12 +92,16 @@ class Business {
   final String category;
   final String address;
   final String phone;
+  final String area;
   final String registrationNumber;
+  final String verificationStatus; // 'unverified', 'pending_review', 'verified'
   final String? photoUrl;
   final String? photoPublicId;
   final bool active;
   final double? latitude;
   final double? longitude;
+
+  bool get isSsmVerified => verificationStatus == 'verified';
 
   factory Business.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -106,7 +112,9 @@ class Business {
       category: data['category'] as String? ?? 'Other',
       address: data['address'] as String? ?? '',
       phone: data['phone'] as String? ?? '',
+      area: data['area'] as String? ?? data['city'] as String? ?? '',
       registrationNumber: data['registrationNumber'] as String? ?? '',
+      verificationStatus: data['verificationStatus'] as String? ?? 'unverified',
       photoUrl: data['photoUrl'] as String?,
       photoPublicId: data['photoPublicId'] as String?,
       active: data['active'] as bool? ?? true,

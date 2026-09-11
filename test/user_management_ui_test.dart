@@ -554,4 +554,99 @@ void main() {
     await tester.pumpAndSettle();
     expect(signedOut, isFalse);
   });
+
+  testWidgets(
+    'merchant overview splits campaigns into recent ads and latest vouchers',
+    (tester) async {
+      const business = Business(
+        id: 'b1',
+        ownerId: 'merchant-1',
+        name: 'Bukit Bintang Cafe',
+        category: 'Cafe',
+        address: '10 Jalan Bukit Bintang',
+        area: 'Bukit Bintang',
+        phone: '0312345678',
+      );
+      final campaigns = [
+        Campaign(
+          id: 'ad-1',
+          ownerId: merchant.id,
+          businessId: business.id,
+          name: 'Summer Drink Special',
+          description: '50% off seasonal mango cooler',
+          type: 'ad',
+          status: 'active',
+          views: 120,
+          startDate: DateTime(2026, 6, 1),
+          endDate: DateTime(2026, 8, 31),
+        ),
+        Campaign(
+          id: 'v-1',
+          ownerId: merchant.id,
+          businessId: business.id,
+          name: 'RM10 Welcome Voucher',
+          description: 'Save RM10 on any pastry combo',
+          type: 'voucher',
+          status: 'active',
+          claims: 42,
+          startDate: DateTime(2026, 6, 1),
+          endDate: DateTime(2026, 12, 31),
+        ),
+      ];
+
+      await tester.pumpWidget(
+        app(
+          MerchantOverview(
+            user: merchant,
+            business: business,
+            openCampaigns: () {},
+            campaignStream: Stream.value(campaigns),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('RECENT ADS'), findsOneWidget);
+      expect(find.text('Summer Drink Special'), findsWidgets);
+      expect(find.text('LATEST VOUCHERS'), findsOneWidget);
+      expect(find.text('RM10 Welcome Voucher'), findsOneWidget);
+      expect(find.text('42 claimed · ACTIVE'), findsOneWidget);
+    },
+  );
+
+  testWidgets('business editor exposes area / city field', (tester) async {
+    await tester.pumpWidget(app(const BusinessEditor(user: merchant)));
+    expect(find.text('Area / city'), findsOneWidget);
+    expect(
+      find.widgetWithText(LqField, 'Area / city'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'tourist profile displays stat subtitle badges and opens journey bottom sheets',
+    (tester) async {
+      await tester.pumpWidget(app(const TouristProfileScreen(user: tourist)));
+
+      expect(find.text('3 expiring soon'), findsOneWidget);
+      expect(find.text('Top 8% storyteller'), findsOneWidget);
+
+      await tester.tap(find.text('My vouchers'));
+      await tester.pumpAndSettle();
+      expect(find.text('REWARDS'), findsOneWidget);
+      expect(
+        find.textContaining('You currently have 3 vouchers ready in your passport'),
+        findsOneWidget,
+      );
+
+      Navigator.pop(tester.element(find.text('REWARDS')));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Missions'));
+      await tester.tap(find.text('Missions'));
+      await tester.pumpAndSettle();
+      expect(find.text('SIDE QUESTS'), findsOneWidget);
+      expect(find.text('Dynamic Missions'), findsOneWidget);
+    },
+  );
 }

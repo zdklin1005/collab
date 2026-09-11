@@ -10,6 +10,7 @@ import '../core/localquest_location.dart';
 import '../core/localquest_widgets.dart';
 import '../core/merchant_validation.dart';
 import '../core/certificate_scan.dart';
+import '../core/ssm_verification.dart';
 import '../core/business_photo_field.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
@@ -88,16 +89,19 @@ class MerchantOverview extends StatelessWidget {
     required this.user,
     required this.business,
     required this.openCampaigns,
+    this.campaignStream,
   });
   final AppUser user;
   final Business? business;
   final VoidCallback openCampaigns;
+  final Stream<List<Campaign>>? campaignStream;
   @override
   Widget build(BuildContext context) => StreamBuilder<List<Campaign>>(
-    stream: MerchantRepository.instance.campaigns(
-      user.id,
-      businessId: business?.id,
-    ),
+    stream: campaignStream ??
+        MerchantRepository.instance.campaigns(
+          user.id,
+          businessId: business?.id,
+        ),
     builder: (context, snapshot) {
       final campaigns = snapshot.data ?? [];
       final active = campaigns
@@ -105,6 +109,10 @@ class MerchantOverview extends StatelessWidget {
           .toList();
       final views = campaigns.fold<int>(0, (sum, item) => sum + item.views);
       final claims = campaigns.fold<int>(0, (sum, item) => sum + item.claims);
+      final recentAds =
+          campaigns.where((item) => item.type == 'ad').take(4).toList();
+      final latestVouchers =
+          campaigns.where((item) => item.type == 'voucher').take(4).toList();
       return Stack(
         fit: StackFit.expand,
         children: [
@@ -119,9 +127,17 @@ class MerchantOverview extends StatelessWidget {
                 ),
                 if (business != null) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    business!.name,
-                    style: monoLabel.copyWith(color: LqColors.primary),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      Text(
+                        business!.name,
+                        style: monoLabel.copyWith(color: LqColors.primary),
+                      ),
+                      if (business!.isSsmVerified)
+                        const SsmVerifiedBadge(compact: true),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 28),
@@ -210,17 +226,16 @@ class MerchantOverview extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 28),
-                Text('RECENT CAMPAIGNS', style: monoLabel),
+                Text('RECENT ADS', style: monoLabel),
                 const SizedBox(height: 10),
                 LqCard(
-                  child: campaigns.isEmpty
+                  child: recentAds.isEmpty
                       ? const Text(
-                          'Your campaigns will appear here.',
+                          'No promotional ads yet.',
                           style: TextStyle(color: LqColors.muted),
                         )
                       : Column(
-                          children: campaigns
-                              .take(4)
+                          children: recentAds
                               .map(
                                 (item) => ListTile(
                                   contentPadding: EdgeInsets.zero,
@@ -236,7 +251,9 @@ class MerchantOverview extends StatelessWidget {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    '${item.status.toUpperCase()} · ${item.views} views',
+                                    item.status == 'scheduled'
+                                        ? 'Scheduled · Starts ${DateFormat('d MMM').format(item.startDate)}'
+                                        : '${item.status.toUpperCase()} · ${item.views} views',
                                     style: const TextStyle(
                                       color: LqColors.muted,
                                       fontSize: 12,
@@ -250,6 +267,56 @@ class MerchantOverview extends StatelessWidget {
                                         user: user,
                                         businessId: business?.id ?? '',
                                         campaign: item,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                ),
+                const SizedBox(height: 24),
+                Text('LATEST VOUCHERS', style: monoLabel),
+                const SizedBox(height: 10),
+                LqCard(
+                  child: latestVouchers.isEmpty
+                      ? const Text(
+                          'No vouchers yet.',
+                          style: TextStyle(color: LqColors.muted),
+                        )
+                      : Column(
+                          children: latestVouchers
+                              .map(
+                                (item) => ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const CircleAvatar(
+                                    backgroundColor: LqColors.greenSoft,
+                                    foregroundColor: Color(0xFF42723B),
+                                    child:
+                                        Icon(Icons.confirmation_num_outlined),
+                                  ),
+                                  title: Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    '${item.claims} claimed · ${item.status.toUpperCase()}',
+                                    style: const TextStyle(
+                                      color: LqColors.muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CampaignEditor(
+                                        user: user,
+                                        businessId: business?.id ?? '',
+                                        campaign: item,
+                                        initialType: 'voucher',
                                       ),
                                     ),
                                   ),
@@ -1438,17 +1505,31 @@ class BusinessRegistrationsScreen extends StatelessWidget {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        item.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 14,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              item.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                          if (item.isSsmVerified) ...[
+                                            const SizedBox(width: 6),
+                                            const SsmVerifiedBadge(
+                                              compact: true,
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                       Text(
-                                        item.address,
+                                        item.area.isNotEmpty
+                                            ? item.area
+                                            : item.address,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
@@ -1585,6 +1666,7 @@ class _BusinessEditorState extends State<BusinessEditor> {
   late final _address = TextEditingController(
     text: widget.business?.address ?? '',
   );
+  late final _area = TextEditingController(text: widget.business?.area ?? '');
   late final _phone = TextEditingController(text: widget.business?.phone ?? '');
   late LqLocation? _location =
       widget.business?.latitude == null || widget.business?.longitude == null
@@ -1594,6 +1676,8 @@ class _BusinessEditorState extends State<BusinessEditor> {
           longitude: widget.business!.longitude!,
         );
   late bool active = widget.business?.active ?? true;
+  late String _verificationStatus =
+      widget.business?.verificationStatus ?? 'unverified';
   bool busy = false;
 
   @override
@@ -1602,6 +1686,7 @@ class _BusinessEditorState extends State<BusinessEditor> {
     _category.dispose();
     _registration.dispose();
     _address.dispose();
+    _area.dispose();
     _phone.dispose();
     super.dispose();
   }
@@ -1655,9 +1740,22 @@ class _BusinessEditorState extends State<BusinessEditor> {
                   ),
                   const SizedBox(height: 8),
                   CertificateScanButton(
+                    businessName: _name.text,
                     onRegistration: (number) =>
                         setState(() => _registration.text = number),
+                    onVerificationResult: (result) {
+                      setState(() {
+                        _verificationStatus = result.status;
+                      });
+                    },
                   ),
+                  if (_verificationStatus == 'verified') ...[
+                    const SizedBox(height: 8),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: SsmVerifiedBadge(),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   LqAddressField(
                     controller: _address,
@@ -1666,6 +1764,12 @@ class _BusinessEditorState extends State<BusinessEditor> {
                         MerchantValidation.text(v, 'Address', 10, 500),
                     initialLocation: _location,
                     onLocationChanged: (value) => _location = value,
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _area,
+                    label: 'Area / city',
+                    hint: 'e.g. Bukit Bintang, Kuala Lumpur',
                   ),
                   const SizedBox(height: 16),
                   LqField(
@@ -1746,8 +1850,10 @@ class _BusinessEditorState extends State<BusinessEditor> {
           name: _name.text,
           category: _category.text,
           address: _address.text,
+          area: _area.text,
           phone: _phone.text,
           registrationNumber: _registration.text,
+          verificationStatus: _verificationStatus,
           active: active,
           latitude: _location?.latitude,
           longitude: _location?.longitude,

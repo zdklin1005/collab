@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/password_field.dart';
 
 import '../core/localquest_theme.dart';
 import '../core/localquest_location.dart';
 import '../core/localquest_widgets.dart';
+import '../core/input_validators.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
+import '../services/biometric_auth_service.dart';
 
 class AccountTypeScreen extends StatelessWidget {
   const AccountTypeScreen({super.key, this.registration = false});
@@ -203,6 +206,58 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
+  bool _canUseBiometrics = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initBiometrics();
+  }
+
+  Future<void> _initBiometrics() async {
+    final supported = await BiometricAuthService.instance.isSupported();
+    final enabled = await BiometricAuthService.instance.isEnabled();
+    if (!supported || !enabled) return;
+
+    final lastUser = await BiometricAuthService.instance.getLastUser();
+    if (mounted) {
+      setState(() {
+        _canUseBiometrics = true;
+        if (_email.text.isEmpty && lastUser?['email'] != null) {
+          _email.text = lastUser!['email']!;
+        }
+      });
+    }
+  }
+
+  Future<void> _signInWithBiometrics() async {
+    setState(() => _busy = true);
+    try {
+      final success = await BiometricAuthService.instance.authenticate(
+        localizedReason: 'Sign in to LocalQuest with your biometrics',
+      );
+      if (!success) return;
+
+      final lastUser = await BiometricAuthService.instance.getLastUser();
+      final email = lastUser?['email'] ?? _email.text.trim();
+      if (email.isEmpty) {
+        if (mounted) {
+          showLqMessage(
+            context,
+            'Please sign in with password once before using biometrics.',
+            error: true,
+          );
+        }
+        return;
+      }
+      if (mounted) {
+        showLqMessage(context, 'Biometric identity verified.');
+        Navigator.popUntil(context, (route) => route.isFirst);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -308,6 +363,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           icon: Icons.login,
                           onPressed: _submit,
                         ),
+                        if (_canUseBiometrics) ...[
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : _signInWithBiometrics,
+                            icon: const Icon(
+                              Icons.fingerprint,
+                              color: LqColors.primary,
+                            ),
+                            label: const Text('Sign in with biometrics'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
+                              side: const BorderSide(color: LqColors.primary),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         Wrap(
                           alignment: WrapAlignment.center,
@@ -356,6 +426,10 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _password.text,
         expectedRole: widget.role,
       );
+      await BiometricAuthService.instance.saveLastUser(
+        email: _email.text.trim(),
+        role: widget.role.name,
+      );
       if (mounted) {
         showLqMessage(context, 'Welcome back to LocalQuest!');
         Navigator.popUntil(context, (route) => route.isFirst);
@@ -391,10 +465,22 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _busy = false;
   LqLocation? _businessLocation;
 
+  Timer? _usernameDebounce;
+  bool _isCheckingUsername = false;
+  bool? _isUsernameAvailable;
+  String? _usernameError;
+
+  Timer? _emailDebounce;
+  bool _isCheckingEmail = false;
+  bool? _isEmailAvailable;
+  String? _emailError;
+
   bool get merchant => widget.role == AccountRole.merchant;
 
   @override
   void dispose() {
+    _usernameDebounce?.cancel();
+    _emailDebounce?.cancel();
     for (final controller in [
       _name,
       _username,
@@ -411,6 +497,62 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
+  void _onUsernameChanged(String value) {
+    _usernameDebounce?.cancel();
+    final formatError = LqInputValidators.validateUsernameFormat(value);
+    if (formatError != null) {
+      setState(() {
+        _usernameError = formatError;
+        _isCheckingUsername = false;
+        _isUsernameAvailable = null;
+      });
+      return;
+    }
+    setState(() {
+      _isCheckingUsername = true;
+      _usernameError = null;
+    });
+    _usernameDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final available =
+          await LqInputValidators.checkUsernameAvailability(value);
+      if (!mounted) return;
+      setState(() {
+        _isCheckingUsername = false;
+        _isUsernameAvailable = available;
+        _usernameError = available ? null : 'Username is already taken.';
+      });
+      _form.currentState?.validate();
+    });
+  }
+
+  void _onEmailChanged(String value) {
+    _emailDebounce?.cancel();
+    final formatError = LqInputValidators.validateEmailFormat(value);
+    if (formatError != null) {
+      setState(() {
+        _emailError = formatError;
+        _isCheckingEmail = false;
+        _isEmailAvailable = null;
+      });
+      return;
+    }
+    setState(() {
+      _isCheckingEmail = true;
+      _emailError = null;
+    });
+    _emailDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final available = await LqInputValidators.checkEmailAvailability(value);
+      if (!mounted) return;
+      setState(() {
+        _isCheckingEmail = false;
+        _isEmailAvailable = available;
+        _emailError =
+            available ? null : 'An account with this email already exists.';
+      });
+      _form.currentState?.validate();
+    });
+  }
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SingleChildScrollView(
@@ -424,6 +566,7 @@ class _SignupScreenState extends State<SignupScreen> {
             padding: EdgeInsets.zero,
             child: Form(
               key: _form,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 children: [
                   Padding(
@@ -497,15 +640,53 @@ class _SignupScreenState extends State<SignupScreen> {
           controller: _address,
           label: 'Primary business address',
           initialLocation: _businessLocation,
-          onLocationChanged: (value) => _businessLocation = value,
-          validator: _required,
+          onLocationChanged: (value) =>
+              setState(() => _businessLocation = value),
+          validator: LqInputValidators.validateAddressFormat,
         ),
+        if (_businessLocation != null &&
+            LqInputValidators.isWithinMalaysia(
+              _businessLocation!.latitude,
+              _businessLocation!.longitude,
+            )) ...[
+          const SizedBox(height: 6),
+          const Row(
+            children: [
+              Icon(Icons.location_on, size: 14, color: Color(0xFF42723B)),
+              SizedBox(width: 4),
+              Text(
+                'Verified Malaysian location',
+                style: TextStyle(
+                  color: Color(0xFF42723B),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
       ] else ...[
         LqField(
           controller: _username,
           label: 'Username',
           hint: '@aisharoams',
-          validator: _required,
+          onChanged: _onUsernameChanged,
+          suffixWidget: _isCheckingUsername
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : (_isUsernameAvailable == true
+                    ? const Icon(Icons.check_circle, color: Color(0xFF42723B))
+                    : (_usernameError != null
+                          ? const Icon(Icons.error_outline, color: Colors.red)
+                          : null)),
+          validator: (v) =>
+              LqInputValidators.validateUsernameFormat(v) ?? _usernameError,
         ),
         const SizedBox(height: 16),
         LqField(
@@ -535,7 +716,23 @@ class _SignupScreenState extends State<SignupScreen> {
         controller: _email,
         label: 'Email address',
         keyboardType: TextInputType.emailAddress,
-        validator: _required,
+        onChanged: _onEmailChanged,
+        suffixWidget: _isCheckingEmail
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : (_isEmailAvailable == true
+                  ? const Icon(Icons.check_circle, color: Color(0xFF42723B))
+                  : (_emailError != null
+                        ? const Icon(Icons.error_outline, color: Colors.red)
+                        : null)),
+        validator: (v) =>
+            LqInputValidators.validateEmailFormat(v) ?? _emailError,
       ),
       const SizedBox(height: 16),
       LqNewPasswordField(controller: _password),
