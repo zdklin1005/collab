@@ -11,6 +11,8 @@ import '../../models/reward_marker.dart';
 import '../../services/daily_reward_generator.dart';
 import '../../services/map_category_filter.dart';
 
+import '../../core/map_test_config.dart';
+
 class DemoMapMarkers extends StatefulWidget {
   const DemoMapMarkers({
     super.key,
@@ -53,7 +55,33 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
 
     final generated = MockMapData.createDailyRewards(now);
 
-    _rewards = generated;
+    final expiryReward = MapTestConfig.expiryRewardEnabled
+        ? MockMapData.createExpiryTestReward(now)
+        : null;
+
+    final cooldownReward = MapTestConfig.cooldownTestEnabled
+        ? MockMapData.createCooldownTestReward(now)
+        : null;
+
+    _rewards = [
+      ...generated,
+      if (expiryReward != null) expiryReward,
+      if (cooldownReward != null) cooldownReward,
+    ];
+
+    if (cooldownReward != null) {
+      debugPrint(
+        'Cooldown test: spawn=${cooldownReward.id}; '
+        'checkpoint=${cooldownReward.checkpointId}',
+      );
+    }
+
+    if (expiryReward != null) {
+      debugPrint(
+        'Expiry test reward expires at '
+        '${expiryReward.expiresAt.toLocal().toIso8601String()}',
+      );
+    }
     _generatedDay = day;
 
     debugPrint(
@@ -219,7 +247,11 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
             icon: reward.type == RewardType.exp
                 ? Icons.star_rounded
                 : Icons.confirmation_number_outlined,
-            color: reward.type == RewardType.exp
+            color: reward.id.startsWith('debug-cooldown-')
+                ? const Color(0xFF00897B)
+                : reward.id.startsWith('debug-expiry-')
+                ? const Color(0xFFDC267F)
+                : reward.type == RewardType.exp
                 ? const Color(0xFFD88A00)
                 : const Color(0xFF3267D8),
           ),
