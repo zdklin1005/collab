@@ -132,9 +132,17 @@ class AuthService {
     try {
       final last = await BiometricAuthService.instance.getLastUser();
       final lastEmail = last?['email']?.trim().toLowerCase();
+      final lastUsername = last?['username']?.trim().toLowerCase();
       if (lastEmail != null &&
           lastEmail.isNotEmpty &&
           lastEmail.contains('@')) {
+        if (lastUsername != null &&
+            lastUsername.isNotEmpty &&
+            lastUsername.replaceFirst(RegExp(r'^@'), '') ==
+                raw.toLowerCase().replaceFirst(RegExp(r'^@'), '')) {
+          await AccountIdentifierCache.cache(username: raw, email: lastEmail);
+          return lastEmail;
+        }
         final prefix = lastEmail.split('@').first.toLowerCase();
         if (prefix == raw.toLowerCase()) {
           await AccountIdentifierCache.cache(username: raw, email: lastEmail);
@@ -281,6 +289,8 @@ class AuthService {
         );
       }
       await throttle.reset(resolvedEmail);
+      BiometricAuthService.instance.markJustAuthenticated();
+      BiometricAuthService.instance.markSessionAuthenticated(profile.id);
       await AccountIdentifierCache.cache(
         username: profile.username,
         email: profile.email,
@@ -352,6 +362,8 @@ class AuthService {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      BiometricAuthService.instance.markJustAuthenticated();
+      BiometricAuthService.instance.markSessionAuthenticated(user.uid);
     } on FirebaseAuthException catch (error) {
       throw LocalQuestException(_authMessage(error));
     } on FirebaseException catch (error) {
@@ -368,6 +380,8 @@ class AuthService {
     required String address,
     required String phone,
     String area = '',
+    String postcode = '',
+    String state = '',
     double? latitude,
     double? longitude,
   }) async {
@@ -412,6 +426,8 @@ class AuthService {
         'category': category.trim(),
         'address': address.trim(),
         'area': area.trim(),
+        'postcode': postcode.trim(),
+        'state': state.trim(),
         'phone': phone.trim(),
         'registrationNumber': '',
         'active': true,
@@ -421,6 +437,8 @@ class AuthService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
       await batch.commit();
+      BiometricAuthService.instance.markJustAuthenticated();
+      BiometricAuthService.instance.markSessionAuthenticated(user.uid);
     } on FirebaseAuthException catch (error) {
       throw LocalQuestException(_authMessage(error));
     } on FirebaseException catch (error) {
@@ -753,6 +771,8 @@ class MerchantRepository {
         'category': value.category.trim(),
         'address': value.address.trim(),
         'area': value.area.trim(),
+        'postcode': value.postcode.trim(),
+        'state': value.state.trim(),
         'phone': value.phone.trim(),
         'registrationNumber': value.registrationNumber.trim(),
         'verificationStatus': value.verificationStatus,

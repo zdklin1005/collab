@@ -10,16 +10,198 @@ import 'package:latlong2/latlong.dart';
 import 'localquest_theme.dart';
 import 'localquest_widgets.dart';
 
+class MalaysianAddressComponents {
+  const MalaysianAddressComponents({
+    this.street = '',
+    this.postcode = '',
+    this.city = '',
+    this.state = '',
+    this.fullAddress = '',
+  });
+
+  final String street;
+  final String postcode;
+  final String city;
+  final String state;
+  final String fullAddress;
+
+  static const List<String> malaysianStates = [
+    'Johor',
+    'Kedah',
+    'Kelantan',
+    'Melaka',
+    'Negeri Sembilan',
+    'Pahang',
+    'Perak',
+    'Perlis',
+    'Pulau Pinang',
+    'Sabah',
+    'Sarawak',
+    'Selangor',
+    'Terengganu',
+    'Wilayah Persekutuan Kuala Lumpur',
+    'Wilayah Persekutuan Labuan',
+    'Wilayah Persekutuan Putrajaya',
+  ];
+
+  static String normalizeState(String rawState) {
+    final lower = rawState.trim().toLowerCase();
+    if (lower.isEmpty) return '';
+    if (lower.contains('kuala lumpur') || lower == 'kl') {
+      return 'Wilayah Persekutuan Kuala Lumpur';
+    }
+    if (lower.contains('putrajaya')) {
+      return 'Wilayah Persekutuan Putrajaya';
+    }
+    if (lower.contains('labuan')) {
+      return 'Wilayah Persekutuan Labuan';
+    }
+    if (lower.contains('penang') || lower.contains('pulau pinang')) {
+      return 'Pulau Pinang';
+    }
+    if (lower.contains('malacca') || lower.contains('melaka')) {
+      return 'Melaka';
+    }
+    for (final state in malaysianStates) {
+      if (state.toLowerCase() == lower || lower.contains(state.toLowerCase())) {
+        return state;
+      }
+    }
+    return rawState.trim();
+  }
+
+  static MalaysianAddressComponents parse(
+    String raw, {
+    String? explicitStreet,
+    String? explicitPostcode,
+    String? explicitCity,
+    String? explicitState,
+  }) {
+    String postcode = explicitPostcode?.trim() ?? '';
+    String state = explicitState != null && explicitState.trim().isNotEmpty
+        ? normalizeState(explicitState)
+        : '';
+    String city = explicitCity?.trim() ?? '';
+    String street = explicitStreet?.trim() ?? '';
+
+    final cleanRaw = raw.trim();
+    if (postcode.isEmpty) {
+      final match = RegExp(r'\b\d{5}\b').firstMatch(cleanRaw);
+      if (match != null) {
+        postcode = match.group(0)!;
+      }
+    }
+
+    if (state.isEmpty) {
+      for (final s in malaysianStates) {
+        if (cleanRaw.toLowerCase().contains(s.toLowerCase())) {
+          state = s;
+          break;
+        }
+      }
+      if (state.isEmpty) {
+        if (cleanRaw.toLowerCase().contains('penang')) {
+          state = 'Pulau Pinang';
+        } else if (cleanRaw.toLowerCase().contains('kuala lumpur') ||
+            RegExp(r'\bkl\b', caseSensitive: false).hasMatch(cleanRaw)) {
+          state = 'Wilayah Persekutuan Kuala Lumpur';
+        } else if (cleanRaw.toLowerCase().contains('malacca')) {
+          state = 'Melaka';
+        }
+      }
+    }
+
+    final rawParts = cleanRaw
+        .split(',')
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+
+    final filteredParts = rawParts.where((p) {
+      final l = p.toLowerCase();
+      return l != 'malaysia';
+    }).toList();
+
+    if (city.isEmpty) {
+      for (final p in filteredParts) {
+        if (state.isNotEmpty && p.toLowerCase() == state.toLowerCase()) continue;
+        if (p == postcode) continue;
+        if (p.contains(postcode)) {
+          final stripped = p.replaceAll(postcode, '').trim();
+          if (stripped.isNotEmpty) {
+            city = stripped;
+            break;
+          }
+        }
+      }
+      if (city.isEmpty && filteredParts.length >= 2) {
+        for (var i = filteredParts.length - 1; i >= 0; i--) {
+          final p = filteredParts[i];
+          if (state.isNotEmpty &&
+              (p.toLowerCase() == state.toLowerCase() ||
+                  p.toLowerCase().contains(state.toLowerCase()))) {
+            continue;
+          }
+          if (p == postcode) continue;
+          final stripped = p.replaceAll(RegExp(r'\b\d{5}\b'), '').trim();
+          if (stripped.isNotEmpty) {
+            city = stripped;
+            break;
+          }
+        }
+      }
+    }
+
+    if (street.isEmpty) {
+      final streetCandidates = <String>[];
+      for (final p in filteredParts) {
+        final l = p.toLowerCase();
+        if (state.isNotEmpty &&
+            (l == state.toLowerCase() || l.contains(state.toLowerCase()))) {
+          continue;
+        }
+        if (city.isNotEmpty &&
+            (l == city.toLowerCase() || l.contains(city.toLowerCase()))) {
+          continue;
+        }
+        if (p == postcode ||
+            p.replaceAll(RegExp(r'\b\d{5}\b'), '').trim().isEmpty) {
+          continue;
+        }
+        streetCandidates.add(p);
+      }
+      street =
+          streetCandidates.isNotEmpty ? streetCandidates.join(', ') : cleanRaw;
+    }
+
+    return MalaysianAddressComponents(
+      street: street,
+      postcode: postcode,
+      city: city,
+      state: state,
+      fullAddress: cleanRaw,
+    );
+  }
+}
+
 class LqLocation {
   const LqLocation({
     required this.latitude,
     required this.longitude,
     this.address,
+    this.street,
+    this.postcode,
+    this.city,
+    this.state,
   });
 
   final double latitude;
   final double longitude;
   final String? address;
+  final String? street;
+  final String? postcode;
+  final String? city;
+  final String? state;
 }
 
 class AddressSuggestion {
@@ -27,11 +209,19 @@ class AddressSuggestion {
     required this.label,
     required this.latitude,
     required this.longitude,
+    this.street = '',
+    this.postcode = '',
+    this.city = '',
+    this.state = '',
   });
 
   final String label;
   final double latitude;
   final double longitude;
+  final String street;
+  final String postcode;
+  final String city;
+  final String state;
 
   factory AddressSuggestion.fromPhotonFeature(Map<String, dynamic> feature) {
     final properties = Map<String, dynamic>.from(
@@ -43,14 +233,36 @@ class AddressSuggestion {
     final coordinates = List<Object?>.from(
       geometry['coordinates'] as List? ?? const [],
     );
+
+    final name = (properties['name'] as String?)?.trim() ?? '';
+    final streetName = (properties['street'] as String?)?.trim() ?? '';
+    final housenumber = (properties['housenumber'] as String?)?.trim() ?? '';
+    final postcodeVal = (properties['postcode'] as String?)?.trim() ?? '';
+    final cityVal = ((properties['city'] as String?) ??
+            (properties['district'] as String?))
+        ?.trim() ??
+        '';
+    final stateVal = (properties['state'] as String?)?.trim() ?? '';
+
+    String streetPart = '';
+    if (housenumber.isNotEmpty && streetName.isNotEmpty) {
+      streetPart = '$housenumber, $streetName';
+    } else if (streetName.isNotEmpty) {
+      streetPart = streetName;
+    } else if (name.isNotEmpty) {
+      streetPart = name;
+    }
+    if (name.isNotEmpty && streetPart.isNotEmpty && !streetPart.contains(name)) {
+      streetPart = '$name, $streetPart';
+    }
+
     final parts = <String>[
-      if (properties['name'] case final String value) value,
-      if (properties['street'] case final String value) value,
-      if (properties['housenumber'] case final String value) value,
-      if (properties['postcode'] case final String value) value,
-      if (properties['city'] case final String value) value,
-      if (properties['district'] case final String value) value,
-      if (properties['state'] case final String value) value,
+      if (name.isNotEmpty) name,
+      if (streetName.isNotEmpty && streetName != name) streetName,
+      if (housenumber.isNotEmpty) housenumber,
+      if (postcodeVal.isNotEmpty) postcodeVal,
+      if (cityVal.isNotEmpty) cityVal,
+      if (stateVal.isNotEmpty) stateVal,
       if (properties['country'] case final String value) value,
     ];
     final uniqueParts = <String>[];
@@ -60,10 +272,23 @@ class AddressSuggestion {
         uniqueParts.add(clean);
       }
     }
+    final fullLabel = uniqueParts.join(', ');
+    final parsed = MalaysianAddressComponents.parse(
+      fullLabel,
+      explicitStreet: streetPart.isNotEmpty ? streetPart : null,
+      explicitPostcode: postcodeVal.isNotEmpty ? postcodeVal : null,
+      explicitCity: cityVal.isNotEmpty ? cityVal : null,
+      explicitState: stateVal.isNotEmpty ? stateVal : null,
+    );
+
     return AddressSuggestion(
-      label: uniqueParts.join(', '),
+      label: fullLabel,
       longitude: (coordinates[0] as num).toDouble(),
       latitude: (coordinates[1] as num).toDouble(),
+      street: parsed.street,
+      postcode: parsed.postcode,
+      city: parsed.city,
+      state: parsed.state,
     );
   }
 }
@@ -136,6 +361,7 @@ class LqAddressField extends StatefulWidget {
     required this.label,
     this.initialLocation,
     this.onLocationChanged,
+    this.onAddressComponentsChanged,
     this.validator,
     this.service = const PhotonAddressService(),
   });
@@ -144,6 +370,7 @@ class LqAddressField extends StatefulWidget {
   final String label;
   final LqLocation? initialLocation;
   final ValueChanged<LqLocation?>? onLocationChanged;
+  final ValueChanged<MalaysianAddressComponents>? onAddressComponentsChanged;
   final String? Function(String?)? validator;
   final PhotonAddressService service;
 
@@ -211,12 +438,25 @@ class _LqAddressFieldState extends State<LqAddressField> {
   }
 
   void _choose(AddressSuggestion suggestion) {
+    final components = MalaysianAddressComponents.parse(
+      suggestion.label,
+      explicitStreet: suggestion.street,
+      explicitPostcode: suggestion.postcode,
+      explicitCity: suggestion.city,
+      explicitState: suggestion.state,
+    );
     final location = LqLocation(
       latitude: suggestion.latitude,
       longitude: suggestion.longitude,
       address: suggestion.label,
+      street: components.street,
+      postcode: components.postcode,
+      city: components.city,
+      state: components.state,
     );
-    widget.controller.text = suggestion.label;
+    widget.controller.text = components.street.isNotEmpty
+        ? components.street
+        : suggestion.label;
     FocusScope.of(context).unfocus();
     setState(() {
       _suggestions = const [];
@@ -224,6 +464,7 @@ class _LqAddressFieldState extends State<LqAddressField> {
       _location = location;
     });
     widget.onLocationChanged?.call(location);
+    widget.onAddressComponentsChanged?.call(components);
   }
 
   Future<void> _openMap() async {
@@ -239,13 +480,23 @@ class _LqAddressFieldState extends State<LqAddressField> {
       ),
     );
     if (result == null || !mounted) return;
-    widget.controller.text = result.address ?? widget.controller.text;
+    final components = MalaysianAddressComponents.parse(
+      result.address ?? widget.controller.text,
+      explicitStreet: result.street,
+      explicitPostcode: result.postcode,
+      explicitCity: result.city,
+      explicitState: result.state,
+    );
+    widget.controller.text = components.street.isNotEmpty
+        ? components.street
+        : (result.address ?? widget.controller.text);
     setState(() {
       _location = result;
       _suggestions = const [];
       _message = null;
     });
     widget.onLocationChanged?.call(result);
+    widget.onAddressComponentsChanged?.call(components);
   }
 
   @override
@@ -361,6 +612,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
         );
   String? _address;
   String? _addressError;
+  AddressSuggestion? _lastSuggestion;
   bool _resolvingAddress = false;
   bool _findingCurrentLocation = false;
   int _lookupRequest = 0;
@@ -384,6 +636,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
       );
       if (!mounted || request != _lookupRequest) return;
       setState(() {
+        _lastSuggestion = result;
         _address = result?.label;
         _addressError = result == null
             ? 'No nearby address was found. Move the pin and try again.'
@@ -392,6 +645,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
     } catch (_) {
       if (!mounted || request != _lookupRequest) return;
       setState(() {
+        _lastSuggestion = null;
         _address = null;
         _addressError =
             'Could not look up this address. Check your connection and retry.';
@@ -407,6 +661,7 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
     setState(() {
       _pin = point;
       _address = null;
+      _lastSuggestion = null;
     });
     _resolveAddress();
   }
@@ -449,12 +704,23 @@ class _LocationPickerSheetState extends State<_LocationPickerSheet> {
 
   void _confirm() {
     if (_address == null || _address!.isEmpty) return;
+    final components = MalaysianAddressComponents.parse(
+      _address!,
+      explicitStreet: _lastSuggestion?.street,
+      explicitPostcode: _lastSuggestion?.postcode,
+      explicitCity: _lastSuggestion?.city,
+      explicitState: _lastSuggestion?.state,
+    );
     Navigator.pop(
       context,
       LqLocation(
         latitude: _pin.latitude,
         longitude: _pin.longitude,
         address: _address,
+        street: components.street,
+        postcode: components.postcode,
+        city: components.city,
+        state: components.state,
       ),
     );
   }

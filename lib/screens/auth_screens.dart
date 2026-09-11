@@ -284,6 +284,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         LqField(
+                          key: const Key('login_password_field'),
                           controller: _password,
                           label: 'Password',
                           obscureText: true,
@@ -391,6 +392,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await BiometricAuthService.instance.saveLastUser(
         email: profile.email,
         role: widget.role.name,
+        username: profile.username,
       );
       await AccountIdentifierCache.cache(
         username: profile.username,
@@ -424,6 +426,9 @@ class _SignupScreenState extends State<SignupScreen> {
   final _birthday = TextEditingController();
   final _category = TextEditingController();
   final _address = TextEditingController();
+  final _postcode = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
@@ -454,6 +459,9 @@ class _SignupScreenState extends State<SignupScreen> {
       _birthday,
       _category,
       _address,
+      _postcode,
+      _city,
+      _state,
       _email,
       _password,
       _confirm,
@@ -608,11 +616,62 @@ class _SignupScreenState extends State<SignupScreen> {
         const SizedBox(height: 16),
         LqAddressField(
           controller: _address,
-          label: 'Primary business address',
+          label: 'Street address',
           initialLocation: _businessLocation,
           onLocationChanged: (value) =>
               setState(() => _businessLocation = value),
+          onAddressComponentsChanged: (components) {
+            setState(() {
+              if (components.postcode.isNotEmpty) {
+                _postcode.text = components.postcode;
+              }
+              if (components.city.isNotEmpty) {
+                _city.text = components.city;
+              }
+              if (components.state.isNotEmpty) {
+                _state.text = components.state;
+              }
+            });
+          },
           validator: LqInputValidators.validateAddressFormat,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: LqField(
+                controller: _postcode,
+                label: 'Postcode',
+                hint: 'e.g. 13500',
+                keyboardType: TextInputType.number,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'Required.';
+                  if (!RegExp(r'^\d{5}$').hasMatch(v.trim())) {
+                    return '5-digit code.';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: LqField(
+                controller: _city,
+                label: 'Area / city',
+                hint: 'e.g. Permatang Pauh',
+                validator: _required,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        LqDropdownField(
+          value: _state.text.isEmpty ? null : _state.text,
+          label: 'State',
+          items: MalaysianAddressComponents.malaysianStates,
+          onChanged: (value) => setState(() => _state.text = value ?? ''),
+          validator: _required,
         ),
         if (_businessLocation != null &&
             LqInputValidators.isWithinMalaysia(
@@ -705,9 +764,13 @@ class _SignupScreenState extends State<SignupScreen> {
             LqInputValidators.validateEmailFormat(v) ?? _emailError,
       ),
       const SizedBox(height: 16),
-      LqNewPasswordField(controller: _password),
+      LqNewPasswordField(
+        key: const Key('signup_password_field'),
+        controller: _password,
+      ),
       const SizedBox(height: 16),
       LqField(
+        key: const Key('signup_confirm_password_field'),
         controller: _confirm,
         label: 'Confirm password',
         obscureText: true,
@@ -764,6 +827,9 @@ class _SignupScreenState extends State<SignupScreen> {
           businessName: _name.text,
           category: _category.text,
           address: _address.text,
+          area: _city.text,
+          postcode: _postcode.text,
+          state: _state.text,
           phone: _phone.text,
           latitude: _businessLocation?.latitude,
           longitude: _businessLocation?.longitude,

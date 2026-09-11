@@ -1,4 +1,5 @@
 import 'package:collab/core/input_validators.dart';
+import 'package:collab/core/localquest_location.dart';
 import 'package:collab/core/localquest_theme.dart';
 import 'package:collab/core/localquest_widgets.dart';
 import 'package:collab/core/ssm_verification.dart';
@@ -10,6 +11,7 @@ import 'package:collab/services/biometric_auth_service.dart';
 import 'package:collab/services/localquest_services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Widget testApp(Widget home) => MaterialApp(
   theme: localQuestTheme(),
@@ -357,6 +359,43 @@ BORANG E (KAEDAH 13)
       expect(find.text('Home Content Unlocked'), findsOneWidget);
       expect(find.text('Unlock with biometrics'), findsNothing);
     });
+
+    testWidgets('BiometricGate bypasses prompt if user is session authenticated', (tester) async {
+      final mock = MockBiometricAuthService(supported: true, enabled: true, authSucceeds: false);
+      mock.markSessionAuthenticated(testTourist.id);
+      BiometricAuthService.instance = mock;
+
+      await tester.pumpWidget(
+        testApp(const BiometricGate(
+          user: testTourist,
+          child: Text('Session Authenticated Child'),
+        )),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Session Authenticated Child'), findsOneWidget);
+    });
+
+    testWidgets('BiometricGate sign out caches username and email', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final mock = MockBiometricAuthService(supported: true, enabled: true, authSucceeds: false);
+      BiometricAuthService.instance = mock;
+
+      await tester.pumpWidget(
+        testApp(BiometricGate(
+          user: testTourist,
+          onSignOut: () async {},
+          child: const Text('Home Content'),
+        )),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('biometric_gate_signout_btn')));
+      await tester.pumpAndSettle();
+
+      final cached = await AccountIdentifierCache.lookup('testtourist');
+      expect(cached, testTourist.email);
+    });
   });
 
   group('SignupScreen Real-time Validation', () {
@@ -442,6 +481,269 @@ BORANG E (KAEDAH 13)
         find.text('Could not record: Location history is disabled in Settings.'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('MalaysianAddressComponents', () {
+    test('parses full Malaysian address string into decomposed components', () {
+      const raw = '12, Lengkok Tenggiri, 13500 Permatang Pauh, Pulau Pinang, Malaysia';
+      final components = MalaysianAddressComponents.parse(raw);
+
+      expect(components.postcode, '13500');
+      expect(components.city, 'Permatang Pauh');
+      expect(components.state, 'Pulau Pinang');
+      expect(components.street, contains('Lengkok Tenggiri'));
+      expect(components.street, isNot(contains('13500')));
+      expect(components.street, isNot(contains('Malaysia')));
+    });
+
+    test('normalizes state names and aliases', () {
+      expect(MalaysianAddressComponents.normalizeState('penang'), 'Pulau Pinang');
+      expect(MalaysianAddressComponents.normalizeState('KL'), 'Wilayah Persekutuan Kuala Lumpur');
+      expect(MalaysianAddressComponents.normalizeState('Kuala Lumpur'), 'Wilayah Persekutuan Kuala Lumpur');
+      expect(MalaysianAddressComponents.normalizeState('Melaka'), 'Melaka');
+      expect(MalaysianAddressComponents.normalizeState('Selangor'), 'Selangor');
+    });
+
+    test('retains explicit components when provided', () {
+      final components = MalaysianAddressComponents.parse(
+        'Some Raw Address',
+        explicitStreet: 'Jalan Tun Razak',
+        explicitPostcode: '50400',
+        explicitCity: 'Kuala Lumpur',
+        explicitState: 'Wilayah Persekutuan Kuala Lumpur',
+      );
+
+      expect(components.street, 'Jalan Tun Razak');
+      expect(components.postcode, '50400');
+      expect(components.city, 'Kuala Lumpur');
+      expect(components.state, 'Wilayah Persekutuan Kuala Lumpur');
+    });
+  });
+
+  group('HelpCentreScreen and PrivacyScreen role awareness', () {
+    testWidgets('HelpCentreScreen shows merchant FAQs for merchant role', (tester) async {
+      await tester.pumpWidget(testApp(const HelpCentreScreen(role: AccountRole.merchant)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('MERCHANT SUPPORT'), findsOneWidget);
+      expect(find.text('How do I verify my SSM registration?'), findsOneWidget);
+      expect(find.text('How do campaigns and advertisements work?'), findsOneWidget);
+    });
+
+    testWidgets('HelpCentreScreen shows tourist FAQs for tourist role', (tester) async {
+      await tester.pumpWidget(testApp(const HelpCentreScreen(role: AccountRole.tourist)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('SUPPORT'), findsOneWidget);
+      expect(find.text('How does automatic place logging work?'), findsOneWidget);
+    });
+
+    testWidgets('PrivacyScreen displays merchant specifics for merchant role', (tester) async {
+      await tester.pumpWidget(testApp(const PrivacyScreen(role: AccountRole.merchant)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('MERCHANT PRIVACY'), findsOneWidget);
+      expect(find.textContaining('SSM certificates'), findsOneWidget);
+    });
+  });
+
+  group('Password Visibility Toggling Across All Screens', () {
+    testWidgets('LqField toggles obscureText and switches tooltip between Show and Hide password', (tester) async {
+      final controller = TextEditingController(text: 'MySecretPassword123');
+      await tester.pumpWidget(
+        testApp(LqField(
+          key: const Key('test_pwd_field'),
+          controller: controller,
+          label: 'Password',
+          obscureText: true,
+        )),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially obscured
+      final textFieldFinder = find.descendant(
+        of: find.byKey(const Key('test_pwd_field')),
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isTrue);
+      expect(find.byTooltip('Show password'), findsOneWidget);
+
+      // Tap Show password
+      await tester.tap(find.byTooltip('Show password'));
+      await tester.pumpAndSettle();
+
+      // Now revealed
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isFalse);
+      expect(find.byTooltip('Hide password'), findsOneWidget);
+
+      // Tap Hide password
+      await tester.tap(find.byTooltip('Hide password'));
+      await tester.pumpAndSettle();
+
+      // Obscured again
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isTrue);
+      expect(find.byTooltip('Show password'), findsOneWidget);
+    });
+
+    testWidgets('LoginScreen password field toggles visibility', (tester) async {
+      await tester.pumpWidget(testApp(const LoginScreen(role: AccountRole.tourist)));
+      await tester.pumpAndSettle();
+
+      final pwdField = find.byKey(const Key('login_password_field'));
+      expect(pwdField, findsOneWidget);
+
+      final textFieldFinder = find.descendant(
+        of: pwdField,
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isTrue);
+
+      final showBtn = find.descendant(
+        of: pwdField,
+        matching: find.byTooltip('Show password'),
+      );
+      expect(showBtn, findsOneWidget);
+
+      await tester.tap(showBtn);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isFalse);
+      expect(find.descendant(of: pwdField, matching: find.byTooltip('Hide password')), findsOneWidget);
+    });
+
+    testWidgets('EmailAddressScreen current password field toggles visibility', (tester) async {
+      await tester.pumpWidget(testApp(const EmailAddressScreen(currentEmail: 'tourist@localquest.test')));
+      await tester.pumpAndSettle();
+
+      final pwdField = find.byKey(const Key('change_email_password_field'));
+      expect(pwdField, findsOneWidget);
+
+      final textFieldFinder = find.descendant(
+        of: pwdField,
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isTrue);
+
+      await tester.tap(find.descendant(of: pwdField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isFalse);
+    });
+
+    testWidgets('SignupScreen confirm password field toggles visibility', (tester) async {
+      await tester.pumpWidget(testApp(const SignupScreen(role: AccountRole.tourist)));
+      await tester.pumpAndSettle();
+
+      // Step 1: name, username, phone, birthday -> Continue
+      await tester.enterText(find.widgetWithText(LqField, 'Full name'), 'Test User');
+      await tester.enterText(find.widgetWithText(LqField, 'Username'), 'newuser99');
+      await tester.enterText(find.widgetWithText(LqField, 'Phone number'), '0123456789');
+      await tester.enterText(find.widgetWithText(LqField, 'Birthday'), '1995-05-15');
+      final continueBtn = find.text('Continue');
+      await tester.ensureVisible(continueBtn);
+      await tester.tap(continueBtn);
+      await tester.pumpAndSettle();
+
+      final confirmField = find.byKey(const Key('signup_confirm_password_field'));
+      expect(confirmField, findsOneWidget);
+
+      final textFieldFinder = find.descendant(
+        of: confirmField,
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isTrue);
+
+      await tester.tap(find.descendant(of: confirmField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isFalse);
+    });
+
+    testWidgets('PasswordSecurityScreen current, new, and confirm fields toggle visibility', (tester) async {
+      await tester.pumpWidget(testApp(const PasswordSecurityScreen()));
+      await tester.pumpAndSettle();
+
+      // 1. Current password field
+      final currentField = find.byKey(const Key('change_password_current_field'));
+      expect(currentField, findsOneWidget);
+      final currentText = find.descendant(of: currentField, matching: find.byType(TextField));
+      expect(tester.widget<TextField>(currentText).obscureText, isTrue);
+      await tester.tap(find.descendant(of: currentField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(currentText).obscureText, isFalse);
+
+      // 2. New password field
+      final newField = find.byKey(const Key('change_password_new_field'));
+      expect(newField, findsOneWidget);
+      final newText = find.descendant(of: newField, matching: find.byType(TextField));
+      expect(tester.widget<TextField>(newText).obscureText, isTrue);
+      await tester.tap(find.descendant(of: newField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(newText).obscureText, isFalse);
+
+      // 3. Confirm password field
+      final confirmField = find.byKey(const Key('change_password_confirm_field'));
+      expect(confirmField, findsOneWidget);
+      final confirmText = find.descendant(of: confirmField, matching: find.byType(TextField));
+      expect(tester.widget<TextField>(confirmText).obscureText, isTrue);
+      await tester.tap(find.descendant(of: confirmField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(confirmText).obscureText, isFalse);
+    });
+
+    testWidgets('PrivacyScreen delete account modal toggles current password visibility', (tester) async {
+      await tester.pumpWidget(testApp(const PrivacyScreen(role: AccountRole.tourist)));
+      await tester.pumpAndSettle();
+
+      // Scroll to delete account button and tap it
+      final deleteBtn = find.text('Delete account');
+      await tester.ensureVisible(deleteBtn);
+      await tester.tap(deleteBtn);
+      await tester.pumpAndSettle();
+
+      final modalPwdField = find.byKey(const Key('delete_account_password_field'));
+      expect(modalPwdField, findsOneWidget);
+
+      final textFieldFinder = find.descendant(
+        of: modalPwdField,
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isTrue);
+
+      await tester.tap(find.descendant(of: modalPwdField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(textFieldFinder).obscureText, isFalse);
+    });
+
+    testWidgets('BiometricGate password modal toggles password visibility', (tester) async {
+      final mock = MockBiometricAuthService(supported: true, enabled: true, authSucceeds: false);
+      BiometricAuthService.instance = mock;
+
+      await tester.pumpWidget(
+        testApp(BiometricGate(
+          user: testTourist,
+          onSignOut: () async {},
+          child: const Text('Home Content'),
+        )),
+      );
+      await tester.pumpAndSettle();
+
+      // Open password unlock modal
+      final pwdOption = find.text('Proceed to log in with password');
+      expect(pwdOption, findsOneWidget);
+      await tester.tap(pwdOption);
+      await tester.pumpAndSettle();
+
+      final pwdField = find.byKey(const Key('biometric_gate_password_field'));
+      expect(pwdField, findsOneWidget);
+      expect(tester.widget<TextField>(pwdField).obscureText, isTrue);
+
+      await tester.tap(find.descendant(of: pwdField, matching: find.byTooltip('Show password')));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<TextField>(pwdField).obscureText, isFalse);
     });
   });
 }

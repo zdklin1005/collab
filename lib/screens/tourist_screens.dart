@@ -544,7 +544,9 @@ class SettingsScreen extends StatelessWidget {
               subtitle: 'Answers for your LocalQuest account',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const HelpCentreScreen()),
+                MaterialPageRoute(
+                  builder: (_) => HelpCentreScreen(role: user.role),
+                ),
               ),
             ),
             _SettingTile(
@@ -553,7 +555,9 @@ class SettingsScreen extends StatelessWidget {
               subtitle: 'Manage your data and permissions',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+                MaterialPageRoute(
+                  builder: (_) => PrivacyScreen(role: user.role),
+                ),
               ),
             ),
           ]),
@@ -1402,23 +1406,43 @@ class VisitedPlacesScreen extends StatelessWidget {
 }
 
 class HelpCentreScreen extends StatefulWidget {
-  const HelpCentreScreen({super.key});
+  const HelpCentreScreen({super.key, this.role});
+  final AccountRole? role;
+
   @override
   State<HelpCentreScreen> createState() => _HelpCentreScreenState();
 }
 
 class _HelpCentreScreenState extends State<HelpCentreScreen> {
   final _query = TextEditingController();
-  final faqs = const {
-    'How does automatic place logging work?':
-        'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
-    'How do I redeem a voucher?':
-        'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
-    'Why is my check-in not showing?':
-        'Check location permission and network access, then reopen the app near the registered location.',
-    'Can I use one account as a Tourist and Merchant?':
-        'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
-  };
+
+  Map<String, String> get faqs {
+    if (widget.role == AccountRole.merchant) {
+      return const {
+        'How do I verify my SSM registration?':
+            'Open the business editor, tap "Scan SSM registration certificate" or enter your 12-digit SSM number to request verification.',
+        'How do campaigns and advertisements work?':
+            'Active businesses can create ads and campaigns to reach nearby tourists and attract visitors to your location.',
+        'How do customers redeem vouchers at my business?':
+            'Tourists present an active redemption screen in Rewards. Check their redemption code and apply the offer.',
+        'How do I adjust my business entrance pin on the map?':
+            'Open your business listing, tap "Street address", and use "Pin location on map" to set the exact storefront location.',
+        'Can I use one account as a Tourist and Merchant?':
+            'Tourist and Merchant accounts are separate so that business operations and personal travel activity remain distinct.',
+      };
+    }
+    return const {
+      'How does automatic place logging work?':
+          'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
+      'How do I redeem a voucher?':
+          'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
+      'Why is my check-in not showing?':
+          'Check location permission and network access, then reopen the app near the registered location.',
+      'Can I use one account as a Tourist and Merchant?':
+          'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _query.text.toLowerCase();
@@ -1433,10 +1457,14 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
           children: [
             const LqBackButton(label: 'Back to settings'),
             const SizedBox(height: 14),
-            const LqTitleBlock(
-              eyebrow: 'Support',
+            LqTitleBlock(
+              eyebrow: widget.role == AccountRole.merchant
+                  ? 'Merchant support'
+                  : 'Support',
               title: 'Help centre',
-              subtitle: 'Find answers for your LocalQuest account.',
+              subtitle: widget.role == AccountRole.merchant
+                  ? 'Find answers and guidance for managing your business.'
+                  : 'Find answers for your LocalQuest account.',
               icon: Icons.help_outline,
             ),
             const SizedBox(height: 20),
@@ -1565,7 +1593,9 @@ class NotificationsScreen extends StatelessWidget {
 }
 
 class PrivacyScreen extends StatelessWidget {
-  const PrivacyScreen({super.key});
+  const PrivacyScreen({super.key, this.role});
+  final AccountRole? role;
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SingleChildScrollView(
@@ -1575,57 +1605,67 @@ class PrivacyScreen extends StatelessWidget {
         children: [
           const LqBackButton(label: 'Back to settings'),
           const SizedBox(height: 14),
-          const LqTitleBlock(
-            eyebrow: 'Privacy',
+          LqTitleBlock(
+            eyebrow:
+                role == AccountRole.merchant ? 'Merchant privacy' : 'Privacy',
             title: 'Privacy & data',
-            subtitle:
-                'Review personal data, permissions, and account-export options.',
+            subtitle: role == AccountRole.merchant
+                ? 'Review business data policies, certificate confidentiality, and permissions.'
+                : 'Review personal data, permissions, and account-export options.',
             icon: Icons.privacy_tip_outlined,
           ),
           const SizedBox(height: 22),
-          const LqCard(
+          LqCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'LocalQuest Privacy Notice',
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '1. Information we collect',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'Profile information, device identifiers, optional location history, and content you submit.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'Business profile information, SSM certificates, verified store entrance coordinates, and campaign data.'
+                      : 'Profile information, device identifiers, optional location history, and content you submit.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '2. How we use your information',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'To provide account features, deliver rewards, log eligible visits, and protect the LocalQuest community.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'To list your verified business, facilitate coupon redemptions, protect against fraud, and comply with Malaysian regulations.'
+                      : 'To provide account features, deliver rewards, log eligible visits, and protect the LocalQuest community.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '3. Location data',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'Location history is optional and can be paused from Settings.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'Business coordinates are used to display your store location accurately on the map for visitors.'
+                      : 'Location history is optional and can be paused from Settings.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '4. Your rights',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'You may request access, correction, export, or deletion of your information.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'You may edit business listings, update SSM numbers, export records, or delete your account at any time.'
+                      : 'You may request access, correction, export, or deletion of your information.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
               ],
             ),
@@ -1660,6 +1700,7 @@ class PrivacyScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             LqField(
+              key: const Key('delete_account_password_field'),
               controller: password,
               label: 'Current password',
               obscureText: true,

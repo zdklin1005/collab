@@ -64,7 +64,11 @@ class AuthGate extends StatelessWidget {
           final home = profile.role == AccountRole.merchant
               ? MerchantHome(user: profile)
               : TouristHome(user: profile);
-          return BiometricGate(user: profile, child: home);
+          return BiometricGate(
+            key: ValueKey('biometric_${profile.id}'),
+            user: profile,
+            child: home,
+          );
         },
       );
     },
@@ -76,10 +80,12 @@ class BiometricGate extends StatefulWidget {
     super.key,
     required this.user,
     required this.child,
+    this.onSignOut,
   });
 
   final AppUser user;
   final Widget child;
+  final Future<void> Function()? onSignOut;
 
   @override
   State<BiometricGate> createState() => _BiometricGateState();
@@ -100,7 +106,34 @@ class _BiometricGateState extends State<BiometricGate>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AccountIdentifierCache.cache(
+      username: widget.user.username,
+      email: widget.user.email,
+    );
     _checkBiometricRequirement();
+  }
+
+  @override
+  void didUpdateWidget(covariant BiometricGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user.id != oldWidget.user.id) {
+      _checked = false;
+      _unlocked = false;
+      AccountIdentifierCache.cache(
+        username: widget.user.username,
+        email: widget.user.email,
+      );
+      _checkBiometricRequirement();
+    } else if (!_unlocked) {
+      if (BiometricAuthService.instance
+              .isSessionAuthenticated(widget.user.id) ||
+          BiometricAuthService.instance.consumeJustAuthenticated()) {
+        setState(() {
+          _checked = true;
+          _unlocked = true;
+        });
+      }
+    }
   }
 
   @override
@@ -311,7 +344,17 @@ class _BiometricGateState extends State<BiometricGate>
                 const SizedBox(height: 12),
                 TextButton(
                   key: const Key('biometric_gate_signout_btn'),
-                  onPressed: () => AuthService.instance.signOut(),
+                  onPressed: () async {
+                    await AccountIdentifierCache.cache(
+                      username: widget.user.username,
+                      email: widget.user.email,
+                    );
+                    if (widget.onSignOut != null) {
+                      await widget.onSignOut!();
+                    } else {
+                      await AuthService.instance.signOut();
+                    }
+                  },
                   child: const Text(
                     'Sign out / Switch account',
                     style: TextStyle(
@@ -463,6 +506,7 @@ class _PasswordUnlockSheetState extends State<_PasswordUnlockSheet> {
               hintText: 'Enter your account password',
               errorText: _error,
               suffixIcon: IconButton(
+                tooltip: _obscure ? 'Show password' : 'Hide password',
                 icon: Icon(
                   _obscure
                       ? Icons.visibility_outlined

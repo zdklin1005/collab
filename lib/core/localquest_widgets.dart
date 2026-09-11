@@ -427,7 +427,7 @@ class LqBackButton extends StatelessWidget {
   );
 }
 
-class LqField extends StatelessWidget {
+class LqField extends StatefulWidget {
   const LqField({
     super.key,
     required this.controller,
@@ -458,22 +458,61 @@ class LqField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
 
   @override
-  Widget build(BuildContext context) => TextFormField(
-    controller: controller,
-    obscureText: obscureText,
-    keyboardType: keyboardType,
-    validator: validator,
-    maxLines: maxLines,
-    readOnly: readOnly,
-    onTap: onTap,
-    onChanged: onChanged,
-    decoration: InputDecoration(
-      labelText: label,
-      hintText: hint,
-      suffixIcon:
-          suffixWidget ?? (suffixIcon == null ? null : Icon(suffixIcon)),
-    ),
-  );
+  State<LqField> createState() => _LqFieldState();
+}
+
+class _LqFieldState extends State<LqField> {
+  late bool _obscured;
+
+  @override
+  void initState() {
+    super.initState();
+    _obscured = widget.obscureText;
+  }
+
+  @override
+  void didUpdateWidget(covariant LqField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.obscureText != widget.obscureText) {
+      _obscured = widget.obscureText;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget? suffix = widget.suffixWidget;
+    if (suffix == null && widget.suffixIcon != null) {
+      suffix = Icon(widget.suffixIcon);
+    } else if (suffix == null && widget.obscureText) {
+      suffix = IconButton(
+        tooltip: _obscured ? 'Show password' : 'Hide password',
+        icon: Icon(
+          _obscured
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+          color: LqColors.muted,
+          size: 20,
+        ),
+        onPressed: () => setState(() => _obscured = !_obscured),
+      );
+    }
+
+    return TextFormField(
+      controller: widget.controller,
+      obscureText: _obscured,
+      keyboardType: widget.keyboardType,
+      validator: widget.validator,
+      maxLines: widget.maxLines,
+      readOnly: widget.readOnly,
+      onTap: widget.onTap,
+      onChanged: widget.onChanged,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        hintText: widget.hint,
+        suffixIcon: suffix,
+      ),
+    );
+  }
 }
 
 const lqBusinessCategories = <String>[

@@ -433,6 +433,8 @@ void main() {
   ) async {
     await tester.pumpWidget(app(const MerchantProfile(user: merchant)));
 
+    expect(find.text('@testmerchant'), findsOneWidget);
+    expect(find.text('merchant@localquest.test'), findsOneWidget);
     expect(find.text('Ads'), findsOneWidget);
     expect(find.text('Vouchers'), findsOneWidget);
     expect(find.text('Business registrations'), findsOneWidget);
@@ -615,9 +617,12 @@ void main() {
     },
   );
 
-  testWidgets('business editor exposes area / city field', (tester) async {
+  testWidgets('business editor exposes area / city, postcode, and state fields', (tester) async {
     await tester.pumpWidget(app(const BusinessEditor(user: merchant)));
+    expect(find.text('Street address'), findsOneWidget);
+    expect(find.text('Postcode'), findsOneWidget);
     expect(find.text('Area / city'), findsOneWidget);
+    expect(find.text('State'), findsOneWidget);
     expect(
       find.widgetWithText(LqField, 'Area / city'),
       findsOneWidget,

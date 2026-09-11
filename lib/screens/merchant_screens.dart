@@ -1302,9 +1302,26 @@ class MerchantProfile extends StatelessWidget {
                           fontSize: 20,
                         ),
                       ),
+                      if (user.username.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          user.username.startsWith('@')
+                              ? user.username
+                              : '@${user.username}',
+                          style: const TextStyle(
+                            color: LqColors.primary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 2),
                       Text(
                         user.email,
-                        style: const TextStyle(color: LqColors.muted),
+                        style: const TextStyle(
+                          color: LqColors.muted,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -1853,7 +1870,13 @@ class _BusinessEditorState extends State<BusinessEditor> {
   late final _address = TextEditingController(
     text: widget.business?.address ?? '',
   );
+  late final _postcode = TextEditingController(
+    text: widget.business?.postcode ?? '',
+  );
   late final _area = TextEditingController(text: widget.business?.area ?? '');
+  late final _state = TextEditingController(
+    text: widget.business?.state ?? '',
+  );
   late final _phone = TextEditingController(text: widget.business?.phone ?? '');
   late LqLocation? _location =
       widget.business?.latitude == null || widget.business?.longitude == null
@@ -1868,12 +1891,34 @@ class _BusinessEditorState extends State<BusinessEditor> {
   bool busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (_postcode.text.isEmpty && _address.text.isNotEmpty) {
+      final parsed = MalaysianAddressComponents.parse(
+        '${_address.text}, ${_area.text}',
+      );
+      if (parsed.postcode.isNotEmpty) _postcode.text = parsed.postcode;
+      if (parsed.city.isNotEmpty && _area.text.isEmpty) {
+        _area.text = parsed.city;
+      }
+      if (parsed.state.isNotEmpty && _state.text.isEmpty) {
+        _state.text = parsed.state;
+      }
+      if (parsed.street.isNotEmpty && parsed.street != _address.text) {
+        _address.text = parsed.street;
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _name.dispose();
     _category.dispose();
     _registration.dispose();
     _address.dispose();
+    _postcode.dispose();
     _area.dispose();
+    _state.dispose();
     _phone.dispose();
     super.dispose();
   }
@@ -1948,15 +1993,63 @@ class _BusinessEditorState extends State<BusinessEditor> {
                     controller: _address,
                     label: 'Street address',
                     validator: (v) =>
-                        MerchantValidation.text(v, 'Address', 10, 500),
+                        MerchantValidation.text(v, 'Address', 3, 500),
                     initialLocation: _location,
                     onLocationChanged: (value) => _location = value,
+                    onAddressComponentsChanged: (components) {
+                      setState(() {
+                        if (components.postcode.isNotEmpty) {
+                          _postcode.text = components.postcode;
+                        }
+                        if (components.city.isNotEmpty) {
+                          _area.text = components.city;
+                        }
+                        if (components.state.isNotEmpty) {
+                          _state.text = components.state;
+                        }
+                      });
+                    },
                   ),
                   const SizedBox(height: 16),
-                  LqField(
-                    controller: _area,
-                    label: 'Area / city',
-                    hint: 'e.g. Bukit Bintang, Kuala Lumpur',
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: LqField(
+                          controller: _postcode,
+                          label: 'Postcode',
+                          hint: 'e.g. 13500',
+                          keyboardType: TextInputType.number,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return 'Required.';
+                            if (!RegExp(r'^\d{5}$').hasMatch(v.trim())) {
+                              return '5-digit code.';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: LqField(
+                          controller: _area,
+                          label: 'Area / city',
+                          hint: 'e.g. Permatang Pauh',
+                          validator: (v) =>
+                              MerchantValidation.text(v, 'Area / city', 2, 80),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  LqDropdownField(
+                    value: _state.text.isEmpty ? null : _state.text,
+                    label: 'State',
+                    items: MalaysianAddressComponents.malaysianStates,
+                    onChanged: (value) =>
+                        setState(() => _state.text = value ?? ''),
+                    validator: (v) =>
+                        v == null || v.isEmpty ? 'Choose a state.' : null,
                   ),
                   const SizedBox(height: 16),
                   LqField(
@@ -2038,6 +2131,8 @@ class _BusinessEditorState extends State<BusinessEditor> {
           category: _category.text,
           address: _address.text,
           area: _area.text,
+          postcode: _postcode.text,
+          state: _state.text,
           phone: _phone.text,
           registrationNumber: _registration.text,
           verificationStatus: _verificationStatus,

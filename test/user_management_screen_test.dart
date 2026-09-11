@@ -48,7 +48,10 @@ void main() {
       expect(find.textContaining('MERCHANT ACCOUNT'), findsOneWidget);
       expect(find.text('Business name'), findsOneWidget);
       expect(find.text('Business category'), findsOneWidget);
-      expect(find.text('Primary business address'), findsOneWidget);
+      expect(find.text('Street address'), findsOneWidget);
+      expect(find.text('Postcode'), findsOneWidget);
+      expect(find.text('Area / city'), findsOneWidget);
+      expect(find.text('State'), findsOneWidget);
     },
   );
 
@@ -94,9 +97,12 @@ void main() {
     expect(find.text('Add business'), findsOneWidget);
     expect(find.text('Business name'), findsOneWidget);
     expect(find.text('Business category'), findsOneWidget);
-    expect(find.byType(LqDropdownField), findsOneWidget);
+    expect(find.byType(LqDropdownField), findsNWidgets(2));
     expect(find.text('Registration number'), findsOneWidget);
     expect(find.text('Street address'), findsOneWidget);
+    expect(find.text('Postcode'), findsOneWidget);
+    expect(find.text('Area / city'), findsOneWidget);
+    expect(find.text('State'), findsOneWidget);
     expect(find.text('Save business'), findsOneWidget);
 
     await tester.pumpWidget(app(const CampaignEditor(user: merchant)));

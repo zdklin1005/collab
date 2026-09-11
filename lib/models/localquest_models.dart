@@ -77,6 +77,8 @@ class Business {
     required this.address,
     required this.phone,
     this.area = '',
+    this.postcode = '',
+    this.state = '',
     this.registrationNumber = '',
     this.verificationStatus = 'unverified',
     this.photoUrl,
@@ -93,6 +95,8 @@ class Business {
   final String address;
   final String phone;
   final String area;
+  final String postcode;
+  final String state;
   final String registrationNumber;
   final String verificationStatus; // 'unverified', 'pending_review', 'verified'
   final String? photoUrl;
@@ -113,6 +117,8 @@ class Business {
       address: data['address'] as String? ?? '',
       phone: data['phone'] as String? ?? '',
       area: data['area'] as String? ?? data['city'] as String? ?? '',
+      postcode: data['postcode'] as String? ?? '',
+      state: data['state'] as String? ?? '',
       registrationNumber: data['registrationNumber'] as String? ?? '',
       verificationStatus: data['verificationStatus'] as String? ?? 'unverified',
       photoUrl: data['photoUrl'] as String?,
