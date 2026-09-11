@@ -48,6 +48,19 @@ ThemeData localQuestTheme() {
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: LqColors.primary, width: 1.5),
       ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: LqColors.danger, width: 1.5),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: LqColors.danger, width: 1.8),
+      ),
+      errorStyle: const TextStyle(
+        color: LqColors.danger,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
     ),
     snackBarTheme: const SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

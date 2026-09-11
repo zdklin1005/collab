@@ -82,8 +82,8 @@ class _LqNewPasswordFieldState extends State<LqNewPasswordField> {
           ),
           const SizedBox(height: 10),
           _check(
-            '15–128 characters',
-            text.runes.length >= 15 && text.runes.length <= 128,
+            'At least 6 characters',
+            text.runes.length >= 6,
           ),
           _check(
             'No obvious common or repeated pattern',

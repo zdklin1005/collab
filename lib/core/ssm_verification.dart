@@ -40,11 +40,32 @@ class SsmVerificationEngine {
     'SURUHANJAYA SYARIKAT MALAYSIA',
     'COMPANIES COMMISSION OF MALAYSIA',
     'PERAKUAN PENDAFTARAN',
+    'PERAKUAN PEMBAHARUAN PENDAFTARAN',
+    'PEMBAHARUAN PENDAFTARAN',
     'BORANG D',
+    'BORANG E',
+    'BORANG A',
+    'BORANG B',
+    'BORANG 9',
+    'BORANG 13',
+    'BORANG 8',
     'AKTA PENDAFTARAN PERNIAGAAN 1956',
+    'AKTA PENDAFTARAN PERNIAGAAN',
     'AKTA SYARIKAT 2016',
-    'CERTIFICATE OF INCORPORATION',
+    'AKTA SYARIKAT 1965',
     'KAEDAH-KAEDAH PENDAFTARAN PERNIAGAAN',
+    'KAEDAH 13',
+    'CERTIFICATE OF INCORPORATION',
+    'CERTIFICATE OF RENEWAL',
+  ];
+
+  static final List<RegExp> _statutoryRegexes = [
+    RegExp(r'SURUHAN[A-Z\s]{0,12}MALAYS[A-Z]{0,4}', caseSensitive: false),
+    RegExp(r'PERAKUAN\s+(?:PEMBAHARUAN\s+)?PENDAFTARAN', caseSensitive: false),
+    RegExp(r'BORANG\s+[A-Z0-9]', caseSensitive: false),
+    RegExp(r'AKTA\s+PENDAFTARAN\s+PERNIA\s*GAAN', caseSensitive: false),
+    RegExp(r'AKTA\s+SYARIKAT', caseSensitive: false),
+    RegExp(r'KAEDAH\s*(?:-\s*KAEDAH)?\s*\d*', caseSensitive: false),
   ];
 
   static final RegExp _modernSsmPattern = RegExp(
@@ -67,13 +88,26 @@ class SsmVerificationEngine {
     DateTime? referenceDate,
   }) {
     final now = referenceDate ?? DateTime.now();
-    final upperText = text.toUpperCase();
+    // Normalize OCR variations such as spaced words
+    final normalizedText = text
+        .replaceAll(RegExp(r'PERNIA\s+GAAN', caseSensitive: false), 'PERNIAGAAN')
+        .replaceAll(RegExp(r'PENDAF\s+TARAN', caseSensitive: false), 'PENDAFTARAN');
+    final upperText = normalizedText.toUpperCase();
 
-    // 1. Detect statutory keywords
+    // 1. Detect statutory keywords and regex patterns
     final matchedKeywords = <String>[];
     for (final kw in _statutoryKeywords) {
       if (upperText.contains(kw)) {
         matchedKeywords.add(kw);
+      }
+    }
+    for (final reg in _statutoryRegexes) {
+      final m = reg.firstMatch(upperText);
+      if (m != null) {
+        final matchedStr = m.group(0)!;
+        if (!matchedKeywords.contains(matchedStr)) {
+          matchedKeywords.add(matchedStr);
+        }
       }
     }
 
@@ -179,7 +213,7 @@ class SsmVerificationEngine {
     if (modernMatch != null && legacyMatch != null) {
       score += 0.30;
     } else if (modernMatch != null || legacyMatch != null) {
-      score += 0.25;
+      score += 0.30;
     }
 
     // Business name match (up to 0.20)
@@ -194,7 +228,7 @@ class SsmVerificationEngine {
       score += 0.10;
     }
 
-    final isAuthentic = matchedKeywords.isNotEmpty || modernMatch != null;
+    final isAuthentic = matchedKeywords.isNotEmpty || modernMatch != null || legacyMatch != null;
 
     final isSampleOrDemo = upperText.contains('CONTOH') ||
         upperText.contains('SPECIMEN') ||
@@ -209,7 +243,7 @@ class SsmVerificationEngine {
       status = 'rejected';
       explanation =
           'SSM registration expired on ${_formatDate(expiryDate)}. Please renew your license with SSM.';
-    } else if (score >= 0.70 && formattedRegNumber != null) {
+    } else if (score >= 0.55 && formattedRegNumber != null) {
       status = 'verified';
       explanation = isSampleOrDemo
           ? 'Sample / Demo Malaysian SSM certificate authenticated for prototype testing.'
@@ -217,7 +251,7 @@ class SsmVerificationEngine {
     } else if (isAuthentic && formattedRegNumber != null) {
       status = 'pending_review';
       explanation =
-          'SSM registration number detected with partial verification. Ready for confirmation.';
+          'SSM registration number detected ($formattedRegNumber). Ready to apply to business profile.';
     } else {
       status = 'rejected';
       explanation =

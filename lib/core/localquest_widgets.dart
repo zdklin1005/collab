@@ -15,7 +15,8 @@ class LqPage extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         SafeArea(
-          child: Center(
+          child: Align(
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: child,
@@ -71,36 +72,64 @@ class LqTitleBlock extends StatelessWidget {
     required this.eyebrow,
     required this.title,
     this.subtitle,
+    this.icon,
   });
 
   final String eyebrow;
   final String title;
   final String? subtitle;
+  final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(eyebrow.toUpperCase(), style: monoLabel),
-      const SizedBox(height: 6),
-      Text(
-        title,
-        style: const TextStyle(
-          fontSize: 32,
-          height: 1.12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1.2,
-        ),
-      ),
-      if (subtitle != null) ...[
-        const SizedBox(height: 8),
+  Widget build(BuildContext context) {
+    final textColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(eyebrow.toUpperCase(), style: monoLabel),
+        const SizedBox(height: 6),
         Text(
-          subtitle!,
-          style: const TextStyle(color: LqColors.muted, height: 1.45),
+          title,
+          style: const TextStyle(
+            fontSize: 32,
+            height: 1.12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.2,
+          ),
         ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            subtitle!,
+            style: const TextStyle(color: LqColors.muted, height: 1.45),
+          ),
+        ],
       ],
-    ],
-  );
+    );
+
+    if (icon == null) return textColumn;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFFDCE8FF),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            color: LqColors.primary,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(child: textColumn),
+      ],
+    );
+  }
 }
 
 class LqCard extends StatelessWidget {
@@ -775,7 +804,7 @@ class LqAvatar extends StatelessWidget {
     required this.initials,
     this.photoUrl,
     this.radius = 36,
-    this.shape = LqAvatarShape.circle,
+    this.shape = LqAvatarShape.roundedSquare,
   });
   final String initials;
   final String? photoUrl;
@@ -888,6 +917,7 @@ class LqFloatingNavBar extends StatelessWidget {
                         radius: 15,
                         initials: profileInitials,
                         photoUrl: profilePhotoUrl,
+                        shape: LqAvatarShape.circle,
                       ),
                       const SizedBox(height: 1),
                       Text(

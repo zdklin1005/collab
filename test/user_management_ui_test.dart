@@ -253,7 +253,7 @@ void main() {
     await tester.pumpWidget(app(const LoginScreen(role: AccountRole.tourist)));
 
     expect(find.text('Welcome back.'), findsOneWidget);
-    expect(find.text('Email address'), findsOneWidget);
+    expect(find.text('Email address or username'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('Forgot password?'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
@@ -371,7 +371,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: localQuestTheme(),
-        home: const TouristHome(user: tourist),
+        home: const TouristHome(user: tourist, initialIndex: 2),
       ),
     );
     await tester.pumpAndSettle();
@@ -477,6 +477,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(app(const AccountDetailsScreen(user: tourist)));
+    await tester.ensureVisible(find.byIcon(Icons.calendar_month_outlined));
     await tester.tap(find.byIcon(Icons.calendar_month_outlined));
     await tester.pumpAndSettle();
 
