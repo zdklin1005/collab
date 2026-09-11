@@ -63,11 +63,7 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
         ? MockMapData.createCooldownTestReward(now)
         : null;
 
-    _rewards = [
-      ...generated,
-      if (expiryReward != null) expiryReward,
-      if (cooldownReward != null) cooldownReward,
-    ];
+    _rewards = [...generated, ?expiryReward, ?cooldownReward];
 
     if (cooldownReward != null) {
       debugPrint(
