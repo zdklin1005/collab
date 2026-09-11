@@ -239,10 +239,19 @@ class MerchantOverview extends StatelessWidget {
                               .map(
                                 (item) => ListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  leading: const CircleAvatar(
-                                    backgroundColor: LqColors.primarySoft,
-                                    foregroundColor: LqColors.primary,
-                                    child: Icon(Icons.auto_awesome),
+                                  leading: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: LqColors.primarySoft,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: const Icon(
+                                      Icons.auto_awesome,
+                                      color: LqColors.primary,
+                                      size: 20,
+                                    ),
                                   ),
                                   title: Text(
                                     item.name,
@@ -289,11 +298,19 @@ class MerchantOverview extends StatelessWidget {
                               .map(
                                 (item) => ListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  leading: const CircleAvatar(
-                                    backgroundColor: LqColors.greenSoft,
-                                    foregroundColor: Color(0xFF42723B),
-                                    child:
-                                        Icon(Icons.confirmation_num_outlined),
+                                  leading: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: LqColors.greenSoft,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: const Icon(
+                                      Icons.confirmation_num_outlined,
+                                      color: Color(0xFF42723B),
+                                      size: 20,
+                                    ),
                                   ),
                                   title: Text(
                                     item.name,
@@ -384,10 +401,15 @@ class _MetricCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CircleAvatar(
-          backgroundColor: color,
-          foregroundColor: LqColors.primary,
-          child: Icon(icon),
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, color: LqColors.primary, size: 22),
         ),
         const SizedBox(height: 20),
         Text(
@@ -1350,59 +1372,208 @@ class _BusinessSelector extends StatelessWidget {
   final Business? selectedBusiness;
   final ValueChanged<String?>? onSelected;
 
+  Future<void> _showWorkspaceSheet(BuildContext context) async {
+    final currentId = selectedBusiness?.id ?? (businesses.isNotEmpty ? businesses.first.id : '');
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        decoration: const BoxDecoration(
+          color: LqColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: LqColors.line,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Choose business workspace',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Switch active location or register a new business workspace.',
+              style: TextStyle(fontSize: 12, color: LqColors.muted),
+            ),
+            const SizedBox(height: 14),
+            ...businesses.map((b) {
+              final isCurrent = b.id == currentId;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: isCurrent ? LqColors.primarySoft : Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isCurrent ? LqColors.primary : LqColors.line,
+                    width: isCurrent ? 1.5 : 1,
+                  ),
+                ),
+                child: ListTile(
+                  leading: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: isCurrent ? LqColors.primary : const Color(0xFFF0F4FC),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.storefront_outlined,
+                      color: isCurrent ? Colors.white : LqColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(
+                    b.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: isCurrent ? LqColors.primaryDark : Colors.black87,
+                    ),
+                  ),
+                  subtitle: Text(
+                    b.area.isNotEmpty ? b.area : b.address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: LqColors.muted),
+                  ),
+                  trailing: isCurrent
+                      ? const Icon(Icons.check_circle, color: LqColors.primary, size: 20)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onSelected?.call(b.id);
+                  },
+                ),
+              );
+            }),
+            const SizedBox(height: 6),
+            const LqDashedDivider(),
+            const SizedBox(height: 6),
+            ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              tileColor: Colors.white,
+              leading: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: LqColors.primarySoft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.add_business_outlined,
+                  color: LqColors.primary,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Create new business workspace',
+                style: TextStyle(fontWeight: FontWeight.w800, color: LqColors.primary),
+              ),
+              subtitle: const Text(
+                'Register a new branch or business profile',
+                style: TextStyle(fontSize: 11, color: LqColors.muted),
+              ),
+              trailing: const Icon(Icons.chevron_right, color: LqColors.primary),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => BusinessEditor(user: user)),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (businesses.isEmpty) {
-      return LqCard(
-        child: Row(
-          children: [
-            const Icon(Icons.storefront_outlined, color: LqColors.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Manage workspace for',
-                    style: TextStyle(color: LqColors.muted, fontSize: 11),
-                  ),
-                  Text(
-                    user.displayName,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
+      return InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => BusinessEditor(user: user)),
+        ),
+        child: LqCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4FC),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.storefront_outlined,
+                  color: LqColors.primary,
+                  size: 22,
+                ),
               ),
-            ),
-            const Icon(Icons.keyboard_arrow_down, color: LqColors.primary),
-          ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Manage workspace for',
+                      style: TextStyle(color: LqColors.muted, fontSize: 11),
+                    ),
+                    Text(
+                      user.displayName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.add_rounded, color: LqColors.primary),
+            ],
+          ),
         ),
       );
     }
-    final value = selectedBusiness?.id ?? businesses.first.id;
     return InkWell(
       borderRadius: BorderRadius.circular(25),
-      onTap: () async {
-        final next = await showLqSelectionSheet<String>(
-          context,
-          title: 'Choose business workspace',
-          selected: value,
-          options: businesses.map((item) => (item.id, item.name)).toList(),
-        );
-        if (next != null) onSelected?.call(next);
-      },
+      onTap: () => _showWorkspaceSheet(context),
       child: LqCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            LqAvatar(
-              radius: 20,
-              initials: initialsFor(
-                (selectedBusiness ?? businesses.first).name,
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F4FC),
+                borderRadius: BorderRadius.circular(12),
               ),
-              photoUrl: (selectedBusiness ?? businesses.first).photoUrl,
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.storefront_outlined,
+                color: LqColors.primary,
+                size: 22,
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1442,10 +1613,15 @@ class _MerchantProfileAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     contentPadding: EdgeInsets.zero,
-    leading: CircleAvatar(
-      backgroundColor: const Color(0xFFF0F4FC),
-      foregroundColor: LqColors.primary,
-      child: Icon(icon),
+    leading: Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: LqColors.primary, size: 22),
     ),
     title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     trailing: const Icon(Icons.chevron_right, color: LqColors.muted),
@@ -1493,39 +1669,38 @@ class BusinessRegistrationsScreen extends StatelessWidget {
                           return LqCard(
                             padding: const EdgeInsets.all(16),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                LqAvatar(
-                                  radius: 24,
-                                  initials: initialsFor(item.name),
-                                  photoUrl: item.photoUrl,
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF0F4FC),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.storefront_outlined,
+                                    color: LqColors.primary,
+                                    size: 24,
+                                  ),
                                 ),
-                                const SizedBox(width: 16),
+                                const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              item.name,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ),
-                                          if (item.isSsmVerified) ...[
-                                            const SizedBox(width: 6),
-                                            const SsmVerifiedBadge(
-                                              compact: true,
-                                            ),
-                                          ],
-                                        ],
+                                      Text(
+                                        item.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15,
+                                        ),
                                       ),
+                                      const SizedBox(height: 2),
                                       Text(
                                         item.area.isNotEmpty
                                             ? item.area
@@ -1537,18 +1712,30 @@ class BusinessRegistrationsScreen extends StatelessWidget {
                                           fontSize: 12,
                                         ),
                                       ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          if (item.isSsmVerified)
+                                            const SsmVerifiedBadge(
+                                              compact: true,
+                                            ),
+                                          LqStatusPill(active: item.active),
+                                        ],
+                                      ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                LqStatusPill(active: item.active),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 10),
                                 TextButton(
                                   style: TextButton.styleFrom(
                                     backgroundColor: const Color(0xFFEDF1F9),
                                     shape: const StadiumBorder(),
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
+                                      horizontal: 14,
                                       vertical: 8,
                                     ),
                                   ),

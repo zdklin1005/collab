@@ -206,58 +206,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
-  bool _canUseBiometrics = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initBiometrics();
-  }
-
-  Future<void> _initBiometrics() async {
-    final supported = await BiometricAuthService.instance.isSupported();
-    final enabled = await BiometricAuthService.instance.isEnabled();
-    if (!supported || !enabled) return;
-
-    final lastUser = await BiometricAuthService.instance.getLastUser();
-    if (mounted) {
-      setState(() {
-        _canUseBiometrics = true;
-        if (_email.text.isEmpty && lastUser?['email'] != null) {
-          _email.text = lastUser!['email']!;
-        }
-      });
-    }
-  }
-
-  Future<void> _signInWithBiometrics() async {
-    setState(() => _busy = true);
-    try {
-      final success = await BiometricAuthService.instance.authenticate(
-        localizedReason: 'Sign in to LocalQuest with your biometrics',
-      );
-      if (!success) return;
-
-      final lastUser = await BiometricAuthService.instance.getLastUser();
-      final email = lastUser?['email'] ?? _email.text.trim();
-      if (email.isEmpty) {
-        if (mounted) {
-          showLqMessage(
-            context,
-            'Please sign in with password once before using biometrics.',
-            error: true,
-          );
-        }
-        return;
-      }
-      if (mounted) {
-        showLqMessage(context, 'Biometric identity verified.');
-        Navigator.popUntil(context, (route) => route.isFirst);
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   @override
   void dispose() {
@@ -279,6 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: EdgeInsets.zero,
             child: Form(
               key: _form,
+              autovalidateMode: AutovalidateMode.disabled,
               child: Column(
                 children: [
                   Container(
@@ -326,18 +275,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       children: [
                         LqField(
+                          key: const Key('login_email_field'),
                           controller: _email,
-                          label: 'Email address',
-                          hint: 'you@example.com',
-                          keyboardType: TextInputType.emailAddress,
-                          validator: _required,
+                          label: 'Email address or username',
+                          hint: 'you@example.com or @username',
+                          keyboardType: TextInputType.text,
+                          validator: _validateLoginIdentifier,
                         ),
                         const SizedBox(height: 16),
                         LqField(
                           controller: _password,
                           label: 'Password',
                           obscureText: true,
-                          validator: _required,
+                          validator: (v) =>
+                              v == null || v.isEmpty ? 'Password is required.' : null,
                         ),
                         Align(
                           alignment: Alignment.centerRight,
@@ -363,21 +314,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           icon: Icons.login,
                           onPressed: _submit,
                         ),
-                        if (_canUseBiometrics) ...[
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                            onPressed: _busy ? null : _signInWithBiometrics,
-                            icon: const Icon(
-                              Icons.fingerprint,
-                              color: LqColors.primary,
-                            ),
-                            label: const Text('Sign in with biometrics'),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(48),
-                              side: const BorderSide(color: LqColors.primary),
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 12),
                         Wrap(
                           alignment: WrapAlignment.center,
@@ -414,21 +350,51 @@ class _LoginScreenState extends State<LoginScreen> {
     ),
   );
 
-  String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? 'This field is required.' : null;
+  String? _validateLoginIdentifier(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'This field is required.';
+    }
+    final clean = value.trim();
+    final hasAt = clean.contains('@');
+    final startsWithAt = clean.startsWith('@');
+
+    // If it has '@' anywhere other than the leading char, the user is typing an email.
+    if (!startsWithAt && hasAt) {
+      if (!LqInputValidators.emailPattern.hasMatch(clean)) {
+        return 'Enter a valid email address (e.g. name@example.com).';
+      }
+      return null;
+    }
+
+    // Otherwise, validate as a username format (@... or without @)
+    final usernamePart = startsWithAt ? clean.substring(1) : clean;
+    if (usernamePart.isEmpty) {
+      return 'Enter a valid email address or username.';
+    }
+    if (usernamePart.contains(' ') ||
+        !LqInputValidators.usernamePattern.hasMatch(usernamePart)) {
+      return 'Enter a valid email address or username.';
+    }
+    return null;
+  }
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      await AuthService.instance.signIn(
+      final profile = await AuthService.instance.signIn(
         email: _email.text,
         password: _password.text,
         expectedRole: widget.role,
       );
+      BiometricAuthService.instance.markJustAuthenticated();
       await BiometricAuthService.instance.saveLastUser(
-        email: _email.text.trim(),
+        email: profile.email,
         role: widget.role.name,
+      );
+      await AccountIdentifierCache.cache(
+        username: profile.username,
+        email: profile.email,
       );
       if (mounted) {
         showLqMessage(context, 'Welcome back to LocalQuest!');
@@ -501,11 +467,13 @@ class _SignupScreenState extends State<SignupScreen> {
     _usernameDebounce?.cancel();
     final formatError = LqInputValidators.validateUsernameFormat(value);
     if (formatError != null) {
-      setState(() {
-        _usernameError = formatError;
-        _isCheckingUsername = false;
-        _isUsernameAvailable = null;
-      });
+      if (_usernameError != null || _isUsernameAvailable != null) {
+        setState(() {
+          _usernameError = null;
+          _isCheckingUsername = false;
+          _isUsernameAvailable = null;
+        });
+      }
       return;
     }
     setState(() {
@@ -529,11 +497,13 @@ class _SignupScreenState extends State<SignupScreen> {
     _emailDebounce?.cancel();
     final formatError = LqInputValidators.validateEmailFormat(value);
     if (formatError != null) {
-      setState(() {
-        _emailError = formatError;
-        _isCheckingEmail = false;
-        _isEmailAvailable = null;
-      });
+      if (_emailError != null || _isEmailAvailable != null) {
+        setState(() {
+          _emailError = null;
+          _isCheckingEmail = false;
+          _isEmailAvailable = null;
+        });
+      }
       return;
     }
     setState(() {
@@ -566,7 +536,7 @@ class _SignupScreenState extends State<SignupScreen> {
             padding: EdgeInsets.zero,
             child: Form(
               key: _form,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
+              autovalidateMode: AutovalidateMode.disabled,
               child: Column(
                 children: [
                   Padding(
@@ -835,8 +805,10 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
   bool _busy = false;
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -855,66 +827,75 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           const SizedBox(height: 18),
           LqCard(
             padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: const BoxDecoration(
-                    color: LqColors.primarySoft,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(24),
+            child: Form(
+              key: _form,
+              autovalidateMode: _submitted
+                  ? AutovalidateMode.onUserInteraction
+                  : AutovalidateMode.disabled,
+              child: Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(28),
+                    decoration: const BoxDecoration(
+                      color: LqColors.primarySoft,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: LqColors.primary,
+                          foregroundColor: Colors.white,
+                          child: Icon(Icons.lock_reset),
+                        ),
+                        SizedBox(height: 18),
+                        Text(
+                          'Reset your password',
+                          style: TextStyle(
+                            fontSize: 29,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Enter the email linked to your LocalQuest account and we’ll send you a reset link.',
+                          style: TextStyle(color: LqColors.muted, height: 1.45),
+                        ),
+                      ],
                     ),
                   ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: LqColors.primary,
-                        foregroundColor: Colors.white,
-                        child: Icon(Icons.lock_reset),
-                      ),
-                      SizedBox(height: 18),
-                      Text(
-                        'Reset your password',
-                        style: TextStyle(
-                          fontSize: 29,
-                          fontWeight: FontWeight.w800,
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        LqField(
+                          key: const Key('forgot_password_email_field'),
+                          controller: _email,
+                          label: 'Email address',
+                          hint: 'you@example.com',
+                          keyboardType: TextInputType.emailAddress,
+                          validator: LqInputValidators.validateEmailFormat,
                         ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Enter the email linked to your LocalQuest account and we’ll send you a reset link.',
-                        style: TextStyle(color: LqColors.muted, height: 1.45),
-                      ),
-                    ],
+                        const SizedBox(height: 20),
+                        LqButton(
+                          label: 'Send reset link',
+                          busy: _busy,
+                          icon: Icons.send_outlined,
+                          onPressed: _send,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'For security, reset links expire after 30 minutes.',
+                          style: TextStyle(color: LqColors.muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      LqField(
-                        controller: _email,
-                        label: 'Email address',
-                        hint: 'you@example.com',
-                      ),
-                      const SizedBox(height: 20),
-                      LqButton(
-                        label: 'Send reset link',
-                        busy: _busy,
-                        icon: Icons.send_outlined,
-                        onPressed: _send,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'For security, reset links expire after 30 minutes.',
-                        style: TextStyle(color: LqColors.muted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -923,7 +904,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   );
 
   Future<void> _send() async {
-    if (_email.text.trim().isEmpty) return;
+    setState(() => _submitted = true);
+    if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
       await AuthService.instance.sendPasswordReset(_email.text);

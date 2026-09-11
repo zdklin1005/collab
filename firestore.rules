@@ -23,7 +23,8 @@ service cloud.firestore {
     match /users/{uid} {
       allow create: if owns(uid)
         && request.resource.data.role in ['tourist', 'merchant'];
-      allow read, delete: if owns(uid);
+      allow read: if true;
+      allow delete: if owns(uid);
       allow update: if owns(uid)
         && request.resource.data.role == resource.data.role;
 

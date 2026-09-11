@@ -7,8 +7,8 @@ abstract class BiometricAuthService {
   static BiometricAuthService instance = LocalBiometricAuthService();
 
   Future<bool> isSupported();
-  Future<bool> isEnabled();
-  Future<void> setEnabled(bool enabled);
+  Future<bool> isEnabled([String? userId]);
+  Future<void> setEnabled(bool enabled, [String? userId]);
   Future<bool> authenticate({required String localizedReason});
   Future<void> saveLastUser({
     required String email,
@@ -17,6 +17,11 @@ abstract class BiometricAuthService {
   });
   Future<Map<String, String>?> getLastUser();
   Future<void> clearLastUser();
+  bool consumeJustAuthenticated();
+  void markJustAuthenticated();
+  bool isSessionAuthenticated(String userId);
+  void markSessionAuthenticated(String userId);
+  void clearSessionAuthentication([String? userId]);
 }
 
 class LocalBiometricAuthService implements BiometricAuthService {
@@ -24,6 +29,38 @@ class LocalBiometricAuthService implements BiometricAuthService {
       : _auth = auth ?? LocalAuthentication();
 
   final LocalAuthentication _auth;
+  bool _justAuthenticated = false;
+  final Set<String> _sessionAuthenticatedUserIds = {};
+
+  @override
+  bool isSessionAuthenticated(String userId) =>
+      _sessionAuthenticatedUserIds.contains(userId);
+
+  @override
+  void markSessionAuthenticated(String userId) {
+    _sessionAuthenticatedUserIds.add(userId);
+  }
+
+  @override
+  void clearSessionAuthentication([String? userId]) {
+    if (userId != null) {
+      _sessionAuthenticatedUserIds.remove(userId);
+    } else {
+      _sessionAuthenticatedUserIds.clear();
+    }
+  }
+
+  @override
+  bool consumeJustAuthenticated() {
+    final val = _justAuthenticated;
+    _justAuthenticated = false;
+    return val;
+  }
+
+  @override
+  void markJustAuthenticated() {
+    _justAuthenticated = true;
+  }
 
   static const _enabledKey = 'lq_biometrics_enabled';
   static const _savedEmailKey = 'lq_biometrics_email';
@@ -45,9 +82,13 @@ class LocalBiometricAuthService implements BiometricAuthService {
   }
 
   @override
-  Future<bool> isEnabled() async {
+  Future<bool> isEnabled([String? userId]) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (userId != null && userId.isNotEmpty) {
+        final userVal = prefs.getBool('${_enabledKey}_$userId');
+        if (userVal != null) return userVal;
+      }
       return prefs.getBool(_enabledKey) ?? false;
     } catch (_) {
       return false;
@@ -55,8 +96,11 @@ class LocalBiometricAuthService implements BiometricAuthService {
   }
 
   @override
-  Future<void> setEnabled(bool enabled) async {
+  Future<void> setEnabled(bool enabled, [String? userId]) async {
     final prefs = await SharedPreferences.getInstance();
+    if (userId != null && userId.isNotEmpty) {
+      await prefs.setBool('${_enabledKey}_$userId', enabled);
+    }
     await prefs.setBool(_enabledKey, enabled);
     if (!enabled) {
       await clearLastUser();
@@ -131,15 +175,29 @@ class MockBiometricAuthService implements BiometricAuthService {
   bool authSucceeds;
   Map<String, String>? _user;
 
+  final Map<String, bool> _userEnabled = {};
+
   @override
   Future<bool> isSupported() async => supported;
 
   @override
-  Future<bool> isEnabled() async => enabled;
+  Future<bool> isEnabled([String? userId]) async {
+    if (userId != null && userId.isNotEmpty) {
+      if (_userEnabled.containsKey(userId)) {
+        return _userEnabled[userId]!;
+      }
+      return enabled;
+    }
+    return enabled || _userEnabled.values.any((v) => v);
+  }
 
   @override
-  Future<void> setEnabled(bool value) async {
-    enabled = value;
+  Future<void> setEnabled(bool value, [String? userId]) async {
+    if (userId != null && userId.isNotEmpty) {
+      _userEnabled[userId] = value;
+    } else {
+      enabled = value;
+    }
     if (!value) _user = null;
   }
 
@@ -162,5 +220,38 @@ class MockBiometricAuthService implements BiometricAuthService {
   @override
   Future<void> clearLastUser() async {
     _user = null;
+  }
+
+  bool _justAuthenticated = false;
+  final Set<String> _sessionAuthenticatedUserIds = {};
+
+  @override
+  bool isSessionAuthenticated(String userId) =>
+      _sessionAuthenticatedUserIds.contains(userId);
+
+  @override
+  void markSessionAuthenticated(String userId) {
+    _sessionAuthenticatedUserIds.add(userId);
+  }
+
+  @override
+  void clearSessionAuthentication([String? userId]) {
+    if (userId != null) {
+      _sessionAuthenticatedUserIds.remove(userId);
+    } else {
+      _sessionAuthenticatedUserIds.clear();
+    }
+  }
+
+  @override
+  bool consumeJustAuthenticated() {
+    final val = _justAuthenticated;
+    _justAuthenticated = false;
+    return val;
+  }
+
+  @override
+  void markJustAuthenticated() {
+    _justAuthenticated = true;
   }
 }
