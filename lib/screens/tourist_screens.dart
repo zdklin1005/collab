@@ -5,6 +5,10 @@ import '../core/password_field.dart';
 import '../core/password_policy.dart';
 import 'package:intl/intl.dart';
 
+import 'rewards_tab.dart';
+import '../services/check_in_service.dart';
+import 'write_review_screen.dart';
+
 import '../core/localquest_theme.dart';
 import '../core/localquest_widgets.dart';
 import '../core/input_validators.dart';
@@ -36,10 +40,7 @@ class _TouristHomeState extends State<TouristHome> {
     final profile = TouristProfileScreen(user: widget.user);
     final pages = [
       InteractiveMapScreen(user: widget.user),
-      const _ModulePlaceholder(
-        title: 'Rewards',
-        subtitle: 'Rewards and missions belong to the Reward & Review module.',
-      ),
+      RewardsTab(user: widget.user),   // was: const _ModulePlaceholder(...)
       profile,
     ];
     return LqPage(
@@ -55,6 +56,141 @@ class _TouristHomeState extends State<TouristHome> {
         profilePhotoUrl: widget.user.photoUrl,
       ),
       child: pages[_index],
+    );
+  }
+}
+
+class _DailyCheckInCard extends StatefulWidget {
+  const _DailyCheckInCard({required this.uid});
+  final String uid;
+
+  @override
+  State<_DailyCheckInCard> createState() => _DailyCheckInCardState();
+}
+
+class _DailyCheckInCardState extends State<_DailyCheckInCard> {
+  bool _checkingIn = false;
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Future<void> _checkIn() async {
+    if (_checkingIn) return;
+    setState(() => _checkingIn = true);
+    try {
+      final result = await CheckInService.instance.checkIn(widget.uid);
+      if (!mounted) return;
+      final message = result.alreadyCheckedInToday
+          ? "You've already checked in today — come back tomorrow!"
+          : 'Checked in! +${result.expAwarded} EXP'
+          '${result.levelUpResult != null ? ' — Level up!' : ''}'
+          ' · ${result.streakCount}-day streak';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not check in. Check your connection and try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingIn = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Reads streakCount/lastCheckInDate directly off the raw user doc —
+    // these fields deliberately aren't on AppUser (see CheckInService's
+    // class doc), so this bypasses UserRepository.watch() and streams
+    // the document itself instead.
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? const <String, dynamic>{};
+        final streakCount = (data['streakCount'] as num?)?.toInt() ?? 0;
+        final lastCheckIn = (data['lastCheckInDate'] as Timestamp?)?.toDate();
+        final alreadyCheckedInToday =
+            lastCheckIn != null && _isSameDay(lastCheckIn, DateTime.now());
+
+        return LqCard(
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: LqColors.peachSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.local_fire_department,
+                  color: Colors.deepOrange,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      streakCount > 0
+                          ? '$streakCount-day streak'
+                          : 'Start your streak',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      alreadyCheckedInToday
+                          ? 'Come back tomorrow to keep it going'
+                          : 'Check in today to earn EXP',
+                      style: const TextStyle(
+                        color: LqColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (alreadyCheckedInToday)
+                const Chip(
+                  avatar: Icon(
+                    Icons.check_circle,
+                    size: 16,
+                    color: LqColors.success,
+                  ),
+                  label: Text('Done'),
+                  visualDensity: VisualDensity.compact,
+                )
+              else
+                FilledButton(
+                  onPressed: _checkingIn ? null : _checkIn,
+                  child: _checkingIn
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Text('Check in'),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -228,9 +364,10 @@ class TouristProfileScreen extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+        _DailyCheckInCard(uid: user.id),
         const SizedBox(height: 28),
         Text('YOUR JOURNEY', style: monoLabel),
-        const SizedBox(height: 12),
         LqCard(
           child: Column(
             children: [
@@ -271,19 +408,6 @@ class TouristProfileScreen extends StatelessWidget {
                   icon: Icons.auto_awesome_outlined,
                   message:
                       '2 location missions currently in progress! Complete heritage photo check-ins and merchant explorations to earn bonus experience points.',
-                ),
-              ),
-              _JourneyItem(
-                icon: Icons.calendar_month_outlined,
-                title: 'Daily check-in',
-                subtitle: 'Keep your streak',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Daily check-in streak',
-                  eyebrow: 'Activity',
-                  icon: Icons.calendar_month_outlined,
-                  message:
-                      'Daily check-ins reward +100 EXP every day. Log in each day during your Visit Malaysia exploration to maintain your multiplier streak!',
                 ),
               ),
               _JourneyItem(
@@ -1293,6 +1417,7 @@ class VisitedPlacesScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final data = docs[index].data();
                     final date = (data['visitedAt'] as Timestamp?)?.toDate();
+                    final businessId = data['businessId'] as String? ?? '';
                     final pastelBg = _pastelBgs[index % _pastelBgs.length];
                     final iconColor = _iconColors[index % _iconColors.length];
 
@@ -1364,6 +1489,28 @@ class VisitedPlacesScreen extends StatelessWidget {
                                 color: LqColors.muted,
                               ),
                             ),
+                            if (businessId.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              IconButton(
+                                tooltip: 'Write a review',
+                                icon: const Icon(
+                                  Icons.rate_review_outlined,
+                                  size: 20,
+                                  color: LqColors.primary,
+                                ),
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => WriteReviewScreen(
+                                      userId: userId,
+                                      businessId: businessId,
+                                      businessName:
+                                      data['name'] as String? ?? 'this business',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

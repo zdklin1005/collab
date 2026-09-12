@@ -31,17 +31,56 @@ service cloud.firestore {
       match /visitedPlaces/{placeId} {
         allow read, write: if owns(uid);
       }
+
+      // Missions are generated and completed entirely client-side
+      // (MissionService), so the owning tourist needs full read/write —
+      // same trust model already used for visitedPlaces above.
+      match /missions/{missionId} {
+        allow read, write: if owns(uid);
+      }
+
+      // Written by RewardService.awardExp()/awardVoucher() as the
+      // signed-in tourist; read by whatever UI lists a tourist's vouchers.
+      match /vouchers/{voucherId} {
+        allow read, write: if owns(uid);
+      }
+
+      // EXP activity log written alongside every awardExp() call.
+      match /expLog/{logId} {
+        allow read, write: if owns(uid);
+      }
     }
 
     match /businesses/{businessId} {
       allow read: if signedIn();
       allow create: if willBeMerchant()
         && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isMerchantNow()
-        && resource.data.ownerId == request.auth.uid
-        && request.resource.data.ownerId == request.auth.uid;
+
+      // Two ways a business doc can legitimately be updated:
+      // 1. The owning merchant editing their own listing (unchanged).
+      // 2. ANY signed-in tourist submitting a review, which increments
+      //    only reviewCount/ratingTotal (see ReviewService.submitReview).
+      //    Scoped to just those two fields so a tourist can't touch
+      //    name, ownerId, verificationStatus, etc.
+      allow update: if (isMerchantNow()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == request.auth.uid)
+        || (signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['reviewCount', 'ratingTotal']));
+
       allow delete: if isMerchantNow()
         && resource.data.ownerId == request.auth.uid;
+
+      // Reviews: anyone signed in can read; a tourist can only create a
+      // review authored as themselves, and reviews are immutable once
+      // posted (no update/delete) to keep ratings history honest.
+      match /reviews/{reviewId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
 
     match /campaigns/{campaignId} {

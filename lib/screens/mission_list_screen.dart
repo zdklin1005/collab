@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:image_picker/image_picker.dart';
 import '../services/mission_service.dart';
 
 /// "My Missions — Explore & earn" screen.
@@ -76,6 +76,7 @@ class _MissionListViewState extends State<MissionListView> {
 
   int _tabIndex = 0; // 0 = In progress, 1 = Available
   bool _refreshing = false;
+  bool _completing = false; // guards against double-tap while a checkpoint is in flight
 
   Future<void> _refreshNearbyArea() async {
     setState(() => _refreshing = true);
@@ -92,34 +93,68 @@ class _MissionListViewState extends State<MissionListView> {
   }
 
   Future<void> _completeCheckpoint(Mission mission) async {
-    final result = await MissionService.instance.completeNextCheckpoint(
-      widget.uid,
-      mission.id,
-      currentLat: widget.currentLat,
-      currentLng: widget.currentLng,
-    );
+    if (_completing) return;
 
-    if (!mounted) return;
+    final checkpoint = mission.nextIncompleteCheckpoint;
+    if (checkpoint == null) return; // nothing left to complete on this mission
 
-    if (!result.success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.failureReason ?? 'Could not complete.')),
-      );
-      return;
+    String? photoPath;
+
+    if (checkpoint.type == MissionType.photo) {
+      try {
+        final photo = await ImagePicker().pickImage(
+          source: ImageSource.camera,
+          maxWidth: 1600,
+          imageQuality: 85,
+        );
+        if (photo == null) return; // user cancelled the camera, no message needed
+        photoPath = photo.path;
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not open the camera. Check permissions and try again.'),
+            ),
+          );
+        }
+        return;
+      }
     }
 
-    if (result.missionCompleted) {
-      final message = result.voucherAwarded
-          ? 'Mission complete! Voucher awarded.'
-          : 'Mission complete! +${result.expAwarded} EXP'
-                '${result.levelUpResult != null ? ' — Level up!' : ''}';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Checkpoint complete!')),
+    setState(() => _completing = true);
+    try {
+      final result = await MissionService.instance.completeNextCheckpoint(
+        widget.uid,
+        mission.id,
+        currentLat: widget.currentLat,
+        currentLng: widget.currentLng,
+        photoPath: photoPath,
       );
+
+      if (!mounted) return;
+
+      if (!result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.failureReason ?? 'Could not complete.')),
+        );
+        return;
+      }
+
+      if (result.missionCompleted) {
+        final message = result.voucherAwarded
+            ? 'Mission complete! Voucher awarded.'
+            : 'Mission complete! +${result.expAwarded} EXP'
+            '${result.levelUpResult != null ? ' — Level up!' : ''}';
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Checkpoint complete!')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _completing = false);
     }
   }
 
@@ -176,15 +211,15 @@ class _MissionListViewState extends State<MissionListView> {
         Expanded(
           child: _tabIndex == 0
               ? _InProgressList(
-                  uid: widget.uid,
-                  currentLat: widget.currentLat,
-                  currentLng: widget.currentLng,
-                  onCompletePressed: _completeCheckpoint,
-                )
+            uid: widget.uid,
+            currentLat: widget.currentLat,
+            currentLng: widget.currentLng,
+            onCompletePressed: _completing ? null : _completeCheckpoint,
+          )
               : _AvailableEmptyState(
-                  refreshing: _refreshing,
-                  onRefresh: _refreshNearbyArea,
-                ),
+            refreshing: _refreshing,
+            onRefresh: _refreshNearbyArea,
+          ),
         ),
       ],
     );
@@ -253,7 +288,7 @@ class _InProgressList extends StatelessWidget {
   final String uid;
   final double currentLat;
   final double currentLng;
-  final ValueChanged<Mission> onCompletePressed;
+  final ValueChanged<Mission>? onCompletePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -292,7 +327,9 @@ class _InProgressList extends StatelessWidget {
               child: _MissionCard(
                 mission: mission,
                 distanceMeters: distance,
-                onTap: () => onCompletePressed(mission),
+                onTap: onCompletePressed == null
+                    ? null
+                    : () => onCompletePressed!(mission),
               ),
             );
           },
@@ -311,7 +348,7 @@ class _MissionCard extends StatelessWidget {
 
   final Mission mission;
   final double? distanceMeters;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   static const _navy = Color(0xFF1B1F5C);
 

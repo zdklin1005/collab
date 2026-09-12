@@ -1,15 +1,31 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 
 import 'city_resolver.dart';
 import 'reward_service.dart';
+import '../models/localquest_models.dart';
 
 enum MissionType { visit, photo }
 
 enum MissionRewardType { exp, voucher }
 
 enum MissionStatus { active, completed, expired, failed }
+
+// Generic ML Kit image-labeling categories acceptable for each business
+// category's photo mission. ML Kit returns broad object labels (e.g.
+// "food", "building"), never proper nouns, so this can't check against
+// a business's actual name — see _acceptablePhotoLabels() below.
+const _photoLabelsByCategory = <String, List<String>>{
+  'food & beverage': ['food', 'dish', 'meal', 'cuisine', 'tableware'],
+  'cafe': ['coffee', 'food', 'cup'],
+  'retail': ['building', 'shop', 'signage'],
+};
+const _defaultPhotoLabels = ['building', 'signage', 'storefront'];
+
+List<String> _acceptablePhotoLabels(String category) =>
+    _photoLabelsByCategory[category.toLowerCase()] ?? _defaultPhotoLabels;
 
 /// A single stop within a mission. A mission with multiple checkpoints
 /// (e.g. "Explore Jonker Street") requires all of them to be completed
@@ -80,9 +96,10 @@ class MissionCheckpoint {
 /// A dynamically generated side quest, made up of one or more
 /// [MissionCheckpoint]s.
 ///
-/// STUB WARNING: checkpoint coordinates are NOT real business locations —
-/// see `_stubNearbyOffset()` in [MissionService]. Swap once `Business`
-/// has real lat/lng fields.
+/// Checkpoint coordinates are real business locations, sourced from
+/// `Business.latitude`/`Business.longitude` in [MissionService].
+/// Businesses without coordinates set are excluded from mission
+/// generation entirely (see `_businessesInCity`).
 ///
 /// NOTE ON STATUS: there is no "available/not yet accepted" state by
 /// design — a mission exists in Firestore as [MissionStatus.active] the
@@ -234,23 +251,6 @@ class MissionService {
 
   double _degToRad(double deg) => deg * (pi / 180);
 
-  /// STUB: fake target coordinate near the tourist's current position.
-  /// Replace with real business lat/lng once available.
-  _StubCoords _stubNearbyOffset(
-      double lat,
-      double lng,
-      double minM,
-      double maxM,
-      ) {
-    final distanceMeters = minM + _random.nextDouble() * (maxM - minM);
-    final angle = _random.nextDouble() * 2 * pi;
-    final dLat = (distanceMeters * cos(angle)) / 111320;
-    final dLng =
-        (distanceMeters * sin(angle)) /
-            (111320 * cos(_degToRad(lat)).abs().clamp(0.01, 1.0));
-    return _StubCoords(lat + dLat, lng + dLng);
-  }
-
   /// Distance in meters from [currentLat]/[currentLng] to the mission's
   /// next incomplete checkpoint. Returns null if the mission is already
   /// fully completed.
@@ -279,33 +279,33 @@ class MissionService {
         .map((snap) => snap.docs.map(Mission.fromDoc).toList());
   }
 
-  /// Fetches active businesses whose `address` mentions [city]
-  /// (case-insensitive substring match — `Business` has no dedicated
-  /// city field, just a free-text address, so this is the best filter
-  /// available without a schema change). Falls back to ALL active
-  /// businesses if none match, so mission generation doesn't silently
-  /// stop working in areas with sparse/inconsistent address data.
-  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
-  _businessesInCity(String? city) async {
+  /// Fetches active businesses (with real coordinates set) whose
+  /// `address` mentions [city] (case-insensitive substring match —
+  /// `Business` has no dedicated city field, just a free-text address,
+  /// so this is the best filter available without a schema change).
+  /// Falls back to ALL active, geolocated businesses if none match, so
+  /// mission generation doesn't silently stop working in areas with
+  /// sparse/inconsistent address data.
+  Future<List<Business>> _businessesInCity(String? city) async {
     final snapshot = await db
         .collection('businesses')
         .where('active', isEqualTo: true)
         .limit(50)
         .get();
 
-    if (city == null || city.trim().isEmpty) return snapshot.docs;
+    final all = snapshot.docs
+        .map(Business.fromDoc)
+        .where((b) => b.latitude != null && b.longitude != null)
+        .toList();
+
+    if (city == null || city.trim().isEmpty) return all;
 
     final lowerCity = city.toLowerCase();
-    final matching = snapshot.docs.where((doc) {
-      final address = (doc.data()['address'] as String? ?? '').toLowerCase();
-      return address.contains(lowerCity);
-    }).toList();
+    final matching = all
+        .where((b) => b.address.toLowerCase().contains(lowerCity))
+        .toList();
 
-    // If address text doesn't actually contain the city name for any
-    // business (inconsistent data entry, or businesses just outside the
-    // resolved city), fall back to the unfiltered list rather than
-    // generating zero missions.
-    return matching.isNotEmpty ? matching : snapshot.docs;
+    return matching.isNotEmpty ? matching : all;
   }
 
   /// Generates a mix of missions for [uid] near their current position:
@@ -340,7 +340,7 @@ class MissionService {
 
     if (businessDocs.isEmpty) return [];
 
-    final businesses = businessDocs.toList()..shuffle(_random);
+    final businesses = [...businessDocs]..shuffle(_random);
     final toGenerate = count - existingActive.docs.length;
     final newMissions = <Mission>[];
     var businessIndex = 0;
@@ -353,27 +353,25 @@ class MissionService {
       final isVoucherMission = i % 3 == 2;
 
       if (isVoucherMission) {
-        final businessDoc = businesses[businessIndex++];
-        final businessData = businessDoc.data();
-        final businessName = businessData['name'] as String? ?? 'a business';
-        final coords = _stubNearbyOffset(currentLat, currentLng, 400, 900);
+        final business = businesses[businessIndex++];
         final nextSaturday = _nextWeekday(DateTime.saturday);
 
         final mission = Mission(
           id: '',
           title: 'Weekend Market Walk',
-          description: 'Visit $businessName during the weekend market event.',
+          description:
+          'Visit ${business.name} during the weekend market event.',
           rewardType: MissionRewardType.voucher,
           voucherLabel: 'Voucher',
           status: MissionStatus.active,
           scheduledStartAt: nextSaturday,
           checkpoints: [
             MissionCheckpoint(
-              businessId: businessDoc.id,
-              businessName: businessName,
+              businessId: business.id,
+              businessName: business.name,
               type: MissionType.visit,
-              targetLatitude: coords.lat,
-              targetLongitude: coords.lng,
+              targetLatitude: business.latitude!,
+              targetLongitude: business.longitude!,
               completed: false,
             ),
           ],
@@ -392,24 +390,23 @@ class MissionService {
 
       for (var c = 0; c < checkpointCount; c++) {
         if (businessIndex >= businesses.length) break;
-        final businessDoc = businesses[businessIndex++];
-        final businessData = businessDoc.data();
-        final businessName = businessData['name'] as String? ?? 'a business';
-        if (c == 0) areaLabel = businessName;
-        final coords = _stubNearbyOffset(currentLat, currentLng, 30, 400);
+        final business = businesses[businessIndex++];
+        if (c == 0) areaLabel = business.name;
         final type = _random.nextBool()
             ? MissionType.visit
             : MissionType.photo;
 
         checkpoints.add(
           MissionCheckpoint(
-            businessId: businessDoc.id,
-            businessName: businessName,
+            businessId: business.id,
+            businessName: business.name,
             type: type,
-            targetLatitude: coords.lat,
-            targetLongitude: coords.lng,
+            targetLatitude: business.latitude!,
+            targetLongitude: business.longitude!,
             completed: false,
-            photoTargetLabel: type == MissionType.photo ? businessName : null,
+            photoTargetLabel: type == MissionType.photo
+                ? _acceptablePhotoLabels(business.category).join(',')
+                : null,
           ),
         );
       }
@@ -451,19 +448,52 @@ class MissionService {
     ).add(Duration(days: daysUntil));
   }
 
-  /// STUB: always passes. Swap for real ML Kit / image-labeling logic
-  /// later — nothing else in [completeNextCheckpoint] needs to change.
-  bool _stubVerifyPhoto(MissionCheckpoint checkpoint) => true;
+  /// Runs on-device ML Kit image labeling on the photo at [imagePath] and
+  /// checks whether any detected label matches [checkpoint]'s acceptable
+  /// labels. The image itself is never uploaded or persisted anywhere —
+  /// only this true/false result leaves this function.
+  Future<bool> _verifyPhoto(
+      MissionCheckpoint checkpoint,
+      String imagePath,
+      ) async {
+    final acceptable = (checkpoint.photoTargetLabel ?? '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    if (acceptable.isEmpty) return true; // no requirement configured
+
+    final labeler = ImageLabeler(
+      options: ImageLabelerOptions(confidenceThreshold: 0.6),
+    );
+    try {
+      final labels = await labeler.processImage(
+        InputImage.fromFilePath(imagePath),
+      );
+      final detected = labels.map((l) => l.label.toLowerCase()).toSet();
+      return detected.any(
+            (d) => acceptable.any((a) => d.contains(a) || a.contains(d)),
+      );
+    } finally {
+      await labeler.close(); // release the model; nothing else to clean up
+    }
+  }
 
   /// Attempts to complete the next incomplete checkpoint of [missionId]
   /// for [uid]. If this was the mission's last checkpoint, the mission
   /// itself is marked completed and the reward (EXP or voucher) is
   /// awarded via [RewardService].
+  ///
+  /// [photoPath] is required (and used) only when the next checkpoint is
+  /// a [MissionType.photo] checkpoint — pass the file path returned by
+  /// `ImagePicker().pickImage(source: ImageSource.camera)`. The file is
+  /// only read for on-device labeling here; nothing about it is stored.
   Future<CheckpointCompletionResult> completeNextCheckpoint(
       String uid,
       String missionId, {
         required double currentLat,
         required double currentLng,
+        String? photoPath,
       }) async {
     final missionRef = _missionsRef(uid).doc(missionId);
     final snapshot = await missionRef.get();
@@ -518,7 +548,7 @@ class MissionService {
         );
       }
     } else {
-      if (!_stubVerifyPhoto(checkpoint)) {
+      if (photoPath == null || !await _verifyPhoto(checkpoint, photoPath)) {
         return const CheckpointCompletionResult(
           success: false,
           failureReason: 'Photo verification failed.',
@@ -569,10 +599,4 @@ class MissionService {
       );
     }
   }
-}
-
-class _StubCoords {
-  const _StubCoords(this.lat, this.lng);
-  final double lat;
-  final double lng;
 }
