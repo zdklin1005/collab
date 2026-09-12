@@ -15,6 +15,7 @@ class NearbyBusinessDialog extends StatefulWidget {
     required this.onViewDetails,
     this.onCheckEligibility,
     this.onClaim,
+    this.initialOffer,
     this.now,
   });
 
@@ -26,6 +27,7 @@ class NearbyBusinessDialog extends StatefulWidget {
   final Future<BusinessVoucherClaimStatus> Function(String voucherId)?
   onCheckEligibility;
   final Future<BusinessVoucherClaimStatus> Function(String voucherId)? onClaim;
+  final MapVoucherOffer? initialOffer;
 
   // Tests can supply a fixed time.
   final DateTime Function()? now;
@@ -40,6 +42,12 @@ class _NearbyBusinessDialogState extends State<NearbyBusinessDialog> {
   bool _checkingEligibility = false;
   bool _claimConfirmed = false;
   String? _eligibilityMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedOffer = widget.initialOffer;
+  }
 
   Future<void> _checkEligibility() async {
     final selected = _selectedOffer;
@@ -62,6 +70,10 @@ class _NearbyBusinessDialogState extends State<NearbyBusinessDialog> {
       if (!mounted) return;
 
       setState(() {
+        _claimConfirmed =
+            status == BusinessVoucherClaimStatus.demoRecorded ||
+            status == BusinessVoucherClaimStatus.alreadyClaimed;
+
         _eligibilityMessage = switch (status) {
           BusinessVoucherClaimStatus.readyForDemo =>
             'Local checks passed at this moment. '
@@ -149,9 +161,12 @@ class _NearbyBusinessDialogState extends State<NearbyBusinessDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Approximately '
-                '${widget.distanceMeters.toStringAsFixed(0)} m '
-                'away in a straight line when detected.',
+                widget.initialOffer != null
+                    ? 'Opened from business details. '
+                          'Your range is checked when claiming.'
+                    : 'Approximately '
+                          '${widget.distanceMeters.toStringAsFixed(0)} m '
+                          'away in a straight line when detected.',
               ),
               const SizedBox(height: 16),
               BusinessVoucherSection(
@@ -220,6 +235,15 @@ class _NearbyBusinessDialogState extends State<NearbyBusinessDialog> {
             onPressed: _checkingEligibility
                 ? null
                 : () {
+                    if (widget.initialOffer != null) {
+                      // Opened from business details:
+                      // close this dialog to reveal its voucher section.
+                      widget.onDismiss();
+                      return;
+                    }
+
+                    // Opened from the nearby-business popup:
+                    // return to that popup's voucher list.
                     setState(() {
                       _selectedOffer = null;
                       _eligibilityMessage = null;

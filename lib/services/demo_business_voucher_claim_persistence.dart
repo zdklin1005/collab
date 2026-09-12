@@ -1,9 +1,13 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/map_test_config.dart';
+
 import '../models/localquest_models.dart';
 
 import 'daily_reward_generator.dart';
 import 'demo_business_voucher_claim_store.dart';
+
+import 'package:flutter/foundation.dart';
 
 class DemoBusinessVoucherSaveResult {
   const DemoBusinessVoucherSaveResult({
@@ -20,11 +24,38 @@ class DemoBusinessVoucherClaimPersistence {
   // Separate from map-marker collection history.
   static const _storageKey = 'localquest.map.demo.business_voucher_claims.v1';
 
+  static bool _failNextWrite = const bool.fromEnvironment(
+    'MAP_DEMO_BUSINESS_VOUCHER_FAIL_WRITE_ONCE',
+  );
+
+  static const _delaySave = bool.fromEnvironment(
+    'MAP_DEMO_BUSINESS_VOUCHER_DELAY_SAVE',
+  );
+
+  static Future<void> _writePhoneStorage(String value) async {
+    // MapTestConfig.enabled is restricted to debug builds.
+    if (MapTestConfig.enabled && _failNextWrite) {
+      _failNextWrite = false;
+      throw StateError('Simulated business-voucher claim save failure.');
+    }
+
+    await _preferences.setString(_storageKey, value);
+
+    if (MapTestConfig.enabled && _delaySave) {
+      debugPrint('Business-voucher demo save started: waiting 8 seconds.');
+      await Future<void>.delayed(const Duration(seconds: 8));
+    }
+
+    if (MapTestConfig.enabled && _delaySave) {
+      debugPrint('Business-voucher demo save completed.');
+    }
+  }
+
   static final _preferences = SharedPreferencesAsync();
 
   static final _instance = DemoBusinessVoucherClaimPersistence.withStorage(
     read: () => _preferences.getString(_storageKey),
-    write: (value) => _preferences.setString(_storageKey, value),
+    write: _writePhoneStorage,
   );
 
   factory DemoBusinessVoucherClaimPersistence() => _instance;

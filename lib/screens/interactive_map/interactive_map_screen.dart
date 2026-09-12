@@ -44,6 +44,7 @@ import 'reward_success_screen.dart';
 
 import 'nearby_business_dialog.dart';
 import 'business_voucher_claim_check.dart';
+import 'business_voucher_section.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
@@ -427,7 +428,100 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _showLocationDetails(MapLocation location) async {
     if (!mounted || _locationDetailsOpen || !location.canDisplay) return;
 
+    final matchingBusinesses =
+        MapTestConfig.enabled &&
+            location.type == MapLocationType.business &&
+            location.businessId != null
+        ? MockMapData.businesses
+              .where((business) => business.id == location.businessId)
+              .toList()
+        : <Business>[];
+
+    final Business? business = matchingBusinesses.length == 1
+        ? matchingBusinesses.single
+        : null;
+
+    // Keep one offer snapshot for this details visit.
+    final offers = business == null
+        ? <MapVoucherOffer>[]
+        : _demoBusinessOffers(business);
+
+    final checkedAt = DateTime.now();
+    final touristId = widget.user.id;
+    var voucherPreviewOpen = false;
+
     _locationDetailsOpen = true;
+
+    Future<void> openVoucher(MapVoucherOffer selected) async {
+      if (!mounted ||
+          !_foreground ||
+          !_locationDetailsOpen ||
+          voucherPreviewOpen ||
+          business == null) {
+        return;
+      }
+
+      if (widget.user.id != touristId || touristId.trim().isEmpty) {
+        _showDemoCollectionMessage(
+          'The account changed. Close these details and open them again.',
+        );
+        return;
+      }
+
+      if (_restoringClaims || _claimStorageError != null) {
+        _showDemoCollectionMessage(
+          'Claim history is not ready. Close details and retry on Discover.',
+        );
+        return;
+      }
+
+      voucherPreviewOpen = true;
+      var closing = false;
+
+      try {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) {
+            void closePreview() {
+              if (closing) return;
+              closing = true;
+              Navigator.of(dialogContext).pop();
+            }
+
+            return NearbyBusinessDialog(
+              business: business,
+              // Hidden for previews opened from business details.
+              distanceMeters: 0,
+              offers: offers,
+              initialOffer: selected,
+              onDismiss: closePreview,
+              // Details are already underneath this dialog.
+              onViewDetails: closePreview,
+              onCheckEligibility: (voucherId) {
+                return _checkSelectedBusinessVoucher(
+                  touristId: touristId,
+                  businessId: business.id,
+                  voucherId: voucherId,
+                  offers: offers,
+                );
+              },
+              onClaim: (voucherId) {
+                return _claimSelectedBusinessVoucher(
+                  touristId: touristId,
+                  businessId: business.id,
+                  voucherId: voucherId,
+                  offers: offers,
+                  isPreviewOpen: () =>
+                      voucherPreviewOpen && !closing && _locationDetailsOpen,
+                );
+              },
+            );
+          },
+        );
+      } finally {
+        voucherPreviewOpen = false;
+      }
+    }
 
     try {
       await showModalBottomSheet<void>(
@@ -442,6 +536,16 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
             child: MapLocationDetails(
               location: location,
               onClose: () => Navigator.of(sheetContext).pop(),
+              voucherSection: business == null
+                  ? null
+                  : BusinessVoucherSection(
+                      business: business,
+                      offers: offers,
+                      checkedAt: checkedAt,
+                      onSelected: (offer) {
+                        unawaited(openVoucher(offer));
+                      },
+                    ),
             ),
           );
         },
@@ -1360,25 +1464,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final location = MapLocation.fromBusiness(candidate.business);
     if (location == null || !location.canDisplay) return;
 
-    final voucherCheckedAt = DateTime.now();
-
-    final previewMultipleVouchers =
-        MapTestConfig.enabled &&
-        const bool.fromEnvironment('MAP_DEMO_MULTIPLE_VOUCHERS');
-
-    final voucherOffers = [
-      ...MockMapData.createDemoVoucherOffers(voucherCheckedAt),
-      if (previewMultipleVouchers)
-        MapVoucherOffer(
-          id: 'debug-second-offer-${candidate.business.id}',
-          businessId: candidate.business.id,
-          title: 'Second demo voucher — short offer',
-          validFrom: voucherCheckedAt.subtract(const Duration(minutes: 1)),
-          expiresAt: voucherCheckedAt.add(const Duration(minutes: 5)),
-          remainingStock: 5,
-          mapEligible: false,
-        ),
-    ];
+    final voucherOffers = _demoBusinessOffers(candidate.business);
 
     _nearbyBusinessDialogOpen = true;
     bool actionTaken = false;
@@ -1647,6 +1733,34 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     } catch (_) {
       return BusinessVoucherClaimStatus.saveFailed;
     }
+  }
+
+  List<MapVoucherOffer> _demoBusinessOffers(Business business) {
+    final checkedAt = DateTime.now();
+
+    final multipleOffers =
+        MapTestConfig.enabled &&
+        const bool.fromEnvironment('MAP_DEMO_MULTIPLE_VOUCHERS');
+
+    const testTag = String.fromEnvironment(
+      'MAP_DEMO_BUSINESS_VOUCHER_TEST_TAG',
+    );
+
+    return [
+      ...MockMapData.createDemoVoucherOffers(checkedAt),
+      if (multipleOffers)
+        MapVoucherOffer(
+          id:
+              'debug-second-offer-${business.id}'
+              '${testTag.isEmpty ? '' : '-$testTag'}',
+          businessId: business.id,
+          title: 'Second demo voucher — short offer',
+          validFrom: checkedAt.subtract(const Duration(minutes: 1)),
+          expiresAt: checkedAt.add(const Duration(minutes: 5)),
+          remainingStock: 5,
+          mapEligible: false,
+        ),
+    ];
   }
 
   @override

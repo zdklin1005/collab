@@ -7,10 +7,12 @@ class MapLocationDetails extends StatelessWidget {
     super.key,
     required this.location,
     required this.onClose,
+    this.voucherSection,
   });
 
   final MapLocation location;
   final VoidCallback onClose;
+  final Widget? voucherSection;
 
   String _valueOr(String value, String fallback) {
     return value.trim().isEmpty ? fallback : value.trim();
@@ -131,10 +133,14 @@ class MapLocationDetails extends StatelessWidget {
                       'Promotions',
                       'Merchant campaign information is not connected yet.',
                     ),
-                    _section(
-                      'Business vouchers',
-                      'Voucher availability and claiming are not connected yet.',
-                    ),
+                    Padding(
+  padding: const EdgeInsets.only(bottom: 20),
+  child: voucherSection ??
+      _section(
+        'Business vouchers',
+        'Voucher availability is not connected for this business.',
+      ),
+),
                   ],
                   _section(
                     'Ratings and reviews',
