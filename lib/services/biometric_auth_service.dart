@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +12,7 @@ abstract class BiometricAuthService {
   Future<void> saveLastUser({
     required String email,
     required String role,
+    String? username,
     String? token,
   });
   Future<Map<String, String>?> getLastUser();
@@ -64,35 +64,29 @@ class LocalBiometricAuthService implements BiometricAuthService {
 
   static const _enabledKey = 'lq_biometrics_enabled';
   static const _savedEmailKey = 'lq_biometrics_email';
+  static const _savedUsernameKey = 'lq_biometrics_username';
   static const _savedRoleKey = 'lq_biometrics_role';
   static const _savedTokenKey = 'lq_biometrics_token';
 
   @override
   Future<bool> isSupported() async {
-    if (kIsWeb) return false;
     try {
-      final isDeviceSupported = await _auth.isDeviceSupported();
-      final canCheck = await _auth.canCheckBiometrics;
-      return isDeviceSupported || canCheck;
+      return await _auth.isDeviceSupported();
     } on PlatformException {
-      return false;
-    } catch (_) {
       return false;
     }
   }
 
   @override
   Future<bool> isEnabled([String? userId]) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (userId != null && userId.isNotEmpty) {
-        final userVal = prefs.getBool('${_enabledKey}_$userId');
-        if (userVal != null) return userVal;
+    final prefs = await SharedPreferences.getInstance();
+    if (userId != null && userId.isNotEmpty) {
+      final userKey = '${_enabledKey}_$userId';
+      if (prefs.containsKey(userKey)) {
+        return prefs.getBool(userKey) ?? false;
       }
-      return prefs.getBool(_enabledKey) ?? false;
-    } catch (_) {
-      return false;
     }
+    return prefs.getBool(_enabledKey) ?? false;
   }
 
   @override
@@ -100,27 +94,20 @@ class LocalBiometricAuthService implements BiometricAuthService {
     final prefs = await SharedPreferences.getInstance();
     if (userId != null && userId.isNotEmpty) {
       await prefs.setBool('${_enabledKey}_$userId', enabled);
-    }
-    await prefs.setBool(_enabledKey, enabled);
-    if (!enabled) {
-      await clearLastUser();
+    } else {
+      await prefs.setBool(_enabledKey, enabled);
     }
   }
 
   @override
   Future<bool> authenticate({required String localizedReason}) async {
     try {
-      final supported = await isSupported();
-      if (!supported) return false;
-
       return await _auth.authenticate(
         localizedReason: localizedReason,
         biometricOnly: false,
         persistAcrossBackgrounding: true,
       );
     } on PlatformException {
-      return false;
-    } catch (_) {
       return false;
     }
   }
@@ -129,11 +116,15 @@ class LocalBiometricAuthService implements BiometricAuthService {
   Future<void> saveLastUser({
     required String email,
     required String role,
+    String? username,
     String? token,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_savedEmailKey, email);
     await prefs.setString(_savedRoleKey, role);
+    if (username != null && username.isNotEmpty) {
+      await prefs.setString(_savedUsernameKey, username);
+    }
     if (token != null) {
       await prefs.setString(_savedTokenKey, token);
     }
@@ -148,6 +139,7 @@ class LocalBiometricAuthService implements BiometricAuthService {
     return {
       'email': email,
       'role': role,
+      'username': prefs.getString(_savedUsernameKey) ?? '',
       'token': prefs.getString(_savedTokenKey) ?? '',
     };
   }
@@ -156,6 +148,7 @@ class LocalBiometricAuthService implements BiometricAuthService {
   Future<void> clearLastUser() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_savedEmailKey);
+    await prefs.remove(_savedUsernameKey);
     await prefs.remove(_savedRoleKey);
     await prefs.remove(_savedTokenKey);
   }
@@ -209,9 +202,15 @@ class MockBiometricAuthService implements BiometricAuthService {
   Future<void> saveLastUser({
     required String email,
     required String role,
+    String? username,
     String? token,
   }) async {
-    _user = {'email': email, 'role': role, 'token': token ?? ''};
+    _user = {
+      'email': email,
+      'role': role,
+      'username': username ?? '',
+      'token': token ?? '',
+    };
   }
 
   @override
