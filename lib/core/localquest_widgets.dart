@@ -526,15 +526,24 @@ const lqBusinessCategories = <String>[
   'Other',
 ];
 
+const lqDietaryStatuses = <String>[
+  'Halal Certified',
+  'Muslim-Friendly / Pork-Free',
+  'Vegetarian-Friendly',
+  'Non-Halal',
+  'Not Applicable',
+];
+
 class LqDropdownField extends FormField<String> {
   LqDropdownField({
-    super.key,
+    Key? key,
     required this.label,
     required this.value,
     required this.items,
     required this.onChanged,
     super.validator,
   }) : super(
+         key: key ?? ValueKey(label),
          initialValue: value != null && items.contains(value) ? value : null,
          builder: _buildDropdown,
        );

@@ -86,6 +86,10 @@ class Business {
     this.active = true,
     this.latitude,
     this.longitude,
+    this.operatingHours,
+    this.dietaryStatus,
+    this.website,
+    this.description,
   });
 
   final String id;
@@ -104,6 +108,10 @@ class Business {
   final bool active;
   final double? latitude;
   final double? longitude;
+  final String? operatingHours;
+  final String? dietaryStatus;
+  final String? website;
+  final String? description;
 
   bool get isSsmVerified => verificationStatus == 'verified';
 
@@ -126,6 +134,10 @@ class Business {
       active: data['active'] as bool? ?? true,
       latitude: (data['latitude'] as num?)?.toDouble(),
       longitude: (data['longitude'] as num?)?.toDouble(),
+      operatingHours: data['operatingHours'] as String?,
+      dietaryStatus: data['dietaryStatus'] as String?,
+      website: data['website'] as String?,
+      description: data['description'] as String?,
     );
   }
 }
@@ -150,6 +162,14 @@ class Campaign {
     this.minimumSpend = 0,
     this.quantity = 0,
     this.perCustomerLimit = 1,
+    this.voucherType = 'promotional',
+    this.collectionMethod = 'both',
+    this.seasonName,
+    this.linkedAdId,
+    this.validDays,
+    this.validHours,
+    this.redemptionHours,
+    this.dailyQuota,
   });
 
   final String id;
@@ -170,9 +190,30 @@ class Campaign {
   final double minimumSpend;
   final int quantity;
   final int perCustomerLimit;
+  final String voucherType; // 'welcome', 'promotional', 'seasonal'
+  final String collectionMethod; // 'discovery_claim', 'walk_up_collect', 'both'
+  final String? seasonName;
+  final String? linkedAdId;
+  final String? validDays;
+  final String? validHours;
+  final String? redemptionHours;
+  final int? dailyQuota;
+
+  String? get effectiveHours => validHours ?? redemptionHours;
+
+  bool get isWelcomeVoucher => type == 'voucher' && voucherType == 'welcome';
+  bool get isSeasonalVoucher =>
+      type == 'voucher' &&
+      (voucherType == 'seasonal' ||
+          (voucherType == 'promotional' &&
+              seasonName != null &&
+              seasonName!.trim().isNotEmpty));
+  bool get isPromotionalVoucher =>
+      type == 'voucher' && voucherType == 'promotional' && !isSeasonalVoucher;
 
   factory Campaign.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
+    final validHrs = data['validHours'] as String? ?? data['redemptionHours'] as String?;
     return Campaign(
       id: doc.id,
       ownerId: data['ownerId'] as String? ?? '',
@@ -194,6 +235,14 @@ class Campaign {
       minimumSpend: (data['minimumSpend'] as num?)?.toDouble() ?? 0,
       quantity: (data['quantity'] as num?)?.toInt() ?? 0,
       perCustomerLimit: (data['perCustomerLimit'] as num?)?.toInt() ?? 1,
+      voucherType: data['voucherType'] as String? ?? 'promotional',
+      collectionMethod: data['collectionMethod'] as String? ?? 'both',
+      seasonName: data['seasonName'] as String?,
+      linkedAdId: data['linkedAdId'] as String?,
+      validDays: data['validDays'] as String?,
+      validHours: validHrs,
+      redemptionHours: validHrs,
+      dailyQuota: (data['dailyQuota'] as num?)?.toInt(),
     );
   }
 }

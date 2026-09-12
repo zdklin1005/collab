@@ -97,12 +97,14 @@ void main() {
     expect(find.text('Add business'), findsOneWidget);
     expect(find.text('Business name'), findsOneWidget);
     expect(find.text('Business category'), findsOneWidget);
-    expect(find.byType(LqDropdownField), findsNWidgets(2));
+    expect(find.byType(LqDropdownField), findsNWidgets(3));
     expect(find.text('Registration number'), findsOneWidget);
     expect(find.text('Street address'), findsOneWidget);
     expect(find.text('Postcode'), findsOneWidget);
     expect(find.text('Area / city'), findsOneWidget);
     expect(find.text('State'), findsOneWidget);
+    expect(find.text('Operating hours'), findsOneWidget);
+    expect(find.text('Halal & dietary certification'), findsOneWidget);
     expect(find.text('Save business'), findsOneWidget);
 
     await tester.pumpWidget(app(const CampaignEditor(user: merchant)));
@@ -111,9 +113,24 @@ void main() {
     expect(find.text('Voucher'), findsOneWidget);
     expect(find.text('Campaign name'), findsOneWidget);
     expect(find.text('Description'), findsOneWidget);
+    expect(find.text('Next: Schedule & vouchers'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Campaign name'),
+      'Penang Summer Festival',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Description'),
+      'Celebrate culture and heritage during this annual month-long festivity.',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Next: Schedule & vouchers'));
+    await tester.tap(find.text('Next: Schedule & vouchers'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Start date'), findsOneWidget);
     expect(find.text('End date'), findsOneWidget);
-    expect(find.text('Save changes'), findsOneWidget);
+    expect(find.text('Next: Review & confirm'), findsOneWidget);
 
     await tester.pumpWidget(
       app(

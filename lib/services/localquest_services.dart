@@ -721,31 +721,53 @@ class UserRepository {
 }
 
 class MerchantRepository {
-  MerchantRepository._();
-  static final instance = MerchantRepository._();
-  final FirebaseFirestore db = FirebaseFirestore.instance;
+  MerchantRepository({FirebaseFirestore? firestore}) : _db = firestore;
+  static MerchantRepository instance = MerchantRepository();
+  final FirebaseFirestore? _db;
+  FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
 
-  Stream<List<Business>> businesses(String uid) => db
-      .collection('businesses')
-      .where('ownerId', isEqualTo: uid)
-      .snapshots()
-      .map((snapshot) => snapshot.docs.map(Business.fromDoc).toList());
+  Stream<List<Business>> Function(String uid)? mockBusinessesStream;
+  Stream<List<Campaign>> Function(String uid, {String? businessId})? mockCampaignsStream;
 
-  Stream<List<Campaign>> campaigns(String uid, {String? businessId}) => db
-      .collection('campaigns')
-      .where('ownerId', isEqualTo: uid)
-      .snapshots()
-      .map((snapshot) {
-        final values = snapshot.docs
-            .map(Campaign.fromDoc)
-            .where(
-              (campaign) =>
-                  businessId == null || campaign.businessId == businessId,
-            )
-            .toList();
-        values.sort((a, b) => b.startDate.compareTo(a.startDate));
-        return values;
-      });
+  Stream<List<Business>> businesses(String uid) {
+    if (mockBusinessesStream != null) {
+      return mockBusinessesStream!(uid);
+    }
+    try {
+      return db
+          .collection('businesses')
+          .where('ownerId', isEqualTo: uid)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.map(Business.fromDoc).toList());
+    } catch (_) {
+      return Stream.value(const <Business>[]);
+    }
+  }
+
+  Stream<List<Campaign>> campaigns(String uid, {String? businessId}) {
+    if (mockCampaignsStream != null) {
+      return mockCampaignsStream!(uid, businessId: businessId);
+    }
+    try {
+      return db
+          .collection('campaigns')
+          .where('ownerId', isEqualTo: uid)
+          .snapshots()
+          .map((snapshot) {
+            final values = snapshot.docs
+                .map(Campaign.fromDoc)
+                .where(
+                  (campaign) =>
+                      businessId == null || campaign.businessId == businessId,
+                )
+                .toList();
+            values.sort((a, b) => b.startDate.compareTo(a.startDate));
+            return values;
+          });
+    } catch (_) {
+      return Stream.value(const <Campaign>[]);
+    }
+  }
 
   Future<void> saveBusiness(Business value, {Uint8List? photoBytes}) async {
     if (FirebaseAuth.instance.currentUser?.uid != value.ownerId) {
@@ -781,6 +803,14 @@ class MerchantRepository {
         'active': value.active,
         'latitude': ?value.latitude,
         'longitude': ?value.longitude,
+        if (value.operatingHours != null && value.operatingHours!.trim().isNotEmpty)
+          'operatingHours': value.operatingHours!.trim(),
+        if (value.dietaryStatus != null && value.dietaryStatus!.trim().isNotEmpty)
+          'dietaryStatus': value.dietaryStatus!.trim(),
+        if (value.website != null && value.website!.trim().isNotEmpty)
+          'website': value.website!.trim(),
+        if (value.description != null && value.description!.trim().isNotEmpty)
+          'description': value.description!.trim(),
         'updatedAt': FieldValue.serverTimestamp(),
         if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -800,7 +830,7 @@ class MerchantRepository {
     });
   }
 
-  Future<void> saveCampaign(
+  Future<String> saveCampaign(
     Campaign value, {
     Uint8List? posterBytes,
     String? posterExtension,
@@ -881,10 +911,29 @@ class MerchantRepository {
         'discountValue': value.discountValue,
         'minimumSpend': value.minimumSpend,
         'quantity': value.quantity,
-        'perCustomerLimit': value.perCustomerLimit,
+        'perCustomerLimit': value.voucherType == 'welcome' ? 1 : value.perCustomerLimit,
+        'voucherType': ['welcome', 'promotional', 'seasonal'].contains(value.voucherType)
+            ? value.voucherType
+            : 'promotional',
+        'collectionMethod': ['discovery_claim', 'walk_up_collect', 'both'].contains(value.collectionMethod)
+            ? value.collectionMethod
+            : 'both',
+        if (value.seasonName != null && value.seasonName!.trim().isNotEmpty)
+          'seasonName': value.seasonName!.trim(),
+        if (value.linkedAdId != null && value.linkedAdId!.trim().isNotEmpty)
+          'linkedAdId': value.linkedAdId!.trim(),
+        if (value.validDays != null && value.validDays!.trim().isNotEmpty)
+          'validDays': value.validDays!.trim(),
+        if (value.validHours != null && value.validHours!.trim().isNotEmpty)
+          'validHours': value.validHours!.trim(),
+        if (value.redemptionHours != null && value.redemptionHours!.trim().isNotEmpty)
+          'redemptionHours': value.redemptionHours!.trim(),
+        if (value.dailyQuota != null && value.dailyQuota! > 0)
+          'dailyQuota': value.dailyQuota,
         'updatedAt': FieldValue.serverTimestamp(),
         if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      return ref.id;
     } catch (_) {
       if (uploaded != null) await CloudinaryImages.instance.rollback(uploaded);
       rethrow;
@@ -893,4 +942,94 @@ class MerchantRepository {
 
   Future<void> deleteCampaign(String id) =>
       db.collection('campaigns').doc(id).delete();
+
+  Future<void> attachVouchersToAd(
+    String adId,
+    Set<String> voucherIds,
+    String businessId,
+  ) async {
+    final snap = await db
+        .collection('campaigns')
+        .where('businessId', isEqualTo: businessId)
+        .where('type', isEqualTo: 'voucher')
+        .get();
+    final batch = db.batch();
+    for (final doc in snap.docs) {
+      final shouldBeAttached = voucherIds.contains(doc.id);
+      final currentLinked = doc.data()['linkedAdId'] as String?;
+      if (shouldBeAttached && currentLinked != adId) {
+        batch.update(doc.reference, {
+          'linkedAdId': adId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else if (!shouldBeAttached && currentLinked == adId) {
+        batch.update(doc.reference, {
+          'linkedAdId': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    await batch.commit();
+  }
+
+  Future<bool> claimVoucher({
+    required String userId,
+    required String voucherId,
+    required String businessId,
+    required String voucherType,
+  }) async {
+    final claimDoc = db
+        .collection('users')
+        .doc(userId)
+        .collection('claimedVouchers')
+        .doc(voucherId);
+
+    final existing = await claimDoc.get();
+    if (existing.exists && voucherType == 'welcome') {
+      throw const LocalQuestException(
+        'You have already claimed this welcome voucher.',
+      );
+    }
+
+    if (voucherType == 'welcome') {
+      final bizWelcomeQuery = await db
+          .collection('users')
+          .doc(userId)
+          .collection('claimedVouchers')
+          .where('businessId', isEqualTo: businessId)
+          .where('voucherType', isEqualTo: 'welcome')
+          .limit(1)
+          .get();
+      if (bizWelcomeQuery.docs.isNotEmpty) {
+        throw const LocalQuestException(
+          'You have already claimed a welcome voucher for this business.',
+        );
+      }
+    }
+
+    await claimDoc.set({
+      'voucherId': voucherId,
+      'businessId': businessId,
+      'voucherType': voucherType,
+      'claimedAt': FieldValue.serverTimestamp(),
+      'redeemed': false,
+    });
+
+    try {
+      await db.collection('campaigns').doc(voucherId).update({
+        'claims': FieldValue.increment(1),
+      });
+    } catch (_) {
+      // Best-effort counter increment
+    }
+
+    return true;
+  }
+
+  Stream<List<Map<String, dynamic>>> touristClaimedVouchers(String userId) => db
+      .collection('users')
+      .doc(userId)
+      .collection('claimedVouchers')
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
 }

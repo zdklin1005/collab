@@ -154,8 +154,8 @@ void main() {
         ),
       ),
     );
-    await tester.ensureVisible(find.text('Save changes'));
-    await tester.tap(find.text('Save changes'));
+    await tester.ensureVisible(find.text('Next: Value & limits'));
+    await tester.tap(find.text('Next: Value & limits'));
     await tester.pumpAndSettle();
     expect(find.text('Name must contain 3–80 characters.'), findsOneWidget);
     expect(
@@ -454,7 +454,7 @@ void main() {
     expect(find.text('Promotional ad'), findsOneWidget);
     expect(find.text('Voucher'), findsOneWidget);
     expect(find.text('Campaign name'), findsOneWidget);
-    expect(find.text('Save changes'), findsOneWidget);
+    expect(find.text('Next: Schedule & vouchers'), findsOneWidget);
 
     await tester.pumpWidget(app(const BusinessEditor(user: merchant)));
     expect(find.text('Business name'), findsOneWidget);
