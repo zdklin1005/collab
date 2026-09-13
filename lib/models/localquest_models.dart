@@ -417,6 +417,7 @@ class ChatConversation {
     this.lastMessage = '',
     required this.lastMessageTime,
     this.unreadCount = 0,
+    this.lastSenderId = '',
   });
 
   final String id;
@@ -428,6 +429,7 @@ class ChatConversation {
   final String lastMessage;
   final DateTime lastMessageTime;
   final int unreadCount;
+  final String lastSenderId;
 
   factory ChatConversation.fromDoc(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -459,7 +461,80 @@ class ChatConversation {
           (data['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
       unreadCount:
           (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
+      lastSenderId: data['lastSenderId'] as String? ?? '',
     );
   }
 }
 
+class LeaderboardEntry {
+  const LeaderboardEntry({
+    required this.userId,
+    required this.displayName,
+    required this.username,
+    this.photoUrl,
+    required this.level,
+    required this.exp,
+    required this.rank,
+    this.isCurrentUser = false,
+  });
+
+  final String userId;
+  final String displayName;
+  final String username;
+  final String? photoUrl;
+  final int level;
+  final int exp;
+  final int rank;
+  final bool isCurrentUser;
+
+  factory LeaderboardEntry.fromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    int rank = 1,
+    String? currentUserId,
+  }) {
+    final data = doc.data() ?? {};
+    return LeaderboardEntry(
+      userId: doc.id,
+      displayName: data['displayName'] as String? ?? 'Penang Explorer',
+      username: data['username'] as String? ?? '@explorer',
+      photoUrl: data['photoUrl'] as String?,
+      level: (data['level'] as num?)?.toInt() ?? 1,
+      exp: (data['exp'] as num?)?.toInt() ?? 0,
+      rank: rank,
+      isCurrentUser: currentUserId != null && currentUserId == doc.id,
+    );
+  }
+
+  factory LeaderboardEntry.fromAppUser(
+    AppUser user, {
+    int rank = 1,
+    String? currentUserId,
+  }) {
+    return LeaderboardEntry(
+      userId: user.id,
+      displayName: user.displayName,
+      username: user.username,
+      photoUrl: user.photoUrl,
+      level: user.level,
+      exp: user.exp,
+      rank: rank,
+      isCurrentUser: currentUserId != null && currentUserId == user.id,
+    );
+  }
+
+  LeaderboardEntry copyWith({
+    int? rank,
+    bool? isCurrentUser,
+  }) {
+    return LeaderboardEntry(
+      userId: userId,
+      displayName: displayName,
+      username: username,
+      photoUrl: photoUrl,
+      level: level,
+      exp: exp,
+      rank: rank ?? this.rank,
+      isCurrentUser: isCurrentUser ?? this.isCurrentUser,
+    );
+  }
+}

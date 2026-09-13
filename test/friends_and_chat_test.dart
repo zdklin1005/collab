@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:collab/core/localquest_theme.dart';
+import 'package:collab/data/mock_map_data.dart';
 import 'package:collab/models/localquest_models.dart';
 import 'package:collab/screens/ai_assistant_sheet.dart';
 import 'package:collab/screens/direct_chat_screen.dart';
@@ -6,6 +8,8 @@ import 'package:collab/screens/friends_screen.dart';
 import 'package:collab/screens/tourist_screens.dart';
 import 'package:collab/services/ai_tourist_guide_service.dart';
 import 'package:collab/services/direct_chat_service.dart';
+import 'package:collab/services/in_app_notification_service.dart';
+import 'package:collab/services/localquest_services.dart';
 import 'package:collab/services/social_service.dart';
 import 'package:collab/services/spotify_service.dart';
 import 'package:flutter/material.dart';
@@ -218,10 +222,63 @@ void main() {
         lastMessage: 'See you there!',
         lastMessageTime: now,
         unreadCount: 2,
+        lastSenderId: 'user_1',
       );
 
       expect(convo.otherDisplayName, 'Sarah Tan');
       expect(convo.unreadCount, 2);
+      expect(convo.lastSenderId, 'user_1');
+    });
+
+    test('InAppNotificationService formatSenderTitle displays actual sender name and username', () {
+      // 1. Both display name and @username present
+      final title1 = InAppNotificationService.formatSenderTitle(
+        displayName: 'Ahmad Explorer',
+        username: '@ahmad_penang',
+        senderId: 'user_ahmad',
+      );
+      expect(title1, 'Ahmad Explorer (@ahmad_penang)');
+
+      // 2. Only username present (with @)
+      final title2 = InAppNotificationService.formatSenderTitle(
+        displayName: '',
+        username: '@aiman_h',
+        senderId: 'user_aiman',
+      );
+      expect(title2, '@aiman_h');
+
+      // 3. Username without @ prefix
+      final title3 = InAppNotificationService.formatSenderTitle(
+        displayName: '',
+        username: 'sarah_t',
+        senderId: 'user_sarah',
+      );
+      expect(title3, '@sarah_t');
+
+      // 4. Only display name present
+      final title4 = InAppNotificationService.formatSenderTitle(
+        displayName: 'Marcus Wong',
+        username: '',
+        senderId: 'user_marcus',
+      );
+      expect(title4, 'Marcus Wong');
+
+      // 5. Fallback with valid senderId (never empty @user_)
+      final title5 = InAppNotificationService.formatSenderTitle(
+        displayName: '',
+        username: '',
+        senderId: 'usr987654321',
+      );
+      expect(title5, '@user_usr98');
+
+      // 6. Complete empty fallback (never an empty '@user_')
+      final title6 = InAppNotificationService.formatSenderTitle(
+        displayName: '',
+        username: '',
+        senderId: '',
+      );
+      expect(title6, 'LocalQuest Friend');
+      expect(title6, isNot(equals('@user_')));
     });
   });
 
@@ -569,6 +626,233 @@ void main() {
       expect(find.text('PREFERENCES'), findsOneWidget);
       expect(find.text('CONNECTED ACCOUNTS'), findsOneWidget);
       expect(find.text('Spotify Music'), findsOneWidget);
+    });
+
+    testWidgets('DirectChatScreen tapping header profile opens recipient info sheet with tier, exp, status and stats',
+        (tester) async {
+      UserRepository.instance.mockWatch = (uid) => Stream.value(
+            const AppUser(
+              id: 'target_tourist_2',
+              email: 'sarah@example.com',
+              displayName: 'Sarah Tan',
+              username: '@sarah_t',
+              role: AccountRole.tourist,
+              level: 3,
+              exp: 2450,
+              voucherCount: 4,
+              reviewCount: 7,
+            ),
+          );
+      SocialService.instance.mockUserNoteStream = (uid) => Stream.value(
+            UserNote(
+              userId: uid,
+              text: 'Exploring Armenian Street!',
+              songTitle: 'Island in the Sun',
+              songArtist: 'Weezer',
+              createdAt: DateTime.now(),
+            ),
+          );
+
+      await tester.pumpWidget(
+        app(
+          const DirectChatScreen(
+            currentUser: testTourist,
+            targetUserId: 'target_tourist_2',
+            targetDisplayName: 'Sarah Tan',
+            targetUsername: '@sarah_t',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap on recipient header
+      await tester.tap(find.text('Sarah Tan'));
+      await tester.pumpAndSettle();
+
+      // Verify recipient sheet content
+      expect(find.text('EXPLORER · LEVEL 3'), findsOneWidget);
+      expect(find.text('2450 XP'), findsOneWidget);
+      expect(find.text('Level 3 Explorer • Next tier at 9000 XP'), findsOneWidget);
+      expect(find.text('"Exploring Armenian Street!"'), findsOneWidget);
+      expect(find.text('Island in the Sun'), findsOneWidget);
+      expect(find.text('Weezer'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget); // vouchers
+      expect(find.text('7'), findsOneWidget); // reviews
+      expect(find.text('Direct messages are private between tourists within Penang LocalQuest.'), findsOneWidget);
+
+      UserRepository.instance.mockWatch = null;
+      SocialService.instance.mockUserNoteStream = null;
+    });
+
+    testWidgets('FriendsScreen Add Friend button has StadiumBorder capsule shape',
+        (tester) async {
+      await tester.pumpWidget(
+        app(
+          const FriendsScreen(currentUser: testTourist),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final fabFinder = find.byType(FloatingActionButton);
+      expect(fabFinder, findsOneWidget);
+      final fab = tester.widget<FloatingActionButton>(fabFinder);
+      expect(fab.shape, isA<StadiumBorder>());
+      expect(find.text('Add Friend'), findsOneWidget);
+    });
+
+    testWidgets('DirectChatScreen displays inline image preview with remove button',
+        (tester) async {
+      final sampleImageBytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      );
+
+      await tester.pumpWidget(
+        app(
+          DirectChatScreen(
+            currentUser: testTourist,
+            targetUserId: 'target_tourist_2',
+            targetDisplayName: 'Sarah Tan',
+            targetUsername: '@sarah_t',
+            initialSelectedImageBytes: sampleImageBytes,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Check that the inline image preview and remove button are visible
+      expect(find.byKey(const Key('remove_selected_image_btn')), findsOneWidget);
+      expect(find.text('Add a caption...'), findsOneWidget);
+
+      // Tap remove button
+      await tester.tap(find.byKey(const Key('remove_selected_image_btn')));
+      await tester.pumpAndSettle();
+
+      // Verify the image preview is dismissed and hint reverts to 'Type a message...'
+      expect(find.byKey(const Key('remove_selected_image_btn')), findsNothing);
+      expect(find.text('Type a message...'), findsOneWidget);
+    });
+
+    testWidgets('DirectChatScreen sends inline image with text caption',
+        (tester) async {
+      final sampleImageBytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      );
+
+      bool sent = false;
+      String? sentCaption;
+      String? sentImageUrl;
+
+      DirectChatService.instance.mockSendImageMessage = ({
+        required currentUser,
+        required targetUserId,
+        required targetDisplayName,
+        required targetUsername,
+        targetPhotoUrl,
+        required imageUrl,
+        caption,
+      }) async {
+        sent = true;
+        sentCaption = caption;
+        sentImageUrl = imageUrl;
+      };
+
+      await tester.pumpWidget(
+        app(
+          DirectChatScreen(
+            currentUser: testTourist,
+            targetUserId: 'target_tourist_2',
+            targetDisplayName: 'Sarah Tan',
+            targetUsername: '@sarah_t',
+            initialSelectedImageBytes: sampleImageBytes,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Enter caption in text field
+      await tester.enterText(find.byType(TextField), 'Check out this heritage spot!');
+      await tester.pumpAndSettle();
+
+      // Tap send button
+      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.pumpAndSettle();
+
+      expect(sent, isTrue);
+      expect(sentCaption, 'Check out this heritage spot!');
+      expect(sentImageUrl, isNotNull);
+
+      DirectChatService.instance.mockSendImageMessage = null;
+    });
+
+    testWidgets('DirectChatScreen opens Location modal and shares selected business',
+        (tester) async {
+      bool sentLoc = false;
+      String? sentLocName;
+      double? sentLat;
+      double? sentLng;
+
+      DirectChatService.instance.mockSendLocationMessage = ({
+        required currentUser,
+        required targetUserId,
+        required targetDisplayName,
+        required targetUsername,
+        targetPhotoUrl,
+        required latitude,
+        required longitude,
+        required locationName,
+      }) async {
+        sentLoc = true;
+        sentLocName = locationName;
+        sentLat = latitude;
+        sentLng = longitude;
+      };
+
+      await tester.pumpWidget(
+        app(
+          const DirectChatScreen(
+            currentUser: testTourist,
+            targetUserId: 'target_tourist_2',
+            targetDisplayName: 'Sarah Tan',
+            targetUsername: '@sarah_t',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap attachment button
+      await tester.tap(find.byTooltip('Share photo or location'));
+      await tester.pumpAndSettle();
+
+      // Tap Location option
+      await tester.tap(find.text('Location'));
+      await tester.pumpAndSettle();
+
+      // Verify Share Location modal opened
+      expect(find.text('Share Location'), findsOneWidget);
+      expect(find.text('My Current Location'), findsOneWidget);
+      expect(find.text('OR SHARE A BUSINESS / PLACE'), findsOneWidget);
+
+      // Search for Demo Local Café
+      final searchField = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.decoration?.hintText == 'Search businesses, cafes, heritage...',
+      );
+      expect(searchField, findsOneWidget);
+      await tester.enterText(searchField, 'Café');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Demo Local Café'), findsOneWidget);
+
+      // Tap the Demo Local Café item
+      await tester.tap(find.text('Demo Local Café'));
+      await tester.pumpAndSettle();
+
+      // Verify sendLocationMessage was triggered with business name and coordinates
+      expect(sentLoc, isTrue);
+      expect(sentLocName, contains('Demo Local Café'));
+      expect(sentLat, closeTo(MockMapData.businesses.first.latitude!, 0.001));
+      expect(sentLng, closeTo(MockMapData.businesses.first.longitude!, 0.001));
+
+      DirectChatService.instance.mockSendLocationMessage = null;
     });
   });
 }

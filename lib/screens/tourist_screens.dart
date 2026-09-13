@@ -16,6 +16,7 @@ import '../services/biometric_auth_service.dart';
 import 'interactive_map/interactive_map_screen.dart';
 import 'ai_assistant_sheet.dart';
 import 'friends_screen.dart';
+import 'leaderboard_screen.dart';
 import 'direct_chat_screen.dart';
 import '../services/direct_chat_service.dart';
 import '../services/social_service.dart';
@@ -417,6 +418,17 @@ class TouristProfileScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => FriendsScreen(currentUser: user),
+                  ),
+                ),
+              ),
+              _JourneyItem(
+                icon: Icons.emoji_events_outlined,
+                title: 'Leaderboard',
+                subtitle: 'Global & Friends rankings',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LeaderboardScreen(currentUser: user),
                   ),
                 ),
               ),
@@ -1423,52 +1435,6 @@ class VisitedPlacesScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              Tooltip(
-                message: 'Simulate check-in',
-                child: InkWell(
-                  key: const Key('visited_places_demo_checkin_btn'),
-                  onTap: () async {
-                    final recorded = await UserRepository.instance.recordVisit(
-                      userId: userId,
-                      name: 'LocalQuest Heritage Hub',
-                      area: 'Bukit Bintang, Kuala Lumpur',
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            recorded
-                                ? 'Demo visit recorded! Location history updated.'
-                                : 'Could not record: Location history is disabled in Settings.',
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0x1A000000),
-                          blurRadius: 3,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.add_location_alt_outlined,
-                      size: 20,
-                      color: LqColors.primary,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -1515,30 +1481,6 @@ class VisitedPlacesScreen extends StatelessWidget {
                             'When you visit partnered merchants or local spots, they will be automatically recorded here.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: LqColors.muted, fontSize: 13),
-                          ),
-                          const SizedBox(height: 20),
-                          OutlinedButton.icon(
-                            key: const Key('visited_places_empty_simulate_btn'),
-                            onPressed: () async {
-                              final recorded = await UserRepository.instance.recordVisit(
-                                userId: userId,
-                                name: 'LocalQuest Heritage Hub',
-                                area: 'Bukit Bintang, Kuala Lumpur',
-                              );
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      recorded
-                                          ? 'Demo visit recorded! Location history updated.'
-                                          : 'Could not record: Location history is disabled in Settings.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.add_location_alt_outlined),
-                            label: const Text('Simulate visit check-in (Demo)'),
                           ),
                         ],
                       ),

@@ -586,6 +586,8 @@ class UserRepository {
 
   Stream<QuerySnapshot<Map<String, dynamic>>> Function(String uid)?
       mockVisitedPlacesStream;
+  Stream<AppUser> Function(String uid)? mockWatch;
+  Future<AppUser> Function(String uid)? mockGet;
   Future<bool> Function({
     required String userId,
     required String name,
@@ -614,8 +616,19 @@ class UserRepository {
     return photo;
   }
 
-  Stream<AppUser> watch(String uid) =>
-      db.collection('users').doc(uid).snapshots().map((doc) {
+  Stream<AppUser> watch(String uid) {
+    if (mockWatch != null) return mockWatch!(uid);
+    try {
+      return db.collection('users').doc(uid).snapshots().map((doc) {
+        if (!doc.exists) {
+          return AppUser(
+            id: uid,
+            email: '',
+            displayName: 'LocalQuest Explorer',
+            username: '@explorer',
+            role: AccountRole.tourist,
+          );
+        }
         final user = AppUser.fromDoc(doc);
         AccountIdentifierCache.cache(
           username: user.username,
@@ -623,15 +636,47 @@ class UserRepository {
         );
         return user;
       });
+    } catch (_) {
+      return Stream.value(
+        AppUser(
+          id: uid,
+          email: '',
+          displayName: 'LocalQuest Explorer',
+          username: '@explorer',
+          role: AccountRole.tourist,
+        ),
+      );
+    }
+  }
 
   Future<AppUser> get(String uid) async {
-    final doc = await db.collection('users').doc(uid).get();
-    final user = AppUser.fromDoc(doc);
-    await AccountIdentifierCache.cache(
-      username: user.username,
-      email: user.email,
-    );
-    return user;
+    if (mockGet != null) return mockGet!(uid);
+    try {
+      final doc = await db.collection('users').doc(uid).get();
+      if (!doc.exists) {
+        return AppUser(
+          id: uid,
+          email: '',
+          displayName: 'LocalQuest Explorer',
+          username: '@explorer',
+          role: AccountRole.tourist,
+        );
+      }
+      final user = AppUser.fromDoc(doc);
+      await AccountIdentifierCache.cache(
+        username: user.username,
+        email: user.email,
+      );
+      return user;
+    } catch (_) {
+      return AppUser(
+        id: uid,
+        email: '',
+        displayName: 'LocalQuest Explorer',
+        username: '@explorer',
+        role: AccountRole.tourist,
+      );
+    }
   }
 
   Future<void> updateProfile({

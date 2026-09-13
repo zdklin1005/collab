@@ -130,6 +130,7 @@ class DirectChatService {
     // 2. Update conversation summary doc
     await chatDocRef.set({
       'participants': [currentUser.id, targetUserId],
+      'lastSenderId': currentUser.id,
       'userSummaries': {
         currentUser.id: {
           'displayName': currentUser.displayName,
@@ -188,6 +189,7 @@ class DirectChatService {
 
     await chatDocRef.set({
       'participants': [currentUser.id, targetUserId],
+      'lastSenderId': currentUser.id,
       'userSummaries': {
         currentUser.id: {
           'displayName': currentUser.displayName,
@@ -248,6 +250,7 @@ class DirectChatService {
 
     await chatDocRef.set({
       'participants': [currentUser.id, targetUserId],
+      'lastSenderId': currentUser.id,
       'userSummaries': {
         currentUser.id: {
           'displayName': currentUser.displayName,

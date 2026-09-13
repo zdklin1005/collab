@@ -2826,14 +2826,18 @@ class _BusinessSelector extends StatelessWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
+        ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         decoration: const BoxDecoration(
           color: LqColors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
@@ -2946,7 +2950,8 @@ class _BusinessSelector extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   @override

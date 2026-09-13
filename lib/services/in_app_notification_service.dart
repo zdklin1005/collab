@@ -23,12 +23,19 @@ class InAppNotificationService {
   final Set<String> _seenRequestIds = {};
   bool _isInitialSync = true;
 
+  /// Mock hook for unit and widget testing
+  Future<void> Function({int? id, required String title, required String body})?
+      mockShowNotification;
+
   /// Trigger native Android status-bar notification
   Future<void> showNotification({
     int? id,
     required String title,
     required String body,
   }) async {
+    if (mockShowNotification != null) {
+      return mockShowNotification!(id: id, title: title, body: body);
+    }
     try {
       await _channel.invokeMethod('showNotification', {
         'id': id ?? (DateTime.now().millisecondsSinceEpoch % 100000),
@@ -59,11 +66,22 @@ class InAppNotificationService {
         final data = doc.data();
         final chatId = doc.id;
         final lastMessage = data['lastMessage'] as String? ?? '';
-        final lastSenderId = data['lastSenderId'] as String? ?? '';
+        final rawLastSenderId = (data['lastSenderId'] as String? ?? '').trim();
         final lastMessageTime = data['lastMessageTime'] as Timestamp?;
         final userSummaries = Map<String, dynamic>.from(data['userSummaries'] as Map? ?? {});
+        final participants = List<String>.from(data['participants'] as List? ?? []);
 
-        if (lastMessage.isEmpty || lastSenderId == userId) continue;
+        // Resolve sender ID: use lastSenderId if set, otherwise find other participant if unread
+        String senderId = rawLastSenderId;
+        if (senderId.isEmpty) {
+          final unreadForMe = (data['unreadCount_$userId'] as num?)?.toInt() ?? 0;
+          if (unreadForMe > 0) {
+            senderId = participants.firstWhere((p) => p != userId, orElse: () => '');
+          }
+        }
+
+        // Never notify if message is empty, sender could not be resolved, or if current user sent it
+        if (lastMessage.isEmpty || senderId.isEmpty || senderId == userId) continue;
 
         final timeKey = '${chatId}_${lastMessageTime?.millisecondsSinceEpoch ?? 0}';
         if (_seenChatTimestamps.contains(timeKey)) continue;
@@ -76,14 +94,14 @@ class InAppNotificationService {
         if (activeChatId == chatId) continue;
 
         // Find sender's name & username
-        final senderInfo = Map<String, dynamic>.from(userSummaries[lastSenderId] as Map? ?? {});
+        final senderInfo = Map<String, dynamic>.from(userSummaries[senderId] as Map? ?? {});
         String displayName = (senderInfo['displayName'] as String? ?? '').trim();
         String username = (senderInfo['username'] as String? ?? '').trim();
 
         // Fallback: If missing from summaries, check cache or fetch from Firestore
         if (username.isEmpty || displayName.isEmpty || displayName.toLowerCase() == 'friend') {
-          if (_senderCache.containsKey(lastSenderId)) {
-            final cached = _senderCache[lastSenderId]!;
+          if (_senderCache.containsKey(senderId)) {
+            final cached = _senderCache[senderId]!;
             if (displayName.isEmpty || displayName.toLowerCase() == 'friend') {
               displayName = cached['displayName'] ?? '';
             }
@@ -94,13 +112,19 @@ class InAppNotificationService {
             try {
               final userDoc = await FirebaseFirestore.instance
                   .collection('users')
-                  .doc(lastSenderId)
+                  .doc(senderId)
                   .get();
               if (userDoc.exists) {
                 final uData = userDoc.data() ?? {};
                 final fetchedName = (uData['displayName'] as String? ?? uData['name'] as String? ?? '').trim();
-                final fetchedUsername = (uData['username'] as String? ?? '').trim();
-                _senderCache[lastSenderId] = {
+                var fetchedUsername = (uData['username'] as String? ?? '').trim();
+                if (fetchedUsername.isEmpty) {
+                  final email = (uData['email'] as String? ?? '').trim();
+                  if (email.contains('@')) {
+                    fetchedUsername = email.split('@').first;
+                  }
+                }
+                _senderCache[senderId] = {
                   'displayName': fetchedName,
                   'username': fetchedUsername,
                 };
@@ -117,22 +141,11 @@ class InAppNotificationService {
           }
         }
 
-        final cleanUsername =
-            username.startsWith('@') ? username.substring(1) : username;
-
-        final String notificationTitle;
-        if (cleanUsername.isNotEmpty) {
-          if (displayName.isNotEmpty && displayName.toLowerCase() != 'friend') {
-            notificationTitle = '$displayName (@$cleanUsername)';
-          } else {
-            notificationTitle = '@$cleanUsername';
-          }
-        } else if (displayName.isNotEmpty && displayName.toLowerCase() != 'friend') {
-          notificationTitle = displayName;
-        } else {
-          final fallbackId = lastSenderId.length > 5 ? lastSenderId.substring(0, 5) : lastSenderId;
-          notificationTitle = '@user_$fallbackId';
-        }
+        final notificationTitle = formatSenderTitle(
+          displayName: displayName,
+          username: username,
+          senderId: senderId,
+        );
 
         showNotification(
           id: chatId.hashCode,
@@ -183,6 +196,31 @@ class InAppNotificationService {
         );
       }
     }, onError: (e) => debugPrint('Friend request notification error: $e'));
+  }
+
+  /// Formats the notification title displaying the sender's actual name and username
+  static String formatSenderTitle({
+    required String displayName,
+    required String username,
+    String senderId = '',
+  }) {
+    final cleanUsername =
+        username.startsWith('@') ? username.substring(1) : username;
+
+    if (cleanUsername.isNotEmpty) {
+      if (displayName.isNotEmpty &&
+          displayName.toLowerCase() != 'friend' &&
+          displayName.toLowerCase() != cleanUsername.toLowerCase()) {
+        return '$displayName (@$cleanUsername)';
+      } else {
+        return '@$cleanUsername';
+      }
+    } else if (displayName.isNotEmpty && displayName.toLowerCase() != 'friend') {
+      return displayName;
+    } else {
+      final fallbackId = senderId.length > 5 ? senderId.substring(0, 5) : senderId;
+      return fallbackId.isNotEmpty ? '@user_$fallbackId' : 'LocalQuest Friend';
+    }
   }
 
   /// Stop listening when user signs out
