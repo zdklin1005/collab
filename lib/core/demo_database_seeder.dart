@@ -476,4 +476,89 @@ class DemoDatabaseSeeder {
     await batch.commit();
     return count;
   }
+
+  /// Seeds sample friends, 24-hr vibe notes, and a pending request for immediate testing.
+  static Future<void> seedTouristSocial(String touristUid) async {
+    if (touristUid.isEmpty) return;
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+
+    // Friend 1: Sarah Tan
+    final friend1Ref = db
+        .collection('users')
+        .doc(touristUid)
+        .collection('friends')
+        .doc('demo_tourist_sarah');
+    batch.set(friend1Ref, {
+      'friendUserId': 'demo_tourist_sarah',
+      'displayName': 'Sarah Tan',
+      'username': '@sarahexplores',
+      'level': 3,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Sarah's 24-hr note with Spotify music
+    final sarahNoteRef = db
+        .collection('users')
+        .doc('demo_tourist_sarah')
+        .collection('notes')
+        .doc('status');
+    batch.set(sarahNoteRef, {
+      'text': 'Eating Cendol at Penang Road! 🍧',
+      'songTitle': 'Golden Hour',
+      'songArtist': 'JVKE',
+      'albumArtUrl':
+          'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/bf/16/be/bf16be0c-54be-9cfc-084e-397394c8e718/196925184852_Cover.jpg/300x300bb.jpg',
+      'spotifyUrl': 'https://open.spotify.com/search/JVKE%20Golden%20Hour',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Friend 2: Marcus Wong
+    final friend2Ref = db
+        .collection('users')
+        .doc(touristUid)
+        .collection('friends')
+        .doc('demo_tourist_marcus');
+    batch.set(friend2Ref, {
+      'friendUserId': 'demo_tourist_marcus',
+      'displayName': 'Marcus Wong',
+      'username': '@marcus_penang',
+      'level': 2,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Marcus's 24-hr note with Spotify music
+    final marcusNoteRef = db
+        .collection('users')
+        .doc('demo_tourist_marcus')
+        .collection('notes')
+        .doc('status');
+    batch.set(marcusNoteRef, {
+      'text': 'Hunting street art at Armenian St 🎨',
+      'songTitle': 'Sunflower',
+      'songArtist': 'Post Malone & Swae Lee',
+      'albumArtUrl':
+          'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/05/85/74/0585743c-6238-d621-396a-a8c6fb20e980/18UMGIM72688.rgb.jpg/300x300bb.jpg',
+      'spotifyUrl': 'https://open.spotify.com/search/Post%20Malone%20Sunflower',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Pending friend request from Aiman
+    final reqRef = db
+        .collection('users')
+        .doc(touristUid)
+        .collection('friendRequests')
+        .doc('demo_tourist_aiman');
+    batch.set(reqRef, {
+      'fromUserId': 'demo_tourist_aiman',
+      'toUserId': touristUid,
+      'fromDisplayName': 'Aiman Hakim',
+      'fromUsername': '@aiman_travels',
+      'fromLevel': 4,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+  }
 }

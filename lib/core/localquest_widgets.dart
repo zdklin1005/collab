@@ -45,22 +45,36 @@ class LqLogo extends StatelessWidget {
     height: size,
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: LqColors.primary,
-      borderRadius: BorderRadius.circular(size * .36),
+      borderRadius: BorderRadius.circular(size * .24),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x3D3267D4),
+          color: Color(0x3D136AD4),
           blurRadius: 14,
           offset: Offset(0, 8),
         ),
       ],
     ),
-    child: Text(
-      'L',
-      style: TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w800,
-        fontSize: size * .42,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(size * .24),
+      child: Image.asset(
+        'assets/logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: size,
+          height: size,
+          color: LqColors.primary,
+          alignment: Alignment.center,
+          child: Text(
+            'LQ',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: size * .38,
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -330,32 +344,40 @@ class _DashedLinePainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.vertical != vertical;
 }
 
-class _DashedRoundedBorderPainter extends CustomPainter {
-  const _DashedRoundedBorderPainter({
+class LqDashedBorderPainter extends CustomPainter {
+  const LqDashedBorderPainter({
     required this.color,
-    required this.radius,
-    required this.strokeWidth,
+    this.radius = 16,
+    this.borderRadius,
+    this.strokeWidth = 1.35,
+    this.dashLength = 3.8,
+    this.gapLength = 3.2,
   });
+
   final Color color;
   final double radius;
+  final BorderRadius? borderRadius;
   final double strokeWidth;
+  final double dashLength;
+  final double gapLength;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)),
-      );
+    final rrect = borderRadius != null
+        ? borderRadius!.toRRect(Offset.zero & size)
+        : RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius));
+    final path = Path()..addRRect(rrect);
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth;
+    final step = dashLength + gapLength;
     for (final metric in path.computeMetrics()) {
-      for (double distance = 0; distance < metric.length; distance += 7) {
+      for (double distance = 0; distance < metric.length; distance += step) {
         canvas.drawPath(
           metric.extractPath(
             distance,
-            (distance + 3.8).clamp(0, metric.length).toDouble(),
+            (distance + dashLength).clamp(0, metric.length).toDouble(),
           ),
           paint,
         );
@@ -364,11 +386,16 @@ class _DashedRoundedBorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DashedRoundedBorderPainter oldDelegate) =>
+  bool shouldRepaint(covariant LqDashedBorderPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.radius != radius ||
-      oldDelegate.strokeWidth != strokeWidth;
+      oldDelegate.borderRadius != borderRadius ||
+      oldDelegate.strokeWidth != strokeWidth ||
+      oldDelegate.dashLength != dashLength ||
+      oldDelegate.gapLength != gapLength;
 }
+
+typedef _DashedRoundedBorderPainter = LqDashedBorderPainter;
 
 class LqButton extends StatelessWidget {
   const LqButton({

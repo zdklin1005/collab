@@ -14,6 +14,12 @@ import '../services/localquest_services.dart';
 import '../services/biometric_auth_service.dart';
 
 import 'interactive_map/interactive_map_screen.dart';
+import 'ai_assistant_sheet.dart';
+import 'friends_screen.dart';
+import 'direct_chat_screen.dart';
+import '../services/direct_chat_service.dart';
+import '../services/social_service.dart';
+import '../services/spotify_service.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({
@@ -42,19 +48,79 @@ class _TouristHomeState extends State<TouristHome> {
       ),
       profile,
     ];
-    return LqPage(
-      bottomNavigationBar: LqFloatingNavBar(
-        selectedIndex: _index,
-        onSelected: (value) => setState(() => _index = value),
-        items: const [
-          (Icons.explore_outlined, 'Discover'),
-          (Icons.confirmation_num_outlined, 'Rewards'),
-          (Icons.person_outline, 'Profile'),
-        ],
-        profileInitials: initialsFor(widget.user.displayName),
-        profilePhotoUrl: widget.user.photoUrl,
+    return Scaffold(
+      body: LqPage(
+        bottomNavigationBar: LqFloatingNavBar(
+          selectedIndex: _index,
+          onSelected: (value) => setState(() => _index = value),
+          items: const [
+            (Icons.explore_outlined, 'Discover'),
+            (Icons.confirmation_num_outlined, 'Rewards'),
+            (Icons.person_outline, 'Profile'),
+          ],
+          profileInitials: initialsFor(widget.user.displayName),
+          profilePhotoUrl: widget.user.photoUrl,
+        ),
+        child: pages[_index],
       ),
-      child: pages[_index],
+      floatingActionButtonLocation: const _AboveNavBarFabLocation(),
+      floatingActionButton: _FloatingAiGuideButton(user: widget.user),
+    );
+  }
+}
+
+class _AboveNavBarFabLocation extends StandardFabLocation
+    with FabEndOffsetX, FabFloatOffsetY {
+  const _AboveNavBarFabLocation();
+
+  @override
+  double getOffsetY(ScaffoldPrelayoutGeometry scaffoldGeometry, double adjustment) {
+    return super.getOffsetY(scaffoldGeometry, adjustment) - 76.0;
+  }
+}
+
+class _FloatingAiGuideButton extends StatelessWidget {
+  const _FloatingAiGuideButton({required this.user});
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      elevation: 6,
+      shadowColor: LqColors.primary.withValues(alpha: 0.4),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => AiAssistantSheet(user: user),
+          );
+        },
+        child: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF3267D4), Color(0xFF6C5CE7)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: 26,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -90,28 +156,74 @@ class TouristProfileScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
+            const Expanded(
+              child: LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
+            ),
+            const SizedBox(width: 8),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton.filledTonal(
-                  tooltip: 'Notifications',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Direct Chat',
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => NotificationsScreen(user: user),
+                      builder: (_) => FriendsScreen(
+                        currentUser: user,
+                        initialTabIndex: 1,
+                      ),
                     ),
                   ),
-                  icon: const Icon(Icons.notifications_none),
+                  icon: const Icon(Icons.chat_bubble_outline, size: 20),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                StreamBuilder<List<ChatConversation>>(
+                  stream: DirectChatService.instance.streamConversations(user.id),
+                  builder: (context, chatSnap) {
+                    final hasUnreadChat = (chatSnap.data ?? []).any((c) => c.unreadCount > 0);
+                    return StreamBuilder<List<FriendRequest>>(
+                      stream: SocialService.instance.streamFriendRequests(user.id),
+                      builder: (context, reqSnap) {
+                        final hasPendingReq = (reqSnap.data ?? []).isNotEmpty;
+                        final hasNotif = hasUnreadChat || hasPendingReq;
+                        return Badge(
+                          isLabelVisible: hasNotif,
+                          smallSize: 8,
+                          backgroundColor: LqColors.primary,
+                          child: IconButton.filledTonal(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            tooltip: 'Notifications',
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => NotificationsScreen(user: user),
+                              ),
+                            ),
+                            icon: const Icon(Icons.notifications_none, size: 20),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(width: 4),
                 IconButton.filledTonal(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Settings',
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => SettingsScreen(user: user),
                     ),
                   ),
-                  icon: const Icon(Icons.settings_outlined),
+                  icon: const Icon(Icons.settings_outlined, size: 20),
                 ),
               ],
             ),
@@ -294,6 +406,17 @@ class TouristProfileScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => VisitedPlacesScreen(userId: user.id),
+                  ),
+                ),
+              ),
+              _JourneyItem(
+                icon: Icons.people_outline,
+                title: 'My Friends',
+                subtitle: 'Connect & share vibes with friends',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FriendsScreen(currentUser: user),
                   ),
                 ),
               ),
@@ -536,7 +659,12 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
           ),
-          const SizedBox(height: 24),
+          if (user.role == AccountRole.tourist) ...[
+            _section('Connected Accounts', [
+              _SpotifySettingTile(userId: user.id),
+            ]),
+            const SizedBox(height: 24),
+          ],
           _section('Support', [
             _SettingTile(
               icon: Icons.explore_outlined,
@@ -591,6 +719,131 @@ class SettingsScreen extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _SpotifySettingTile extends StatefulWidget {
+  const _SpotifySettingTile({required this.userId});
+  final String userId;
+
+  @override
+  State<_SpotifySettingTile> createState() => _SpotifySettingTileState();
+}
+
+class _SpotifySettingTileState extends State<_SpotifySettingTile> {
+  bool _isLinked = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    final linked = await SpotifyService.instance.isSpotifyLinked();
+    if (mounted) {
+      setState(() {
+        _isLinked = linked;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.headphones,
+          color: Color(0xFF1DB954),
+          size: 24,
+        ),
+      ),
+      title: const Text(
+        'Spotify Music',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        _loading
+            ? 'Checking connection...'
+            : _isLinked
+                ? 'Connected · Live sharing active'
+                : 'Not connected',
+        style: TextStyle(
+          color: _isLinked ? const Color(0xFF1DB954) : LqColors.muted,
+          fontSize: 12,
+          fontWeight: _isLinked ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: _loading
+          ? const SizedBox(width: 40, height: 28)
+          : _isLinked
+              ? OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: LqColors.danger,
+                    side: const BorderSide(color: LqColors.danger),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (dCtx) => AlertDialog(
+                        title: const Text('Unlink Spotify?'),
+                        content: const Text(
+                          'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dCtx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
+                            onPressed: () => Navigator.pop(dCtx, true),
+                            child: const Text('Unlink'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await SpotifyService.instance.disconnectUser(widget.userId);
+                      _checkStatus();
+                      if (context.mounted) {
+                        showLqMessage(context, 'Spotify unlinked successfully.');
+                      }
+                    }
+                  },
+                  child: const Text('Unlink', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                )
+              : OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1DB954),
+                    side: const BorderSide(color: Color(0xFF1DB954)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    final success = await SpotifyService.instance.authenticateWithSpotify();
+                    _checkStatus();
+                    if (context.mounted && success) {
+                      showLqMessage(context, 'Spotify connected!');
+                    }
+                  },
+                  child: const Text('Connect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
+    );
+  }
 }
 
 class _BiometricSettingTile extends StatefulWidget {
@@ -1534,59 +1787,343 @@ class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key, required this.user});
   final AppUser user;
 
+  String _timeAgo(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return DateFormat('dd MMM').format(time);
+  }
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SizedBox(
       width: double.infinity,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const LqBackButton(label: 'Profile'),
-            const SizedBox(height: 14),
-            const LqTitleBlock(
-              eyebrow: 'Activity',
-              title: 'Notifications',
-              subtitle: 'Account updates and LocalQuest alerts in one place.',
-              icon: Icons.notifications_none_outlined,
-            ),
-            const SizedBox(height: 24),
-            LqCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: LqColors.primarySoft,
-                    foregroundColor: LqColors.primary,
-                    child: Icon(Icons.notifications_active_outlined),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'You’re all caught up',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    user.role == AccountRole.merchant
-                        ? 'Campaign and voucher activity will appear here.'
-                        : 'Trip, reward and voucher activity will appear here.',
-                    style: const TextStyle(color: LqColors.muted, height: 1.45),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            LqButton(
-              label: 'Notification preferences',
-              icon: Icons.tune,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
-              ),
-            ),
-          ],
-        ),
+      child: StreamBuilder<List<ChatConversation>>(
+        stream: DirectChatService.instance.streamConversations(user.id),
+        builder: (context, chatSnap) {
+          final conversations = (chatSnap.data ?? [])
+              .where((c) => c.lastMessage.isNotEmpty)
+              .toList()
+            ..sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+
+          return StreamBuilder<List<FriendRequest>>(
+            stream: SocialService.instance.streamFriendRequests(user.id),
+            builder: (context, reqSnap) {
+              final requests = reqSnap.data ?? [];
+              final bool hasItems = conversations.isNotEmpty || requests.isNotEmpty;
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const LqBackButton(label: 'Profile'),
+                    const SizedBox(height: 14),
+                    const LqTitleBlock(
+                      eyebrow: 'Activity',
+                      title: 'Notifications',
+                      subtitle: 'Messages, friend requests & updates in one place.',
+                      icon: Icons.notifications_none_outlined,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Friend requests section
+                    if (requests.isNotEmpty) ...[
+                      const Text(
+                        'FRIEND REQUESTS',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: LqColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...requests.map((req) {
+                        final rawUser = req.fromUsername;
+                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
+                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: LqColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: LqColors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              LqAvatar(
+                                initials: initialsFor(req.fromDisplayName),
+                                photoUrl: null,
+                                radius: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      userLabel.isNotEmpty
+                                          ? '${req.fromDisplayName} ($userLabel)'
+                                          : req.fromDisplayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                        color: LqColors.ink,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    const Text(
+                                      'Sent you a friend request',
+                                      style: TextStyle(fontSize: 12, color: LqColors.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: LqColors.primary,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () async {
+                                      await SocialService.instance.acceptFriendRequest(
+                                        currentUser: user,
+                                        request: req,
+                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Connected with ${req.fromDisplayName}!')),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Accept', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: LqColors.muted,
+                                      side: const BorderSide(color: LqColors.line),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () async {
+                                      await SocialService.instance.rejectFriendRequest(
+                                        currentUserId: user.id,
+                                        requestId: req.id,
+                                      );
+                                    },
+                                    child: const Text('Decline', style: TextStyle(fontSize: 12)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Messages / Chat Notifications section
+                    if (conversations.isNotEmpty) ...[
+                      const Text(
+                        'DIRECT MESSAGES',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: LqColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...conversations.map((conv) {
+                        final rawUser = conv.otherUsername;
+                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
+                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        final hasUnread = conv.unreadCount > 0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: hasUnread ? LqColors.primarySoft.withValues(alpha: 0.3) : LqColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: hasUnread ? LqColors.primary.withValues(alpha: 0.4) : LqColors.line,
+                            ),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              DirectChatService.instance.markChatAsRead(
+                                chatId: conv.id,
+                                currentUserId: user.id,
+                              );
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DirectChatScreen(
+                                    currentUser: user,
+                                    targetUserId: conv.otherUserId,
+                                    targetDisplayName: conv.otherDisplayName,
+                                    targetUsername: conv.otherUsername,
+                                    targetPhotoUrl: conv.otherPhotoUrl,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  Stack(
+                                    children: [
+                                      LqAvatar(
+                                        initials: initialsFor(conv.otherDisplayName),
+                                        photoUrl: conv.otherPhotoUrl,
+                                        radius: 22,
+                                      ),
+                                      if (hasUnread)
+                                        Positioned(
+                                          right: 0,
+                                          top: 0,
+                                          child: Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: const BoxDecoration(
+                                              color: LqColors.primary,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                userLabel.isNotEmpty
+                                                    ? '${conv.otherDisplayName} ($userLabel)'
+                                                    : conv.otherDisplayName,
+                                                style: TextStyle(
+                                                  fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w700,
+                                                  fontSize: 14,
+                                                  color: LqColors.ink,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            Text(
+                                              _timeAgo(conv.lastMessageTime),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w500,
+                                                color: hasUnread ? LqColors.primary : LqColors.muted,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                conv.lastMessage,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: hasUnread ? LqColors.ink : LqColors.muted,
+                                                  fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (hasUnread)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: LqColors.primary,
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                child: Text(
+                                                  '${conv.unreadCount}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // If no messages or requests, show "You're all caught up"
+                    if (!hasItems)
+                      LqCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: LqColors.primarySoft,
+                              foregroundColor: LqColors.primary,
+                              child: Icon(Icons.notifications_active_outlined),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'You’re all caught up',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              user.role == AccountRole.merchant
+                                  ? 'Campaign and voucher activity will appear here.'
+                                  : 'Friend messages, requests and activity will appear here.',
+                              style: const TextStyle(color: LqColors.muted, height: 1.45),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    const SizedBox(height: 18),
+                    LqButton(
+                      label: 'Notification preferences',
+                      icon: Icons.tune,
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     ),
   );

@@ -9,6 +9,7 @@ import 'screens/auth_screens.dart';
 import 'screens/merchant_screens.dart';
 import 'screens/tourist_screens.dart';
 import 'services/biometric_auth_service.dart';
+import 'services/in_app_notification_service.dart';
 import 'services/localquest_services.dart';
 
 Future<void> main() async {
@@ -61,12 +62,17 @@ class AuthGate extends StatelessWidget {
             );
           }
           final profile = profileSnapshot.data!;
+          InAppNotificationService.instance.startListening(profile.id);
           final home = profile.role == AccountRole.merchant
               ? MerchantHome(user: profile)
               : TouristHome(user: profile);
           return BiometricGate(
             key: ValueKey('biometric_${profile.id}'),
             user: profile,
+            onSignOut: () async {
+              InAppNotificationService.instance.stopListening();
+              await AuthService.instance.signOut();
+            },
             child: home,
           );
         },
@@ -167,6 +173,8 @@ class _BiometricGateState extends State<BiometricGate>
 
     BiometricAuthService.instance.clearSessionAuthentication(widget.user.id);
     if (mounted) {
+      Navigator.of(context, rootNavigator: true)
+          .popUntil((route) => route.isFirst);
       setState(() => _unlocked = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _authenticate();
@@ -571,31 +579,7 @@ class _LoadingScreen extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: LqColors.primary,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x332B50ED),
-                  blurRadius: 20,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'LQ',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
+          const LqLogo(size: 72),
           const SizedBox(height: 20),
           const Text(
             'LocalQuest',
