@@ -23,6 +23,8 @@ import '../../services/daily_reward_generator.dart';
 import '../../services/demo_business_voucher_claim_store.dart';
 import '../../services/demo_business_voucher_claim_persistence.dart';
 
+import '../../services/map_repository.dart';
+
 import 'map_action_buttons.dart';
 import 'map_location_permission.dart';
 import 'map_progress_card.dart';
@@ -60,6 +62,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   static const _initialPosition = LatLng(3.1390, 101.6869);
 
   final MapController _mapController = MapController();
+
+  StreamSubscription<List<Business>>? _businessSubscription;
+  List<MapLocation> _liveLocations = const [];
+  List<Business> _liveBusinesses = const [];
+  bool _loadingBusinesses = true;
+  bool _businessLoadFailed = false;
+  int _businessRequestId = 0;
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _firstFixTimer;
@@ -135,6 +144,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   @override
   void initState() {
     super.initState();
+    if (!MapTestConfig.enabled) {
+      _startLiveBusinesses();
+    }
     WidgetsBinding.instance.addObserver(this);
 
     final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -303,55 +315,113 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _openMapSearch() async {
     if (!_mapReady || _searchOpen) return;
 
-    if (!MapTestConfig.enabled) {
+    final demoMode = MapTestConfig.enabled;
+
+    if (!demoMode && (_loadingBusinesses || _businessLoadFailed)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Demo search requires your development configuration. '
-            'Live place search is not connected yet.',
+            _loadingBusinesses
+                ? 'Businesses are still loading. Please try again shortly.'
+                : 'Businesses could not load. Use Retry businesses first.',
           ),
         ),
       );
       return;
     }
 
+    final locations = demoMode
+        ? filterMapLocations(
+            MockMapData.createLocations(),
+            _selectedBusinessCategory,
+          )
+        : filterMapLocations(_liveLocations, _selectedBusinessCategory);
+
+    final touristId = widget.user.id;
     _searchOpen = true;
 
     try {
       final selected = await showSearch<MapLocation?>(
         context: context,
         delegate: MapSearchDelegate(
-          locations: filterMapLocations(
-            MockMapData.createLocations(),
-            _selectedBusinessCategory,
-          ),
+          locations: locations,
+          informationText: demoMode
+              ? 'Demo places only. Business category filters also apply here. '
+                    'Select a result to show it on the map.'
+              : 'Search loaded businesses. Business category filters also apply here. '
+                    'Select a result to show it on the map.',
         ),
       );
 
-      if (!mounted || !_mapReady || selected == null || !selected.canDisplay) {
+      if (!mounted ||
+          !_mapReady ||
+          !_foreground ||
+          widget.user.id != touristId ||
+          selected == null) {
         return;
       }
 
-      // Do not let the next initial GPS fix override this selection.
+      MapLocation destination = selected;
+
+      if (!demoMode) {
+        // Search uses a snapshot. Recheck against the latest loaded data
+        // in case the business changed while search was open.
+        final matches = filterMapLocations(
+          _liveLocations,
+          _selectedBusinessCategory,
+        ).where((location) => location.id == selected.id).toList();
+
+        if (_loadingBusinesses || _businessLoadFailed || matches.length != 1) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This business is no longer available. Please search again.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        destination = matches.single;
+      }
+
+      if (!destination.canDisplay) return;
+
       _centredOnce = true;
       _recenterWhenReady = false;
 
-      _mapController.move(LatLng(selected.latitude, selected.longitude), 17);
+      _mapController.move(
+        LatLng(destination.latitude, destination.longitude),
+        17,
+      );
 
-      await _showLocationDetails(selected);
+      await _showLocationDetails(destination);
     } finally {
       _searchOpen = false;
     }
   }
 
   Future<void> _selectBusinessCategory() async {
-    if (!MapTestConfig.enabled || _filterSheetOpen) return;
+    if (_filterSheetOpen) return;
+
+    if (!MapTestConfig.enabled && (_loadingBusinesses || _businessLoadFailed)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _loadingBusinesses
+                ? 'Businesses are still loading. Please try again shortly.'
+                : 'Businesses could not load. Use Retry businesses first.',
+          ),
+        ),
+      );
+      return;
+    }
 
     _filterSheetOpen = true;
 
     try {
       final categories = availableBusinessCategories(
-        MockMapData.createLocations(),
+        MapTestConfig.enabled ? MockMapData.createLocations() : _liveLocations,
       );
 
       final selected = await showModalBottomSheet<String>(
@@ -766,6 +836,11 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     _foreground = false;
     _stopLiveLocation();
     _mapController.dispose();
+    _businessRequestId++;
+    final subscription = _businessSubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
     super.dispose();
   }
 
@@ -1293,8 +1368,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _updateNearbyBusinesses() {
-    if (!MapTestConfig.enabled) {
-      _publishNearbyBusinesses(const [], 'disabled');
+    if (!MapTestConfig.enabled && (_loadingBusinesses || _businessLoadFailed)) {
+      _publishNearbyBusinesses(
+        const [],
+        _businessLoadFailed
+            ? 'business data unavailable'
+            : 'loading businesses',
+      );
       return;
     }
 
@@ -1330,7 +1410,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     }
 
     final results = findNearbyBusinesses(
-      businesses: MockMapData.businesses,
+      businesses: MapTestConfig.enabled
+          ? MockMapData.businesses
+          : _liveBusinesses,
       userLatitude: position.latitude,
       userLongitude: position.longitude,
       radiusMeters: _demoBusinessDiscoveryRadiusMeters,
@@ -1346,7 +1428,24 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       _scheduleNearbyBusinessPrompt();
     }
 
-    if (!MapTestConfig.enabled) return;
+    if (!MapTestConfig.enabled) {
+      final key =
+          'live|$status|${results.map((item) => item.business.id).join(",")}';
+
+      if (_lastNearbyDetectionKey == key) return;
+      _lastNearbyDetectionKey = key;
+
+      if (status == 'ready') {
+        debugPrint(
+          'Live nearby businesses: ${results.length} within '
+          '${_demoBusinessDiscoveryRadiusMeters.toStringAsFixed(0)} m',
+        );
+      } else {
+        debugPrint('Live nearby businesses: $status');
+      }
+
+      return;
+    }
 
     // Log only status or ordered business-ID changes.
     // Distances still refresh even when no new message is printed.
@@ -1763,6 +1862,142 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     ];
   }
 
+  void _retryLiveBusinesses() {
+    setState(_startLiveBusinesses);
+  }
+
+  Widget _buildLiveBusinessLayer() {
+    final waiting = _loadingBusinesses;
+    final failed = _businessLoadFailed;
+    final locations = filterMapLocations(
+      _liveLocations,
+      _selectedBusinessCategory,
+    );
+
+    final message = failed
+        ? 'Could not load businesses. Check your connection and sign-in.'
+        : waiting
+        ? 'Loading businesses…'
+        : _liveLocations.isEmpty
+        ? 'No active businesses with valid map locations.'
+        : _selectedBusinessCategory == null
+        ? '${locations.length} businesses loaded'
+        : '${locations.length} businesses in '
+              '$_selectedBusinessCategory. '
+              'Choose All businesses to clear the filter.';
+
+    return Stack(
+      children: [
+        MarkerLayer(
+          markers: [
+            for (final location in locations)
+              Marker(
+                key: ValueKey('live:${location.id}'),
+                point: LatLng(location.latitude, location.longitude),
+                width: 44,
+                height: 44,
+                rotate: true,
+                child: Tooltip(
+                  message: location.title,
+                  child: Material(
+                    color: const Color(0xFF467A45),
+                    elevation: 3,
+                    shape: const CircleBorder(
+                      side: BorderSide(color: Colors.white, width: 2),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () {
+                        unawaited(_showLocationDetails(location));
+                      },
+                      child: const Icon(
+                        Icons.storefront_outlined,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        Positioned(
+          left: 16,
+          right: 84,
+          bottom: 150,
+          child: Material(
+            color: Colors.white,
+            elevation: 2,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (waiting) ...[
+                    const LinearProgressIndicator(),
+                    const SizedBox(height: 8),
+                  ],
+                  Text(message, style: const TextStyle(fontSize: 13)),
+                  if (failed)
+                    TextButton(
+                      onPressed: _retryLiveBusinesses,
+                      child: const Text('Retry businesses'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _startLiveBusinesses() {
+    final requestId = ++_businessRequestId;
+    final previous = _businessSubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _liveLocations = const [];
+    _loadingBusinesses = true;
+    _businessLoadFailed = false;
+    _updateNearbyBusinesses();
+
+    _businessSubscription = MapRepository().watchActiveBusinesses().listen(
+      (businesses) {
+        if (!mounted || requestId != _businessRequestId) return;
+
+        setState(() {
+          _liveBusinesses = List<Business>.unmodifiable(businesses);
+          _liveLocations = businesses
+              .map(MapLocation.fromBusiness)
+              .whereType<MapLocation>()
+              .where((location) => location.canDisplay)
+              .toList(growable: false);
+
+          _loadingBusinesses = false;
+          _businessLoadFailed = false;
+          _updateNearbyBusinesses();
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!mounted || requestId != _businessRequestId) return;
+
+        setState(() {
+          _liveLocations = const [];
+          _loadingBusinesses = false;
+          _businessLoadFailed = true;
+          _updateNearbyBusinesses();
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final position = _position;
@@ -1820,6 +2055,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           ),
           children: [
             MapTilesWithStatus(key: ValueKey(_mapStyle), style: _mapStyle),
+
+            if (!MapTestConfig.enabled) _buildLiveBusinessLayer(),
 
             if (MapTestConfig.enabled &&
                 !_restoringClaims &&
@@ -1981,7 +2218,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               onCurrentLocation: _recenter,
               onMapStyle: _selectMapStyle,
               onSearch: _openMapSearch,
-              onFilter: MapTestConfig.enabled ? _selectBusinessCategory : null,
+              onFilter: _selectBusinessCategory,
               filterActive: _selectedBusinessCategory != null,
               onDemoArea: MapTestConfig.enabled ? _showDemoArea : null,
             ),
