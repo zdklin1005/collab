@@ -365,6 +365,11 @@ class ChatMessage {
     required this.text,
     required this.createdAt,
     this.isRead = false,
+    this.type = 'text',
+    this.imageUrl,
+    this.latitude,
+    this.longitude,
+    this.locationName,
   });
 
   final String id;
@@ -373,6 +378,15 @@ class ChatMessage {
   final String text;
   final DateTime createdAt;
   final bool isRead;
+  final String type;
+  final String? imageUrl;
+  final double? latitude;
+  final double? longitude;
+  final String? locationName;
+
+  bool get isImage => type == 'image';
+  bool get isLocation => type == 'location';
+  bool get isText => type == 'text';
 
   factory ChatMessage.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -383,6 +397,11 @@ class ChatMessage {
       text: data['text'] as String? ?? '',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isRead: data['isRead'] as bool? ?? false,
+      type: data['type'] as String? ?? 'text',
+      imageUrl: data['imageUrl'] as String?,
+      latitude: (data['latitude'] as num?)?.toDouble(),
+      longitude: (data['longitude'] as num?)?.toDouble(),
+      locationName: data['locationName'] as String?,
     );
   }
 }

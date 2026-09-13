@@ -1,8 +1,13 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/localquest_theme.dart';
 import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
+import '../services/cloudinary_images.dart';
 import '../services/direct_chat_service.dart';
 import '../services/in_app_notification_service.dart';
 
@@ -305,23 +310,139 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       bottomRight: Radius.circular(isMe ? 4 : 16),
     );
 
-    final bubbleWidget = Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.76,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isMe ? LqColors.primary : LqColors.surface,
-        borderRadius: bubbleRadius,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
+    Widget content;
+    if (msg.isImage && msg.imageUrl != null) {
+      content = Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => _openFullScreenImage(context, msg.imageUrl!),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 220,
+                  maxWidth: 240,
+                ),
+                child: _buildImageContent(msg.imageUrl!),
+              ),
+            ),
+          ),
+          if (msg.text.isNotEmpty && msg.text != '📷 Photo') ...[
+            const SizedBox(height: 6),
+            Text(
+              msg.text,
+              style: TextStyle(
+                fontSize: 14,
+                color: isMe ? Colors.white : LqColors.ink,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            timeStr,
+            style: TextStyle(
+              fontSize: 10,
+              color: isMe
+                  ? Colors.white.withValues(alpha: 0.75)
+                  : LqColors.muted,
+            ),
           ),
         ],
-      ),
-      child: Column(
+      );
+    } else if (msg.isLocation && msg.latitude != null && msg.longitude != null) {
+      content = InkWell(
+        onTap: () => _openLocationInMap(msg.latitude!, msg.longitude!),
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : LqColors.primarySoft,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    color: isMe ? Colors.white : LqColors.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Shared Location',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isMe ? Colors.white : LqColors.ink,
+                        ),
+                      ),
+                      Text(
+                        msg.locationName ??
+                            '${msg.latitude!.toStringAsFixed(4)}, ${msg.longitude!.toStringAsFixed(4)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isMe
+                              ? Colors.white.withValues(alpha: 0.85)
+                              : LqColors.muted,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.map_outlined,
+                  size: 13,
+                  color: isMe ? Colors.white70 : LqColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Tap to open map',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isMe ? Colors.white70 : LqColors.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              timeStr,
+              style: TextStyle(
+                fontSize: 10,
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : LqColors.muted,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      content = Column(
         crossAxisAlignment:
             isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
@@ -344,7 +465,26 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             ),
           ),
         ],
+      );
+    }
+
+    final bubbleWidget = Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.76,
       ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isMe ? LqColors.primary : LqColors.surface,
+        borderRadius: bubbleRadius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: content,
     );
 
     if (isMe) {
@@ -373,9 +513,368 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     );
   }
 
+  Widget _buildImageContent(String url) {
+    if (url.startsWith('data:image')) {
+      try {
+        final commaIndex = url.indexOf(',');
+        final base64Data = commaIndex != -1 ? url.substring(commaIndex + 1) : url;
+        final bytes = base64Decode(base64Data);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _imageFallback(),
+        );
+      } catch (_) {
+        return _imageFallback();
+      }
+    }
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      loadingBuilder: (_, child, progress) => progress == null
+          ? child
+          : Container(
+              height: 160,
+              color: LqColors.field,
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            ),
+      errorBuilder: (_, _, _) => _imageFallback(),
+    );
+  }
+
+  Widget _imageFallback() {
+    return Container(
+      height: 140,
+      color: LqColors.field,
+      alignment: Alignment.center,
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.broken_image_outlined, color: LqColors.muted, size: 32),
+          SizedBox(height: 4),
+          Text(
+            'Unable to load photo',
+            style: TextStyle(fontSize: 12, color: LqColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openFullScreenImage(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black.withValues(alpha: 0.9),
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Center(
+                child: _buildImageContent(url),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+                onPressed: () => Navigator.of(ctx).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openLocationInMap(double lat, double lng) async {
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri);
+      }
+    } catch (_) {
+      if (mounted) {
+        showLqMessage(context, 'Could not open map: $lat, $lng');
+      }
+    }
+  }
+
+  void _showAttachmentSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        decoration: const BoxDecoration(
+          color: LqColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: LqColors.line,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text(
+                'Share with friend',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: LqColors.ink,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _attachmentOption(
+                    icon: Icons.photo_library_outlined,
+                    label: 'Gallery',
+                    color: const Color(0xFF3267D4),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _pickAndSendImage(ImageSource.gallery);
+                    },
+                  ),
+                  _attachmentOption(
+                    icon: Icons.camera_alt_outlined,
+                    label: 'Camera',
+                    color: const Color(0xFF00B894),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _pickAndSendImage(ImageSource.camera);
+                    },
+                  ),
+                  _attachmentOption(
+                    icon: Icons.location_on_outlined,
+                    label: 'Location',
+                    color: const Color(0xFFE17055),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _shareCurrentLocation();
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _attachmentOption({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 28),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: LqColors.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      if (picked == null || !mounted) return;
+
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+
+      final captionController = TextEditingController();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          backgroundColor: LqColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Send Photo', style: TextStyle(fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(
+                  bytes,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: captionController,
+                decoration: InputDecoration(
+                  hintText: 'Add a caption... (optional)',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  filled: true,
+                  fillColor: LqColors.field,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: LqColors.primary),
+              onPressed: () => Navigator.pop(dialogCtx, true),
+              child: const Text('Send'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      setState(() => _isSending = true);
+
+      String finalUrl = '';
+      try {
+        final uploaded = await CloudinaryImages.instance.upload(bytes);
+        finalUrl = uploaded.url;
+      } catch (_) {
+        final base64Data = base64Encode(bytes);
+        finalUrl = 'data:image/jpeg;base64,$base64Data';
+      }
+
+      await DirectChatService.instance.sendImageMessage(
+        currentUser: widget.currentUser,
+        targetUserId: widget.targetUserId,
+        targetDisplayName: widget.targetDisplayName,
+        targetUsername: widget.targetUsername,
+        targetPhotoUrl: widget.targetPhotoUrl,
+        imageUrl: finalUrl,
+        caption: captionController.text.trim().isNotEmpty
+            ? captionController.text.trim()
+            : null,
+      );
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        showLqMessage(context, 'Could not send photo. Please try again.', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _shareCurrentLocation() async {
+    try {
+      setState(() => _isSending = true);
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          showLqMessage(context, 'Location permission is required to share location.', error: true);
+        }
+        return;
+      }
+
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (mounted) {
+          showLqMessage(context, 'Please turn on Location Services on your device.', error: true);
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      if (!mounted) return;
+
+      final locationName =
+          'George Town, Penang (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
+
+      await DirectChatService.instance.sendLocationMessage(
+        currentUser: widget.currentUser,
+        targetUserId: widget.targetUserId,
+        targetDisplayName: widget.targetDisplayName,
+        targetUsername: widget.targetUsername,
+        targetPhotoUrl: widget.targetPhotoUrl,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        locationName: locationName,
+      );
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        showLqMessage(context, 'Could not retrieve location. Please try again.', error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: const BoxDecoration(
         color: LqColors.surface,
         border: Border(
@@ -386,6 +885,15 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         top: false,
         child: Row(
           children: [
+            IconButton(
+              icon: const Icon(
+                Icons.add_circle_outline_rounded,
+                color: LqColors.primary,
+                size: 26,
+              ),
+              tooltip: 'Share photo or location',
+              onPressed: _showAttachmentSheet,
+            ),
             Expanded(
               child: TextField(
                 controller: _controller,

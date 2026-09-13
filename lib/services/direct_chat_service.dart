@@ -12,6 +12,33 @@ class DirectChatService {
   Stream<List<ChatMessage>> Function(String chatId)? mockMessagesStream;
   Stream<List<ChatConversation>> Function(String currentUserId)? mockConversationsStream;
   Future<void> Function({required String chatId, required String currentUserId})? mockMarkChatAsRead;
+  Future<void> Function({
+    required AppUser currentUser,
+    required String targetUserId,
+    required String targetDisplayName,
+    required String targetUsername,
+    String? targetPhotoUrl,
+    required String text,
+  })? mockSendMessage;
+  Future<void> Function({
+    required AppUser currentUser,
+    required String targetUserId,
+    required String targetDisplayName,
+    required String targetUsername,
+    String? targetPhotoUrl,
+    required String imageUrl,
+    String? caption,
+  })? mockSendImageMessage;
+  Future<void> Function({
+    required AppUser currentUser,
+    required String targetUserId,
+    required String targetDisplayName,
+    required String targetUsername,
+    String? targetPhotoUrl,
+    required double latitude,
+    required double longitude,
+    required String locationName,
+  })? mockSendLocationMessage;
 
   /// Deterministic Chat ID for 1-on-1 conversations between two tourists.
   static String getChatId(String uid1, String uid2) {
@@ -75,6 +102,17 @@ class DirectChatService {
     final cleanText = text.trim();
     if (cleanText.isEmpty) return;
 
+    if (mockSendMessage != null) {
+      return mockSendMessage!(
+        currentUser: currentUser,
+        targetUserId: targetUserId,
+        targetDisplayName: targetDisplayName,
+        targetUsername: targetUsername,
+        targetPhotoUrl: targetPhotoUrl,
+        text: cleanText,
+      );
+    }
+
     final chatId = getChatId(currentUser.id, targetUserId);
     final chatDocRef = db.collection('chats').doc(chatId);
     final messagesColRef = chatDocRef.collection('messages');
@@ -84,6 +122,7 @@ class DirectChatService {
       'chatId': chatId,
       'senderId': currentUser.id,
       'text': cleanText,
+      'type': 'text',
       'createdAt': FieldValue.serverTimestamp(),
       'isRead': false,
     });
@@ -104,6 +143,124 @@ class DirectChatService {
         },
       },
       'lastMessage': cleanText,
+      'lastMessageTime': FieldValue.serverTimestamp(),
+      'unreadCount_$targetUserId': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+  }
+
+  /// Send an image/photo message in 1-on-1 chat
+  Future<void> sendImageMessage({
+    required AppUser currentUser,
+    required String targetUserId,
+    required String targetDisplayName,
+    required String targetUsername,
+    String? targetPhotoUrl,
+    required String imageUrl,
+    String? caption,
+  }) async {
+    if (mockSendImageMessage != null) {
+      return mockSendImageMessage!(
+        currentUser: currentUser,
+        targetUserId: targetUserId,
+        targetDisplayName: targetDisplayName,
+        targetUsername: targetUsername,
+        targetPhotoUrl: targetPhotoUrl,
+        imageUrl: imageUrl,
+        caption: caption,
+      );
+    }
+    final cleanCaption = caption?.trim() ?? '';
+    final displayText = cleanCaption.isNotEmpty ? cleanCaption : '📷 Photo';
+
+    final chatId = getChatId(currentUser.id, targetUserId);
+    final chatDocRef = db.collection('chats').doc(chatId);
+    final messagesColRef = chatDocRef.collection('messages');
+
+    await messagesColRef.add({
+      'chatId': chatId,
+      'senderId': currentUser.id,
+      'text': displayText,
+      'type': 'image',
+      'imageUrl': imageUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+      'isRead': false,
+    });
+
+    await chatDocRef.set({
+      'participants': [currentUser.id, targetUserId],
+      'userSummaries': {
+        currentUser.id: {
+          'displayName': currentUser.displayName,
+          'username': currentUser.username,
+          'photoUrl': currentUser.photoUrl,
+        },
+        targetUserId: {
+          'displayName': targetDisplayName,
+          'username': targetUsername,
+          'photoUrl': targetPhotoUrl,
+        },
+      },
+      'lastMessage': displayText,
+      'lastMessageTime': FieldValue.serverTimestamp(),
+      'unreadCount_$targetUserId': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+  }
+
+  /// Send a location message in 1-on-1 chat
+  Future<void> sendLocationMessage({
+    required AppUser currentUser,
+    required String targetUserId,
+    required String targetDisplayName,
+    required String targetUsername,
+    String? targetPhotoUrl,
+    required double latitude,
+    required double longitude,
+    required String locationName,
+  }) async {
+    if (mockSendLocationMessage != null) {
+      return mockSendLocationMessage!(
+        currentUser: currentUser,
+        targetUserId: targetUserId,
+        targetDisplayName: targetDisplayName,
+        targetUsername: targetUsername,
+        targetPhotoUrl: targetPhotoUrl,
+        latitude: latitude,
+        longitude: longitude,
+        locationName: locationName,
+      );
+    }
+    final displayText = '📍 $locationName';
+    final chatId = getChatId(currentUser.id, targetUserId);
+    final chatDocRef = db.collection('chats').doc(chatId);
+    final messagesColRef = chatDocRef.collection('messages');
+
+    await messagesColRef.add({
+      'chatId': chatId,
+      'senderId': currentUser.id,
+      'text': displayText,
+      'type': 'location',
+      'latitude': latitude,
+      'longitude': longitude,
+      'locationName': locationName,
+      'createdAt': FieldValue.serverTimestamp(),
+      'isRead': false,
+    });
+
+    await chatDocRef.set({
+      'participants': [currentUser.id, targetUserId],
+      'userSummaries': {
+        currentUser.id: {
+          'displayName': currentUser.displayName,
+          'username': currentUser.username,
+          'photoUrl': currentUser.photoUrl,
+        },
+        targetUserId: {
+          'displayName': targetDisplayName,
+          'username': targetUsername,
+          'photoUrl': targetPhotoUrl,
+        },
+      },
+      'lastMessage': displayText,
       'lastMessageTime': FieldValue.serverTimestamp(),
       'unreadCount_$targetUserId': FieldValue.increment(1),
     }, SetOptions(merge: true));

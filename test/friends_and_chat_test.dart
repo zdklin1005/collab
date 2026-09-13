@@ -380,6 +380,96 @@ void main() {
       expect(find.text('Connect & share vibes with friends'), findsOneWidget);
     });
 
+    test('ChatMessage model supports image and location payloads', () {
+      final now = DateTime.now();
+      final imgMsg = ChatMessage(
+        id: 'msg_img',
+        chatId: 'chat_1',
+        senderId: 'user_1',
+        text: 'Beach sunset 🌅',
+        type: 'image',
+        imageUrl: 'https://example.com/photo.jpg',
+        createdAt: now,
+      );
+      expect(imgMsg.isImage, isTrue);
+      expect(imgMsg.imageUrl, 'https://example.com/photo.jpg');
+      expect(imgMsg.text, 'Beach sunset 🌅');
+
+      final locMsg = ChatMessage(
+        id: 'msg_loc',
+        chatId: 'chat_1',
+        senderId: 'user_1',
+        text: '📍 Penang Hill',
+        type: 'location',
+        latitude: 5.4243,
+        longitude: 100.2690,
+        locationName: 'Penang Hill Summit',
+        createdAt: now,
+      );
+      expect(locMsg.isLocation, isTrue);
+      expect(locMsg.latitude, 5.4243);
+      expect(locMsg.longitude, 100.2690);
+      expect(locMsg.locationName, 'Penang Hill Summit');
+    });
+
+    test('DirectChatService sendImageMessage and sendLocationMessage invoke mock handlers', () async {
+      bool sentImage = false;
+      bool sentLoc = false;
+
+      DirectChatService.instance.mockSendImageMessage = ({
+        required currentUser,
+        required targetUserId,
+        required targetDisplayName,
+        required targetUsername,
+        targetPhotoUrl,
+        required imageUrl,
+        caption,
+      }) async {
+        sentImage = true;
+        expect(imageUrl, 'https://example.com/test.jpg');
+        expect(caption, 'Nice view');
+      };
+
+      DirectChatService.instance.mockSendLocationMessage = ({
+        required currentUser,
+        required targetUserId,
+        required targetDisplayName,
+        required targetUsername,
+        targetPhotoUrl,
+        required latitude,
+        required longitude,
+        required locationName,
+      }) async {
+        sentLoc = true;
+        expect(latitude, 5.4164);
+        expect(locationName, contains('Penang'));
+      };
+
+      await DirectChatService.instance.sendImageMessage(
+        currentUser: testTourist,
+        targetUserId: 'target_tourist_2',
+        targetDisplayName: 'Sarah Tan',
+        targetUsername: '@sarah_t',
+        imageUrl: 'https://example.com/test.jpg',
+        caption: 'Nice view',
+      );
+      expect(sentImage, isTrue);
+
+      await DirectChatService.instance.sendLocationMessage(
+        currentUser: testTourist,
+        targetUserId: 'target_tourist_2',
+        targetDisplayName: 'Sarah Tan',
+        targetUsername: '@sarah_t',
+        latitude: 5.4164,
+        longitude: 100.3327,
+        locationName: 'George Town, Penang',
+      );
+      expect(sentLoc, isTrue);
+
+      DirectChatService.instance.mockSendImageMessage = null;
+      DirectChatService.instance.mockSendLocationMessage = null;
+    });
+
     testWidgets('TouristHome renders floating bottom-right AI Assistant button',
         (tester) async {
       await tester.pumpWidget(
@@ -394,6 +484,91 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+    });
+
+    testWidgets('DirectChatScreen renders attachment button and opens attachment sheet',
+        (tester) async {
+      await tester.pumpWidget(
+        app(
+          const DirectChatScreen(
+            currentUser: testTourist,
+            targetUserId: 'target_tourist_2',
+            targetDisplayName: 'Sarah Tan',
+            targetUsername: '@sarah_t',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final attachButton = find.byTooltip('Share photo or location');
+      expect(attachButton, findsOneWidget);
+
+      await tester.tap(attachButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Share with friend'), findsOneWidget);
+      expect(find.text('Gallery'), findsOneWidget);
+      expect(find.text('Camera'), findsOneWidget);
+      expect(find.text('Location'), findsOneWidget);
+    });
+
+    testWidgets('DirectChatScreen renders image and location bubbles',
+        (tester) async {
+      final now = DateTime.now();
+      DirectChatService.instance.mockMessagesStream = (_) => Stream.value([
+            ChatMessage(
+              id: 'm1',
+              chatId: 'c1',
+              senderId: 'target_tourist_2',
+              text: 'Look at this photo',
+              type: 'image',
+              imageUrl:
+                  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+              createdAt: now,
+            ),
+            ChatMessage(
+              id: 'm2',
+              chatId: 'c1',
+              senderId: testTourist.id,
+              text: '📍 Penang Hill',
+              type: 'location',
+              latitude: 5.4243,
+              longitude: 100.2690,
+              locationName: 'Penang Hill Summit',
+              createdAt: now,
+            ),
+          ]);
+
+      await tester.pumpWidget(
+        app(
+          const DirectChatScreen(
+            currentUser: testTourist,
+            targetUserId: 'target_tourist_2',
+            targetDisplayName: 'Sarah Tan',
+            targetUsername: '@sarah_t',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Look at this photo'), findsOneWidget);
+      expect(find.text('Shared Location'), findsOneWidget);
+      expect(find.text('Penang Hill Summit'), findsOneWidget);
+      expect(find.text('Tap to open map'), findsOneWidget);
+    });
+
+    testWidgets('SettingsScreen separates Preferences and Connected Accounts with 24px spacing',
+        (tester) async {
+      await tester.pumpWidget(
+        app(
+          const SettingsScreen(user: testTourist),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('PREFERENCES'), findsOneWidget);
+      expect(find.text('CONNECTED ACCOUNTS'), findsOneWidget);
+      expect(find.text('Spotify Music'), findsOneWidget);
     });
   });
 }

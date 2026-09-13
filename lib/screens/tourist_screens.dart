@@ -659,6 +659,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ],
           ),
+          const SizedBox(height: 24),
           if (user.role == AccountRole.tourist) ...[
             _section('Connected Accounts', [
               _SpotifySettingTile(userId: user.id),
