@@ -1,26 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../core/password_field.dart';
+import '../core/password_policy.dart';
 import 'package:intl/intl.dart';
 
 import '../core/localquest_theme.dart';
 import '../core/localquest_widgets.dart';
+import '../core/input_validators.dart';
+import '../core/profile_photo_editor.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
+import '../services/biometric_auth_service.dart';
 
 import 'interactive_map/interactive_map_screen.dart';
 
-
 class TouristHome extends StatefulWidget {
-  const TouristHome({super.key, required this.user});
+  const TouristHome({
+    super.key,
+    required this.user,
+    this.initialIndex = 0,
+  });
   final AppUser user;
+  final int initialIndex;
 
   @override
   State<TouristHome> createState() => _TouristHomeState();
 }
 
 class _TouristHomeState extends State<TouristHome> {
-  int _index = 2;
+  late int _index = widget.initialIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +52,7 @@ class _TouristHomeState extends State<TouristHome> {
           (Icons.person_outline, 'Profile'),
         ],
         profileInitials: initialsFor(widget.user.displayName),
+        profilePhotoUrl: widget.user.photoUrl,
       ),
       child: pages[_index],
     );
@@ -115,25 +125,19 @@ class TouristProfileScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
           ),
           child: LqCard(
-            color: LqColors.primarySoft,
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                Padding(
+                Container(
+                  color: LqColors.primarySoft,
                   padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
-                      CircleAvatar(
+                      LqAvatar(
                         radius: 36,
-                        backgroundColor: const Color(0xFFE4C8B7),
-                        child: Text(
-                          initialsFor(user.displayName),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                            color: Color(0xFF573725),
-                          ),
-                        ),
+                        initials: initialsFor(user.displayName),
+                        photoUrl: user.photoUrl,
+                        shape: LqAvatarShape.roundedSquare,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -182,6 +186,12 @@ class TouristProfileScreen extends StatelessWidget {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: LqColors.primary,
+                        size: 24,
+                      ),
                     ],
                   ),
                 ),
@@ -192,17 +202,23 @@ class TouristProfileScreen extends StatelessWidget {
                       child: _Stat(
                         label: 'Vouchers',
                         value: '${user.voucherCount}',
+                        badgeText: user.voucherCount > 0
+                            ? '${user.voucherCount > 3 ? 3 : user.voucherCount} expiring soon'
+                            : '0 expiring soon',
                         icon: Icons.confirmation_num_outlined,
                       ),
                     ),
                     const SizedBox(
-                      height: 92,
+                      height: 104,
                       child: LqDashedDivider(vertical: true),
                     ),
                     Expanded(
                       child: _Stat(
                         label: 'Reviews',
                         value: '${user.reviewCount}',
+                        badgeText: user.reviewCount > 0
+                            ? 'Top 8% storyteller'
+                            : 'Top storyteller',
                         icon: Icons.star_border,
                       ),
                     ),
@@ -222,21 +238,53 @@ class TouristProfileScreen extends StatelessWidget {
                 icon: Icons.confirmation_num_outlined,
                 title: 'My vouchers',
                 subtitle: '${user.voucherCount} ready to use',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'My vouchers',
+                  eyebrow: 'Rewards',
+                  icon: Icons.confirmation_num_outlined,
+                  message:
+                      'You currently have ${user.voucherCount} voucher${user.voucherCount == 1 ? '' : 's'} ready in your passport. Present active voucher barcodes in-store to participating local merchants.',
+                ),
               ),
               _JourneyItem(
                 icon: Icons.star_outline,
                 title: 'Reviews & ratings',
                 subtitle: '${user.reviewCount} posted',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'Reviews & ratings',
+                  eyebrow: 'Storyteller',
+                  icon: Icons.star_outline,
+                  message:
+                      'You have contributed ${user.reviewCount} verified review${user.reviewCount == 1 ? '' : 's'}. Reviews can only be posted after visiting physical merchant checkpoints to safeguard authentic feedback.',
+                ),
               ),
-              const _JourneyItem(
+              _JourneyItem(
                 icon: Icons.auto_awesome_outlined,
                 title: 'Missions',
-                subtitle: 'View current progress',
+                subtitle: '2 in progress',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'Dynamic Missions',
+                  eyebrow: 'Side quests',
+                  icon: Icons.auto_awesome_outlined,
+                  message:
+                      '2 location missions currently in progress! Complete heritage photo check-ins and merchant explorations to earn bonus experience points.',
+                ),
               ),
-              const _JourneyItem(
+              _JourneyItem(
                 icon: Icons.calendar_month_outlined,
                 title: 'Daily check-in',
                 subtitle: 'Keep your streak',
+                onTap: () => _showJourneySheet(
+                  context,
+                  title: 'Daily check-in streak',
+                  eyebrow: 'Activity',
+                  icon: Icons.calendar_month_outlined,
+                  message:
+                      'Daily check-ins reward +100 EXP every day. Log in each day during your Visit Malaysia exploration to maintain your multiplier streak!',
+                ),
               ),
               _JourneyItem(
                 icon: Icons.history,
@@ -263,10 +311,17 @@ class TouristProfileScreen extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.icon});
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.badgeText,
+  });
   final String label;
   final String value;
   final IconData icon;
+  final String? badgeText;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(18),
@@ -285,7 +340,80 @@ class _Stat extends StatelessWidget {
           value,
           style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
         ),
+        if (badgeText != null && badgeText!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            badgeText!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: LqColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ],
+    ),
+  );
+}
+
+void _showJourneySheet(
+  BuildContext context, {
+  required String title,
+  required String eyebrow,
+  required IconData icon,
+  required String message,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      decoration: const BoxDecoration(
+        color: LqColors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFCBD5E1),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          LqTitleBlock(eyebrow: eyebrow, title: title),
+          const SizedBox(height: 16),
+          LqCard(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  backgroundColor: LqColors.primarySoft,
+                  foregroundColor: LqColors.primary,
+                  child: Icon(icon),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: LqColors.muted,
+                      height: 1.5,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -305,10 +433,15 @@ class _JourneyItem extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
     onTap: onTap,
     contentPadding: EdgeInsets.zero,
-    leading: CircleAvatar(
-      backgroundColor: const Color(0xFFF0F4FC),
-      foregroundColor: LqColors.primary,
-      child: Icon(icon),
+    leading: Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: LqColors.primary, size: 22),
     ),
     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
     subtitle: Text(
@@ -357,6 +490,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
+            _BiometricSettingTile(userId: user.id),
           ]),
           const SizedBox(height: 24),
           _section(
@@ -410,7 +544,9 @@ class SettingsScreen extends StatelessWidget {
               subtitle: 'Answers for your LocalQuest account',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const HelpCentreScreen()),
+                MaterialPageRoute(
+                  builder: (_) => HelpCentreScreen(role: user.role),
+                ),
               ),
             ),
             _SettingTile(
@@ -419,7 +555,9 @@ class SettingsScreen extends StatelessWidget {
               subtitle: 'Manage your data and permissions',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+                MaterialPageRoute(
+                  builder: (_) => PrivacyScreen(role: user.role),
+                ),
               ),
             ),
           ]),
@@ -455,6 +593,88 @@ class SettingsScreen extends StatelessWidget {
   );
 }
 
+class _BiometricSettingTile extends StatefulWidget {
+  const _BiometricSettingTile({this.userId});
+  final String? userId;
+  @override
+  State<_BiometricSettingTile> createState() => _BiometricSettingTileState();
+}
+
+class _BiometricSettingTileState extends State<_BiometricSettingTile> {
+  bool _enabled = false;
+  bool _supported = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometrics();
+  }
+
+  Future<void> _loadBiometrics() async {
+    final supported = await BiometricAuthService.instance.isSupported();
+    final enabled =
+        await BiometricAuthService.instance.isEnabled(widget.userId);
+    if (mounted) {
+      setState(() {
+        _supported = supported;
+        _enabled = enabled;
+      });
+    }
+  }
+
+  Future<void> _toggleBiometrics(bool value) async {
+    if (value) {
+      final authenticated = await BiometricAuthService.instance.authenticate(
+        localizedReason:
+            'Verify biometric identity to enable biometric sign-in',
+      );
+      if (!authenticated) return;
+    }
+    await BiometricAuthService.instance.setEnabled(value, widget.userId);
+    if (mounted) {
+      setState(() => _enabled = value);
+      showLqMessage(
+        context,
+        value ? 'Biometric sign-in enabled.' : 'Biometric sign-in disabled.',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_supported) return const SizedBox.shrink();
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F4FC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.fingerprint_rounded,
+          color: LqColors.primary,
+          size: 24,
+        ),
+      ),
+      title: const Text(
+        'Biometric sign-in',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: const Text(
+        'Use fingerprint or Face ID for faster login',
+        style: TextStyle(color: LqColors.muted, fontSize: 12),
+      ),
+      trailing: Switch(
+        value: _enabled,
+        onChanged: _toggleBiometrics,
+      ),
+    );
+  }
+}
+
 class _SettingTile extends StatelessWidget {
   const _SettingTile({
     required this.icon,
@@ -470,10 +690,15 @@ class _SettingTile extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
     onTap: onTap,
     contentPadding: EdgeInsets.zero,
-    leading: CircleAvatar(
-      backgroundColor: const Color(0xFFF0F4FC),
-      foregroundColor: LqColors.primary,
-      child: Icon(icon),
+    leading: Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: LqColors.primary, size: 22),
     ),
     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
     subtitle: Text(
@@ -509,10 +734,15 @@ class _PreferenceTileState extends State<_PreferenceTile> {
   @override
   Widget build(BuildContext context) => ListTile(
     contentPadding: EdgeInsets.zero,
-    leading: CircleAvatar(
-      backgroundColor: const Color(0xFFF0F4FC),
-      foregroundColor: LqColors.primary,
-      child: Icon(widget.icon),
+    leading: Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Icon(widget.icon, color: LqColors.primary, size: 22),
     ),
     title: Text(
       widget.title,
@@ -568,17 +798,10 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   Widget build(BuildContext context) => _SimpleFormPage(
     eyebrow: 'Identity',
     title: 'Account details',
+    subtitle: 'Your personal details and how we reach you.',
+    headerIcon: Icons.person_outline,
     children: [
-      Center(
-        child: CircleAvatar(
-          radius: 36,
-          backgroundColor: const Color(0xFFE4C8B7),
-          child: Text(
-            initialsFor(widget.user.displayName),
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
-      ),
+      ProfilePhotoEditor(user: widget.user),
       const SizedBox(height: 20),
       LqField(controller: _name, label: 'Display name'),
       const SizedBox(height: 16),
@@ -658,40 +881,68 @@ class EmailAddressScreen extends StatefulWidget {
 }
 
 class _EmailAddressScreenState extends State<EmailAddressScreen> {
+  final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => _SimpleFormPage(
     eyebrow: 'Contact',
     title: 'Email address',
     subtitle: 'Use an address you can access for account recovery.',
+    headerIcon: Icons.email_outlined,
     children: [
-      TextFormField(
-        initialValue:
-            widget.currentEmail ?? FirebaseAuth.instance.currentUser?.email,
-        enabled: false,
-        decoration: const InputDecoration(labelText: 'Current email'),
+      Form(
+        key: _form,
+        autovalidateMode: AutovalidateMode.disabled,
+        child: Column(
+          children: [
+            TextFormField(
+              initialValue:
+                  widget.currentEmail ?? FirebaseAuth.instance.currentUser?.email,
+              enabled: false,
+              decoration: const InputDecoration(labelText: 'Current email'),
+            ),
+            const SizedBox(height: 16),
+            LqField(
+              key: const Key('change_email_new_field'),
+              controller: _email,
+              label: 'New email address',
+              keyboardType: TextInputType.emailAddress,
+              validator: LqInputValidators.validateEmailFormat,
+            ),
+            const SizedBox(height: 16),
+            LqField(
+              key: const Key('change_email_password_field'),
+              controller: _password,
+              label: 'Current password',
+              obscureText: true,
+              validator: (v) =>
+                  v == null || v.isEmpty ? 'Enter your current password.' : null,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'We’ll send a verification link before your email address changes.',
+              style: TextStyle(color: LqColors.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 24),
+            LqButton(label: 'Send verification', busy: _busy, onPressed: _save),
+          ],
+        ),
       ),
-      const SizedBox(height: 16),
-      LqField(controller: _email, label: 'New email address'),
-      const SizedBox(height: 16),
-      LqField(
-        controller: _password,
-        label: 'Current password',
-        obscureText: true,
-      ),
-      const SizedBox(height: 12),
-      const Text(
-        'We’ll send a verification link before your email address changes.',
-        style: TextStyle(color: LqColors.muted, fontSize: 12),
-      ),
-      const SizedBox(height: 24),
-      LqButton(label: 'Send verification', busy: _busy, onPressed: _save),
     ],
   );
 
   Future<void> _save() async {
+    if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
       await AuthService.instance.requestEmailChange(
@@ -714,44 +965,82 @@ class PasswordSecurityScreen extends StatefulWidget {
 }
 
 class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
+  final _form = GlobalKey<FormState>();
   final _current = TextEditingController();
   final _next = TextEditingController();
   final _confirm = TextEditingController();
   bool _busy = false;
+
+  @override
+  void dispose() {
+    _current.dispose();
+    _next.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => _SimpleFormPage(
     eyebrow: 'Security',
     title: 'Password & security',
     subtitle: 'Keep your account protected with a strong password.',
+    headerIcon: Icons.shield_outlined,
     children: [
-      LqField(
-        controller: _current,
-        label: 'Current password',
-        obscureText: true,
-      ),
-      const SizedBox(height: 16),
-      LqField(controller: _next, label: 'New password', obscureText: true),
-      const SizedBox(height: 16),
-      LqField(
-        controller: _confirm,
-        label: 'Confirm password',
-        obscureText: true,
-      ),
-      const SizedBox(height: 24),
-      LqButton(
-        label: 'Save changes',
-        busy: _busy,
-        icon: Icons.lock_outline,
-        onPressed: _save,
+      Form(
+        key: _form,
+        autovalidateMode: AutovalidateMode.disabled,
+        child: Column(
+          children: [
+            LqField(
+              key: const Key('change_password_current_field'),
+              controller: _current,
+              label: 'Current password',
+              obscureText: true,
+              validator: (v) =>
+                  v == null || v.isEmpty ? 'Enter your current password.' : null,
+            ),
+            const SizedBox(height: 16),
+            LqNewPasswordField(
+              key: const Key('change_password_new_field'),
+              controller: _next,
+              label: 'New password',
+            ),
+            const SizedBox(height: 16),
+            LqField(
+              key: const Key('change_password_confirm_field'),
+              controller: _confirm,
+              label: 'Confirm password',
+              obscureText: true,
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Confirm your new password.';
+                if (v != _next.text) return 'Passwords do not match.';
+                return null;
+              },
+            ),
+            const SizedBox(height: 24),
+            LqButton(
+              label: 'Save changes',
+              busy: _busy,
+              icon: Icons.lock_outline,
+              onPressed: _save,
+            ),
+          ],
+        ),
       ),
     ],
   );
 
   Future<void> _save() async {
-    if (_next.text.length < 8 || _next.text != _confirm.text) {
+    if (!_form.currentState!.validate()) return;
+    final policyError = PasswordPolicy.validate(_next.text);
+    if (policyError != null) {
+      showLqMessage(context, policyError, error: true);
+      return;
+    }
+    if (_next.text == _current.text) {
       showLqMessage(
         context,
-        'Passwords must match and use at least 8 characters.',
+        'Choose a different password from your current one.',
         error: true,
       );
       return;
@@ -762,7 +1051,12 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
         currentPassword: _current.text,
         newPassword: _next.text,
       );
-      if (mounted) showLqMessage(context, 'Password updated.');
+      if (mounted) {
+        _current.clear();
+        _next.clear();
+        _confirm.clear();
+        showLqMessage(context, 'Password updated.');
+      }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {
@@ -777,21 +1071,30 @@ class _SimpleFormPage extends StatelessWidget {
     required this.title,
     required this.children,
     this.subtitle,
+    this.headerIcon,
   });
   final String eyebrow;
   final String title;
   final String? subtitle;
   final List<Widget> children;
+  final IconData? headerIcon;
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 26, 16, 30),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const LqBackButton(label: 'Back to settings'),
-          LqTitleBlock(eyebrow: eyebrow, title: title, subtitle: subtitle),
-          const SizedBox(height: 28),
+          const SizedBox(height: 14),
+          LqTitleBlock(
+            eyebrow: eyebrow,
+            title: title,
+            subtitle: subtitle,
+            icon: headerIcon,
+          ),
+          const SizedBox(height: 24),
           LqCard(child: Column(children: children)),
         ],
       ),
@@ -802,6 +1105,42 @@ class _SimpleFormPage extends StatelessWidget {
 class VisitedPlacesScreen extends StatelessWidget {
   const VisitedPlacesScreen({super.key, required this.userId});
   final String userId;
+
+  static const _pastelBgs = [
+    Color(0xFFF5D9CE), // warm peach / terracotta (#FEF4EF in figma)
+    Color(0xFFDCE8C9), // soft sage green
+    Color(0xFFD7E2FB), // soft sky blue
+    Color(0xFFFCE3D8), // soft apricot
+    Color(0xFFE2DCF7), // soft lavender
+  ];
+
+  static const _iconColors = [
+    Color(0xFFE0694F),
+    Color(0xFF4C8A36),
+    Color(0xFF3267D4),
+    Color(0xFFD97736),
+    Color(0xFF6B4EC4),
+  ];
+
+  String _formatVisitedDate(DateTime? date) {
+    if (date == null) return '';
+    final now = DateTime.now();
+    final isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
+    if (isToday) {
+      return 'Today, ${DateFormat('HH:mm').format(date)}';
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    final isYesterday =
+        date.year == yesterday.year &&
+        date.month == yesterday.month &&
+        date.day == yesterday.day;
+    if (isYesterday) {
+      return 'Yesterday, ${DateFormat('HH:mm').format(date)}';
+    }
+    return DateFormat('d MMM, HH:mm').format(date);
+  }
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: Padding(
@@ -809,9 +1148,85 @@ class VisitedPlacesScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const LqBackButton(label: 'Profile'),
-          const LqTitleBlock(eyebrow: 'This month', title: 'Visited places'),
-          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const LqBackButton(label: 'Profile'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Visited places',
+                    style: TextStyle(
+                      fontSize: 32,
+                      height: 1.12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1.2,
+                      color: LqColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+              Tooltip(
+                message: 'Simulate check-in',
+                child: InkWell(
+                  key: const Key('visited_places_demo_checkin_btn'),
+                  onTap: () async {
+                    final recorded = await UserRepository.instance.recordVisit(
+                      userId: userId,
+                      name: 'LocalQuest Heritage Hub',
+                      area: 'Bukit Bintang, Kuala Lumpur',
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            recorded
+                                ? 'Demo visit recorded! Location history updated.'
+                                : 'Could not record: Location history is disabled in Settings.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x1A000000),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.add_location_alt_outlined,
+                      size: 20,
+                      color: LqColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'THIS MONTH',
+            style: monoLabel.copyWith(
+              fontSize: 10,
+              letterSpacing: 1.6,
+              color: LqColors.muted,
+            ),
+          ),
+          const SizedBox(height: 14),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: UserRepository.instance.visitedPlaces(userId),
@@ -821,50 +1236,167 @@ class VisitedPlacesScreen extends StatelessWidget {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (docs.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No visited locations found.',
-                      style: TextStyle(color: LqColors.muted),
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.location_off_outlined,
+                            size: 48,
+                            color: LqColors.muted,
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'No visited locations found.',
+                            style: TextStyle(
+                              color: LqColors.muted,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'When you visit partnered merchants or local spots, they will be automatically recorded here.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: LqColors.muted, fontSize: 13),
+                          ),
+                          const SizedBox(height: 20),
+                          OutlinedButton.icon(
+                            key: const Key('visited_places_empty_simulate_btn'),
+                            onPressed: () async {
+                              final recorded = await UserRepository.instance.recordVisit(
+                                userId: userId,
+                                name: 'LocalQuest Heritage Hub',
+                                area: 'Bukit Bintang, Kuala Lumpur',
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      recorded
+                                          ? 'Demo visit recorded! Location history updated.'
+                                          : 'Could not record: Location history is disabled in Settings.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.add_location_alt_outlined),
+                            label: const Text('Simulate visit check-in (Demo)'),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }
-                return LqCard(
-                  child: ListView.separated(
-                    itemCount: docs.length,
-                    separatorBuilder: (_, _) => const Divider(),
-                    itemBuilder: (context, index) {
-                      final data = docs[index].data();
-                      final date = (data['visitedAt'] as Timestamp?)?.toDate();
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const CircleAvatar(
-                          backgroundColor: LqColors.primarySoft,
-                          child: Icon(
-                            Icons.place_outlined,
-                            color: LqColors.primary,
-                          ),
+                return ListView.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data();
+                    final date = (data['visitedAt'] as Timestamp?)?.toDate();
+                    final pastelBg = _pastelBgs[index % _pastelBgs.length];
+                    final iconColor = _iconColors[index % _iconColors.length];
+
+                    return Dismissible(
+                      key: ValueKey(docs[index].id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFECEB),
+                          borderRadius: BorderRadius.circular(25),
                         ),
-                        title: Text(
-                          data['name'] as String? ?? 'Visited place',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Color(0xFFD9534F),
                         ),
-                        subtitle: Text(
-                          '${data['area'] as String? ?? ''}${date == null ? '' : '\n${DateFormat('d MMM, HH:mm').format(date)}'}',
+                      ),
+                      onDismissed: (_) => docs[index].reference.delete(),
+                      child: LqCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: pastelBg,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.place_outlined,
+                                color: iconColor,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    data['name'] as String? ?? 'Visited place',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: LqColors.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    data['area'] as String? ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w400,
+                                      color: LqColors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              _formatVisitedDate(date),
+                              style: const TextStyle(
+                                fontFamily: 'DM Mono',
+                                fontSize: 10,
+                                color: LqColors.muted,
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
           ),
           const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Center(
-              child: Text(
-                'Location history is private to you.',
-                style: TextStyle(color: LqColors.muted, fontSize: 12),
-              ),
+            padding: EdgeInsets.only(top: 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.shield_outlined,
+                  size: 14,
+                  color: Color(0xFF8A94A6),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Location history is private to you.',
+                  style: TextStyle(
+                    color: Color(0xFF8A94A6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -874,23 +1406,43 @@ class VisitedPlacesScreen extends StatelessWidget {
 }
 
 class HelpCentreScreen extends StatefulWidget {
-  const HelpCentreScreen({super.key});
+  const HelpCentreScreen({super.key, this.role});
+  final AccountRole? role;
+
   @override
   State<HelpCentreScreen> createState() => _HelpCentreScreenState();
 }
 
 class _HelpCentreScreenState extends State<HelpCentreScreen> {
   final _query = TextEditingController();
-  final faqs = const {
-    'How does automatic place logging work?':
-        'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
-    'How do I redeem a voucher?':
-        'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
-    'Why is my check-in not showing?':
-        'Check location permission and network access, then reopen the app near the registered location.',
-    'Can I use one account as a Tourist and Merchant?':
-        'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
-  };
+
+  Map<String, String> get faqs {
+    if (widget.role == AccountRole.merchant) {
+      return const {
+        'How do I verify my SSM registration?':
+            'Open the business editor, tap "Scan SSM registration certificate" or enter your 12-digit SSM number to request verification.',
+        'How do campaigns and advertisements work?':
+            'Active businesses can create ads and campaigns to reach nearby tourists and attract visitors to your location.',
+        'How do customers redeem vouchers at my business?':
+            'Tourists present an active redemption screen in Rewards. Check their redemption code and apply the offer.',
+        'How do I adjust my business entrance pin on the map?':
+            'Open your business listing, tap "Street address", and use "Pin location on map" to set the exact storefront location.',
+        'Can I use one account as a Tourist and Merchant?':
+            'Tourist and Merchant accounts are separate so that business operations and personal travel activity remain distinct.',
+      };
+    }
+    return const {
+      'How does automatic place logging work?':
+          'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
+      'How do I redeem a voucher?':
+          'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
+      'Why is my check-in not showing?':
+          'Check location permission and network access, then reopen the app near the registered location.',
+      'Can I use one account as a Tourist and Merchant?':
+          'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _query.text.toLowerCase();
@@ -904,10 +1456,16 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const LqBackButton(label: 'Back to settings'),
-            const LqTitleBlock(
-              eyebrow: 'Support',
+            const SizedBox(height: 14),
+            LqTitleBlock(
+              eyebrow: widget.role == AccountRole.merchant
+                  ? 'Merchant support'
+                  : 'Support',
               title: 'Help centre',
-              subtitle: 'Find answers for your LocalQuest account.',
+              subtitle: widget.role == AccountRole.merchant
+                  ? 'Find answers and guidance for managing your business.'
+                  : 'Find answers for your LocalQuest account.',
+              icon: Icons.help_outline,
             ),
             const SizedBox(height: 20),
             TextField(
@@ -986,10 +1544,12 @@ class NotificationsScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const LqBackButton(label: 'Profile'),
+            const SizedBox(height: 14),
             const LqTitleBlock(
               eyebrow: 'Activity',
               title: 'Notifications',
               subtitle: 'Account updates and LocalQuest alerts in one place.',
+              icon: Icons.notifications_none_outlined,
             ),
             const SizedBox(height: 24),
             LqCard(
@@ -1033,7 +1593,9 @@ class NotificationsScreen extends StatelessWidget {
 }
 
 class PrivacyScreen extends StatelessWidget {
-  const PrivacyScreen({super.key});
+  const PrivacyScreen({super.key, this.role});
+  final AccountRole? role;
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SingleChildScrollView(
@@ -1042,56 +1604,68 @@ class PrivacyScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const LqBackButton(label: 'Back to settings'),
-          const LqTitleBlock(
-            eyebrow: 'Privacy',
+          const SizedBox(height: 14),
+          LqTitleBlock(
+            eyebrow:
+                role == AccountRole.merchant ? 'Merchant privacy' : 'Privacy',
             title: 'Privacy & data',
-            subtitle:
-                'Review personal data, permissions, and account-export options.',
+            subtitle: role == AccountRole.merchant
+                ? 'Review business data policies, certificate confidentiality, and permissions.'
+                : 'Review personal data, permissions, and account-export options.',
+            icon: Icons.privacy_tip_outlined,
           ),
           const SizedBox(height: 22),
-          const LqCard(
+          LqCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'LocalQuest Privacy Notice',
                   style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '1. Information we collect',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'Profile information, device identifiers, optional location history, and content you submit.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'Business profile information, SSM certificates, verified store entrance coordinates, and campaign data.'
+                      : 'Profile information, device identifiers, optional location history, and content you submit.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '2. How we use your information',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'To provide account features, deliver rewards, log eligible visits, and protect the LocalQuest community.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'To list your verified business, facilitate coupon redemptions, protect against fraud, and comply with Malaysian regulations.'
+                      : 'To provide account features, deliver rewards, log eligible visits, and protect the LocalQuest community.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '3. Location data',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'Location history is optional and can be paused from Settings.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'Business coordinates are used to display your store location accurately on the map for visitors.'
+                      : 'Location history is optional and can be paused from Settings.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
-                SizedBox(height: 14),
-                Text(
+                const SizedBox(height: 14),
+                const Text(
                   '4. Your rights',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  'You may request access, correction, export, or deletion of your information.',
-                  style: TextStyle(color: LqColors.muted, height: 1.5),
+                  role == AccountRole.merchant
+                      ? 'You may edit business listings, update SSM numbers, export records, or delete your account at any time.'
+                      : 'You may request access, correction, export, or deletion of your information.',
+                  style: const TextStyle(color: LqColors.muted, height: 1.5),
                 ),
               ],
             ),
@@ -1126,6 +1700,7 @@ class PrivacyScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             LqField(
+              key: const Key('delete_account_password_field'),
               controller: password,
               label: 'Current password',
               obscureText: true,

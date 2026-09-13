@@ -33,7 +33,139 @@ Widget app(Widget home) => MaterialApp(
   home: Scaffold(body: home),
 );
 
+class _AddressLookupForTest extends PhotonAddressService {
+  const _AddressLookupForTest();
+
+  @override
+  Future<AddressSuggestion?> reverse(LqLocation location) async =>
+      const AddressSuggestion(
+        label: '18 Jalan Example, Kuala Lumpur, Malaysia',
+        latitude: 3.139,
+        longitude: 101.6869,
+      );
+}
+
 void main() {
+  testWidgets(
+    'campaign create action stays fixed above nav while list scrolls',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const business = Business(
+        id: 'b1',
+        ownerId: 'merchant-1',
+        name: 'Test Cafe',
+        category: 'Cafe',
+        address: 'Kuala Lumpur',
+        phone: '0312345678',
+      );
+      await tester.pumpWidget(
+        app(
+          CampaignsScreen(
+            user: merchant,
+            business: business,
+            campaignStream: Stream.value(
+              List.generate(
+                5,
+                (i) => Campaign(
+                  id: '$i',
+                  ownerId: merchant.id,
+                  businessId: business.id,
+                  name: 'Offer $i',
+                  description: 'Coffee special at this business',
+                  type: 'ad',
+                  startDate: DateTime(2026),
+                  endDate: DateTime(2027),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final create = find.text('Create campaign');
+      expect(create, findsOneWidget);
+      final before = tester.getRect(create);
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -450),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getRect(create), before);
+      expect(before.bottom, lessThanOrEqualTo(780 - 96));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('campaign poster fills the creative section edge to edge', (
+    tester,
+  ) async {
+    const business = Business(
+      id: 'b1',
+      ownerId: 'merchant-1',
+      name: 'Test Cafe',
+      category: 'Cafe',
+      address: 'Kuala Lumpur',
+      phone: '0312345678',
+    );
+    await tester.pumpWidget(
+      app(
+        CampaignsScreen(
+          user: merchant,
+          business: business,
+          campaignStream: Stream.value([
+            Campaign(
+              id: 'poster-campaign',
+              ownerId: merchant.id,
+              businessId: business.id,
+              name: 'Full-bleed poster',
+              description: 'This poster should be the creative background.',
+              type: 'ad',
+              imageUrl: 'https://res.cloudinary.com/example/image.jpg',
+              startDate: DateTime(2026),
+              endDate: DateTime(2027),
+            ),
+          ]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final image = find.byType(Image);
+    final card = find.byType(LqCard);
+    expect(image, findsOneWidget);
+    expect(card, findsOneWidget);
+    expect(tester.getRect(image).left, tester.getRect(card).left);
+    expect(tester.getRect(image).right, tester.getRect(card).right);
+    expect(tester.getRect(image).height, 178);
+  });
+
+  testWidgets('voucher form rejects blank offer before reaching review', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        const CampaignEditor(
+          user: merchant,
+          businessId: 'b1',
+          initialType: 'voucher',
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('Next: Value & limits'));
+    await tester.tap(find.text('Next: Value & limits'));
+    await tester.pumpAndSettle();
+    expect(find.text('Name must contain 3–80 characters.'), findsOneWidget);
+    expect(
+      find.text('Description must contain 20–1500 characters.'),
+      findsOneWidget,
+    );
+    expect(find.text('Review your offer'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   test('Photon address result preserves label and coordinates', () {
     final suggestion = AddressSuggestion.fromPhotonFeature({
       'properties': {
@@ -52,6 +184,36 @@ void main() {
     expect(suggestion.label, contains('Kuala Lumpur'));
     expect(suggestion.latitude, 3.1478);
     expect(suggestion.longitude, 101.7080);
+  });
+
+  testWidgets('map picker offers current location and hides coordinates', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      app(
+        LqAddressField(
+          controller: controller,
+          label: 'Business address',
+          initialLocation: const LqLocation(
+            latitude: 3.139,
+            longitude: 101.6869,
+            address: '18 Jalan Example, Kuala Lumpur, Malaysia',
+          ),
+          service: const _AddressLookupForTest(),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Pin location on map'));
+    await tester.pump();
+
+    expect(find.byTooltip('Use my current location'), findsOneWidget);
+    expect(
+      find.text('18 Jalan Example, Kuala Lumpur, Malaysia'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('3.139000'), findsNothing);
   });
 
   testWidgets('account selection fits a compact phone without overflow', (
@@ -91,7 +253,7 @@ void main() {
     await tester.pumpWidget(app(const LoginScreen(role: AccountRole.tourist)));
 
     expect(find.text('Welcome back.'), findsOneWidget);
-    expect(find.text('Email address'), findsOneWidget);
+    expect(find.text('Email address or username'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('Forgot password?'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
@@ -108,6 +270,15 @@ void main() {
     expect(find.text('Reviews & ratings'), findsOneWidget);
     expect(find.text('Visited places'), findsOneWidget);
     expect(find.byType(LqTierBadge), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.icon == Icons.chevron_right &&
+            widget.color == LqColors.primary,
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: find.byType(LqTierBadge),
@@ -200,7 +371,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: localQuestTheme(),
-        home: const TouristHome(user: tourist),
+        home: const TouristHome(user: tourist, initialIndex: 2),
       ),
     );
     await tester.pumpAndSettle();
@@ -262,6 +433,8 @@ void main() {
   ) async {
     await tester.pumpWidget(app(const MerchantProfile(user: merchant)));
 
+    expect(find.text('@testmerchant'), findsOneWidget);
+    expect(find.text('merchant@localquest.test'), findsOneWidget);
     expect(find.text('Ads'), findsOneWidget);
     expect(find.text('Vouchers'), findsOneWidget);
     expect(find.text('Business registrations'), findsOneWidget);
@@ -281,7 +454,7 @@ void main() {
     expect(find.text('Promotional ad'), findsOneWidget);
     expect(find.text('Voucher'), findsOneWidget);
     expect(find.text('Campaign name'), findsOneWidget);
-    expect(find.text('Save changes'), findsOneWidget);
+    expect(find.text('Next: Schedule & vouchers'), findsOneWidget);
 
     await tester.pumpWidget(app(const BusinessEditor(user: merchant)));
     expect(find.text('Business name'), findsOneWidget);
@@ -306,6 +479,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(app(const AccountDetailsScreen(user: tourist)));
+    await tester.ensureVisible(find.byIcon(Icons.calendar_month_outlined));
     await tester.tap(find.byIcon(Icons.calendar_month_outlined));
     await tester.pumpAndSettle();
 
@@ -383,4 +557,102 @@ void main() {
     await tester.pumpAndSettle();
     expect(signedOut, isFalse);
   });
+
+  testWidgets(
+    'merchant overview splits campaigns into recent ads and latest vouchers',
+    (tester) async {
+      const business = Business(
+        id: 'b1',
+        ownerId: 'merchant-1',
+        name: 'Bukit Bintang Cafe',
+        category: 'Cafe',
+        address: '10 Jalan Bukit Bintang',
+        area: 'Bukit Bintang',
+        phone: '0312345678',
+      );
+      final campaigns = [
+        Campaign(
+          id: 'ad-1',
+          ownerId: merchant.id,
+          businessId: business.id,
+          name: 'Summer Drink Special',
+          description: '50% off seasonal mango cooler',
+          type: 'ad',
+          status: 'active',
+          views: 120,
+          startDate: DateTime(2026, 6, 1),
+          endDate: DateTime(2026, 8, 31),
+        ),
+        Campaign(
+          id: 'v-1',
+          ownerId: merchant.id,
+          businessId: business.id,
+          name: 'RM10 Welcome Voucher',
+          description: 'Save RM10 on any pastry combo',
+          type: 'voucher',
+          status: 'active',
+          claims: 42,
+          startDate: DateTime(2026, 6, 1),
+          endDate: DateTime(2026, 12, 31),
+        ),
+      ];
+
+      await tester.pumpWidget(
+        app(
+          MerchantOverview(
+            user: merchant,
+            business: business,
+            openCampaigns: () {},
+            campaignStream: Stream.value(campaigns),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('RECENT ADS'), findsOneWidget);
+      expect(find.text('Summer Drink Special'), findsWidgets);
+      expect(find.text('LATEST VOUCHERS'), findsOneWidget);
+      expect(find.text('RM10 Welcome Voucher'), findsOneWidget);
+      expect(find.text('42 claimed · ACTIVE'), findsOneWidget);
+    },
+  );
+
+  testWidgets('business editor exposes area / city, postcode, and state fields', (tester) async {
+    await tester.pumpWidget(app(const BusinessEditor(user: merchant)));
+    expect(find.text('Street address'), findsOneWidget);
+    expect(find.text('Postcode'), findsOneWidget);
+    expect(find.text('Area / city'), findsOneWidget);
+    expect(find.text('State'), findsOneWidget);
+    expect(
+      find.widgetWithText(LqField, 'Area / city'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'tourist profile displays stat subtitle badges and opens journey bottom sheets',
+    (tester) async {
+      await tester.pumpWidget(app(const TouristProfileScreen(user: tourist)));
+
+      expect(find.text('3 expiring soon'), findsOneWidget);
+      expect(find.text('Top 8% storyteller'), findsOneWidget);
+
+      await tester.tap(find.text('My vouchers'));
+      await tester.pumpAndSettle();
+      expect(find.text('REWARDS'), findsOneWidget);
+      expect(
+        find.textContaining('You currently have 3 vouchers ready in your passport'),
+        findsOneWidget,
+      );
+
+      Navigator.pop(tester.element(find.text('REWARDS')));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Missions'));
+      await tester.tap(find.text('Missions'));
+      await tester.pumpAndSettle();
+      expect(find.text('SIDE QUESTS'), findsOneWidget);
+      expect(find.text('Dynamic Missions'), findsOneWidget);
+    },
+  );
 }

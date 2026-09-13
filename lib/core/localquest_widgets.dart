@@ -15,7 +15,8 @@ class LqPage extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         SafeArea(
-          child: Center(
+          child: Align(
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: child,
@@ -71,36 +72,64 @@ class LqTitleBlock extends StatelessWidget {
     required this.eyebrow,
     required this.title,
     this.subtitle,
+    this.icon,
   });
 
   final String eyebrow;
   final String title;
   final String? subtitle;
+  final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(eyebrow.toUpperCase(), style: monoLabel),
-      const SizedBox(height: 6),
-      Text(
-        title,
-        style: const TextStyle(
-          fontSize: 32,
-          height: 1.12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1.2,
-        ),
-      ),
-      if (subtitle != null) ...[
-        const SizedBox(height: 8),
+  Widget build(BuildContext context) {
+    final textColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(eyebrow.toUpperCase(), style: monoLabel),
+        const SizedBox(height: 6),
         Text(
-          subtitle!,
-          style: const TextStyle(color: LqColors.muted, height: 1.45),
+          title,
+          style: const TextStyle(
+            fontSize: 32,
+            height: 1.12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1.2,
+          ),
         ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            subtitle!,
+            style: const TextStyle(color: LqColors.muted, height: 1.45),
+          ),
+        ],
       ],
-    ],
-  );
+    );
+
+    if (icon == null) return textColumn;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFFDCE8FF),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            color: LqColors.primary,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(child: textColumn),
+      ],
+    );
+  }
 }
 
 class LqCard extends StatelessWidget {
@@ -231,38 +260,40 @@ class LqSegmentedControl<T> extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: segments.map((segment) {
           final isSelected = segment.$1 == selected;
-          return Semantics(
-            button: true,
-            selected: isSelected,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => onChanged(segment.$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? LqColors.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: isSelected
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x333267D4),
-                            blurRadius: 7,
-                            offset: Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  segment.$2,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : LqColors.muted,
-                    fontSize: 12,
-                    height: 16 / 12,
-                    fontWeight: FontWeight.w700,
+          return Flexible(
+            child: Semantics(
+              button: true,
+              selected: isSelected,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => onChanged(segment.$1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected ? LqColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: isSelected
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x333267D4),
+                              blurRadius: 7,
+                              offset: Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(
+                    segment.$2,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : LqColors.muted,
+                      fontSize: 12,
+                      height: 16 / 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -396,7 +427,7 @@ class LqBackButton extends StatelessWidget {
   );
 }
 
-class LqField extends StatelessWidget {
+class LqField extends StatefulWidget {
   const LqField({
     super.key,
     required this.controller,
@@ -409,6 +440,8 @@ class LqField extends StatelessWidget {
     this.readOnly = false,
     this.onTap,
     this.suffixIcon,
+    this.suffixWidget,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -421,22 +454,65 @@ class LqField extends StatelessWidget {
   final bool readOnly;
   final VoidCallback? onTap;
   final IconData? suffixIcon;
+  final Widget? suffixWidget;
+  final ValueChanged<String>? onChanged;
 
   @override
-  Widget build(BuildContext context) => TextFormField(
-    controller: controller,
-    obscureText: obscureText,
-    keyboardType: keyboardType,
-    validator: validator,
-    maxLines: maxLines,
-    readOnly: readOnly,
-    onTap: onTap,
-    decoration: InputDecoration(
-      labelText: label,
-      hintText: hint,
-      suffixIcon: suffixIcon == null ? null : Icon(suffixIcon),
-    ),
-  );
+  State<LqField> createState() => _LqFieldState();
+}
+
+class _LqFieldState extends State<LqField> {
+  late bool _obscured;
+
+  @override
+  void initState() {
+    super.initState();
+    _obscured = widget.obscureText;
+  }
+
+  @override
+  void didUpdateWidget(covariant LqField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.obscureText != widget.obscureText) {
+      _obscured = widget.obscureText;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget? suffix = widget.suffixWidget;
+    if (suffix == null && widget.suffixIcon != null) {
+      suffix = Icon(widget.suffixIcon);
+    } else if (suffix == null && widget.obscureText) {
+      suffix = IconButton(
+        tooltip: _obscured ? 'Show password' : 'Hide password',
+        icon: Icon(
+          _obscured
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+          color: LqColors.muted,
+          size: 20,
+        ),
+        onPressed: () => setState(() => _obscured = !_obscured),
+      );
+    }
+
+    return TextFormField(
+      controller: widget.controller,
+      obscureText: _obscured,
+      keyboardType: widget.keyboardType,
+      validator: widget.validator,
+      maxLines: widget.maxLines,
+      readOnly: widget.readOnly,
+      onTap: widget.onTap,
+      onChanged: widget.onChanged,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        hintText: widget.hint,
+        suffixIcon: suffix,
+      ),
+    );
+  }
 }
 
 const lqBusinessCategories = <String>[
@@ -450,15 +526,24 @@ const lqBusinessCategories = <String>[
   'Other',
 ];
 
+const lqDietaryStatuses = <String>[
+  'Halal Certified',
+  'Muslim-Friendly / Pork-Free',
+  'Vegetarian-Friendly',
+  'Non-Halal',
+  'Not Applicable',
+];
+
 class LqDropdownField extends FormField<String> {
   LqDropdownField({
-    super.key,
+    Key? key,
     required this.label,
     required this.value,
     required this.items,
     required this.onChanged,
     super.validator,
   }) : super(
+         key: key ?? ValueKey(label),
          initialValue: value != null && items.contains(value) ? value : null,
          builder: _buildDropdown,
        );
@@ -758,6 +843,64 @@ class LqStatusPill extends StatelessWidget {
   }
 }
 
+enum LqAvatarShape { circle, roundedSquare }
+
+/// Shared profile image with an initials fallback for absent or broken photos.
+class LqAvatar extends StatelessWidget {
+  const LqAvatar({
+    super.key,
+    required this.initials,
+    this.photoUrl,
+    this.radius = 36,
+    this.shape = LqAvatarShape.roundedSquare,
+  });
+  final String initials;
+  final String? photoUrl;
+  final double radius;
+  final LqAvatarShape shape;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = ColoredBox(
+      color: const Color(0xFFE4C8B7),
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: radius < 20 ? 10 : 18,
+            color: const Color(0xFF573725),
+          ),
+        ),
+      ),
+    );
+    final url = Uri.tryParse(photoUrl ?? '');
+    final child = SizedBox(
+      width: radius * 2,
+      height: radius * 2,
+      child: url?.scheme == 'https' && url!.host.isNotEmpty
+          ? Image.network(
+              photoUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => fallback,
+              loadingBuilder: (_, child, progress) =>
+                  progress == null ? child : fallback,
+            )
+          : fallback,
+    );
+    return Semantics(
+      label: 'Profile picture',
+      image: true,
+      child: shape == LqAvatarShape.circle
+          ? ClipOval(child: child)
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(radius * .45),
+              child: child,
+            ),
+    );
+  }
+}
+
 class LqFloatingNavBar extends StatelessWidget {
   const LqFloatingNavBar({
     super.key,
@@ -765,11 +908,13 @@ class LqFloatingNavBar extends StatelessWidget {
     required this.onSelected,
     required this.items,
     required this.profileInitials,
+    this.profilePhotoUrl,
   });
   final int selectedIndex;
   final ValueChanged<int> onSelected;
   final List<(IconData, String)> items;
   final String profileInitials;
+  final String? profilePhotoUrl;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -816,17 +961,11 @@ class LqFloatingNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircleAvatar(
+                      LqAvatar(
                         radius: 15,
-                        backgroundColor: const Color(0xFFE4C8B7),
-                        child: Text(
-                          profileInitials,
-                          style: const TextStyle(
-                            color: Color(0xFF573725),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        initials: profileInitials,
+                        photoUrl: profilePhotoUrl,
+                        shape: LqAvatarShape.circle,
                       ),
                       const SizedBox(height: 1),
                       Text(
@@ -861,18 +1000,22 @@ class LqFloatingNavBar extends StatelessWidget {
         width: 76,
         height: 52,
         decoration: BoxDecoration(
-          color: selected ? LqColors.primarySoft : Colors.transparent,
+          color: selected ? LqColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(32),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(items[index].$1, size: 19, color: LqColors.ink),
+            Icon(
+              items[index].$1,
+              size: 19,
+              color: selected ? Colors.white : LqColors.ink,
+            ),
             const SizedBox(height: 2),
             Text(
               items[index].$2,
-              style: const TextStyle(
-                color: LqColors.ink,
+              style: TextStyle(
+                color: selected ? Colors.white : LqColors.ink,
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
               ),
