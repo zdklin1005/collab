@@ -48,6 +48,10 @@ import 'nearby_business_dialog.dart';
 import 'business_voucher_claim_check.dart';
 import 'business_voucher_section.dart';
 
+import '../../core/map_movement_test_config.dart';
+import '../../services/map_test_movement_controller.dart';
+import 'map_test_movement_controls.dart';
+
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
 
@@ -59,6 +63,133 @@ class InteractiveMapScreen extends StatefulWidget {
 
 class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     with WidgetsBindingObserver {
+  MapTestMovementController? _testMovement;
+  bool _testMovementRunning = false;
+
+  LatLng? get _displayPoint {
+    if (MapMovementTestConfig.enabled) {
+      if (!_testMovementRunning || !_foreground || !_locationAllowed) {
+        return null;
+      }
+
+      return _testMovement?.point;
+    }
+
+    final position = _position;
+    return position == null
+        ? null
+        : LatLng(position.latitude, position.longitude);
+  }
+
+  // Used only for nearby-business discovery, never for reward claims.
+  LatLng? get _discoveryPoint {
+    if (!mounted || !_foreground || !_locationAllowed) return null;
+
+    if (MapMovementTestConfig.enabled) {
+      return _displayPoint;
+    }
+
+    final position = _position;
+    if (_locationError != null || position == null) return null;
+
+    final quality = assessLocationQuality(
+      accuracy: position.accuracy,
+      recordedAt: position.timestamp,
+      now: DateTime.now(),
+    );
+
+    if (quality != LocationQuality.recent ||
+        !position.latitude.isFinite ||
+        !position.longitude.isFinite ||
+        position.latitude.abs() > 90 ||
+        position.longitude.abs() > 180) {
+      return null;
+    }
+
+    return LatLng(position.latitude, position.longitude);
+  }
+
+  void _startTestLocation() {
+    final start = MapMovementTestConfig.start;
+
+    if (!mounted ||
+        !_foreground ||
+        !_locationAllowed ||
+        start == null ||
+        _testMovementRunning) {
+      return;
+    }
+
+    _stopLiveLocation();
+
+    _testMovement ??= MapTestMovementController(
+      start: start,
+      stepMeters: MapMovementTestConfig.stepMeters,
+    );
+
+    final requestId = _requestId;
+
+    setState(() {
+      _testMovementRunning = true;
+      _position = null;
+      _locating = false;
+      _locationError = null;
+      _updateNearbyBusinesses();
+    });
+
+    // Allows reminder spacing to expire while the test marker is stationary.
+    // It does not request GPS or manufacture GPS accuracy readings.
+    _qualityTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_isCurrentRequest(requestId) || !_testMovementRunning) return;
+
+      setState(() {
+        _updateNearbyBusinesses();
+      });
+    });
+
+    _centreOnFirstPosition();
+  }
+
+  void _changeTestPosition({TestMoveDirection? direction}) {
+    final controller = _testMovement;
+
+    if (!MapMovementTestConfig.enabled ||
+        !mounted ||
+        !_foreground ||
+        !_locationAllowed ||
+        !_testMovementRunning ||
+        !_mapReady ||
+        controller == null ||
+        _searchOpen ||
+        _filterSheetOpen ||
+        _locationDetailsOpen ||
+        _nearbyBusinessDialogOpen ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+
+    try {
+      setState(() {
+        if (direction == null) {
+          controller.reset();
+        } else {
+          controller.move(direction);
+        }
+
+        _updateNearbyBusinesses();
+      });
+
+      _recenterWhenReady = true;
+      _centreOnFirstPosition();
+    } on ArgumentError {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This movement would leave the supported test area.'),
+        ),
+      );
+    }
+  }
+
   static const _initialPosition = LatLng(3.1390, 101.6869);
 
   final MapController _mapController = MapController();
@@ -70,6 +201,12 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   bool _businessLoadFailed = false;
   int _businessRequestId = 0;
 
+  StreamSubscription<List<MapLocation>>? _landmarkSubscription;
+  List<MapLocation> _liveLandmarks = const [];
+  bool _loadingLandmarks = true;
+  bool _landmarkLoadFailed = false;
+  int _landmarkRequestId = 0;
+
   StreamSubscription<Position>? _positionSubscription;
   Timer? _firstFixTimer;
   Timer? _qualityTimer;
@@ -78,6 +215,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
   Position? _position;
   String? _selectedBusinessCategory;
+  String? _selectedLandmarkCategory;
   bool _filterSheetOpen = false;
   bool _restoringMapStyle = true;
   bool _savingMapStyle = false;
@@ -146,6 +284,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     super.initState();
     if (!MapTestConfig.enabled) {
       _startLiveBusinesses();
+      _startLiveLandmarks();
     }
     WidgetsBinding.instance.addObserver(this);
 
@@ -316,26 +455,43 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     if (!_mapReady || _searchOpen) return;
 
     final demoMode = MapTestConfig.enabled;
+    final businessesReady = !_loadingBusinesses && !_businessLoadFailed;
+    final landmarksReady = !_loadingLandmarks && !_landmarkLoadFailed;
 
-    if (!demoMode && (_loadingBusinesses || _businessLoadFailed)) {
+    if (!demoMode && !businessesReady && !landmarksReady) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            _loadingBusinesses
-                ? 'Businesses are still loading. Please try again shortly.'
-                : 'Businesses could not load. Use Retry businesses first.',
+            'Places are loading or unavailable. '
+            'Check the map status and retry if needed.',
           ),
         ),
       );
       return;
     }
 
-    final locations = demoMode
-        ? filterMapLocations(
-            MockMapData.createLocations(),
-            _selectedBusinessCategory,
-          )
-        : filterMapLocations(_liveLocations, _selectedBusinessCategory);
+    final locations = filterMapLocations(
+      demoMode
+          ? MockMapData.createLocations()
+          : <MapLocation>[
+              if (businessesReady) ..._liveLocations,
+              if (landmarksReady) ..._liveLandmarks,
+            ],
+      _selectedBusinessCategory,
+      selectedLandmarkCategory: _selectedLandmarkCategory,
+    );
+
+    final informationText = demoMode
+        ? 'Demo places only. Business and landmark category filters apply here. '
+        : [
+            'Search loaded businesses and landmarks.',
+            if (!businessesReady)
+              'Businesses are currently unavailable or still loading.',
+            if (!landmarksReady)
+              'Landmarks are currently unavailable or still loading.',
+            'Business and landmark category filters apply independently.',
+            'Reopen search to refresh the results.',
+          ].join(' ');
 
     final touristId = widget.user.id;
     _searchOpen = true;
@@ -345,11 +501,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         context: context,
         delegate: MapSearchDelegate(
           locations: locations,
-          informationText: demoMode
-              ? 'Demo places only. Business category filters also apply here. '
-                    'Select a result to show it on the map.'
-              : 'Search loaded businesses. Business category filters also apply here. '
-                    'Select a result to show it on the map.',
+          informationText: informationText,
         ),
       );
 
@@ -364,18 +516,24 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       MapLocation destination = selected;
 
       if (!demoMode) {
-        // Search uses a snapshot. Recheck against the latest loaded data
-        // in case the business changed while search was open.
+        // Recheck the selected place against the latest data.
+        // A failure in one collection must not block the other.
+        final latestLocations = <MapLocation>[
+          if (!_loadingBusinesses && !_businessLoadFailed) ..._liveLocations,
+          if (!_loadingLandmarks && !_landmarkLoadFailed) ..._liveLandmarks,
+        ];
+
         final matches = filterMapLocations(
-          _liveLocations,
+          latestLocations,
           _selectedBusinessCategory,
+          selectedLandmarkCategory: _selectedLandmarkCategory,
         ).where((location) => location.id == selected.id).toList();
 
-        if (_loadingBusinesses || _businessLoadFailed || matches.length != 1) {
+        if (matches.length != 1) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'This business is no longer available. Please search again.',
+                'This place is no longer available. Please search again.',
               ),
             ),
           );
@@ -404,30 +562,100 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _selectBusinessCategory() async {
     if (_filterSheetOpen) return;
 
-    if (!MapTestConfig.enabled && (_loadingBusinesses || _businessLoadFailed)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _loadingBusinesses
-                ? 'Businesses are still loading. Please try again shortly.'
-                : 'Businesses could not load. Use Retry businesses first.',
-          ),
-        ),
-      );
-      return;
-    }
+    final demoMode = MapTestConfig.enabled;
+    final businessesReady =
+        demoMode || (!_loadingBusinesses && !_businessLoadFailed);
+    final landmarksReady =
+        demoMode || (!_loadingLandmarks && !_landmarkLoadFailed);
+
+    final businessCategories = availableBusinessCategories(
+      demoMode
+          ? MockMapData.createLocations()
+          : businessesReady
+          ? _liveLocations
+          : const <MapLocation>[],
+    );
+
+    final landmarkCategories = availableLandmarkCategories(
+      demoMode
+          ? MockMapData.createLocations()
+          : landmarksReady
+          ? _liveLandmarks
+          : const <MapLocation>[],
+    );
 
     _filterSheetOpen = true;
+    final touristId = widget.user.id;
 
     try {
-      final categories = availableBusinessCategories(
-        MapTestConfig.enabled ? MockMapData.createLocations() : _liveLocations,
-      );
-
-      final selected = await showModalBottomSheet<String>(
+      final selected = await showModalBottomSheet<(MapLocationType, String)>(
         context: context,
         showDragHandle: true,
         builder: (sheetContext) {
+          Widget categorySection({
+            required MapLocationType type,
+            required String heading,
+            required String allLabel,
+            required List<String> categories,
+            required String? current,
+            required bool ready,
+          }) {
+            final choices = <String>[
+              ...categories,
+              // Keep an existing selection visible if its records disappear.
+              if (current != null && !categories.contains(current)) current,
+            ];
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text(
+                    heading,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.apps),
+                  title: Text(allLabel),
+                  trailing: current == null
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop((type, '')),
+                ),
+                for (final category in choices)
+                  ListTile(
+                    leading: Icon(
+                      type == MapLocationType.business
+                          ? Icons.storefront_outlined
+                          : Icons.account_balance_outlined,
+                    ),
+                    title: Text(category),
+                    trailing: current == category
+                        ? const Icon(Icons.check, color: Colors.blue)
+                        : null,
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop((type, category)),
+                  ),
+                if (!ready || categories.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      !ready
+                          ? 'These places are loading or unavailable. '
+                                'You can still clear their filter.'
+                          : 'No categories are currently available.',
+                    ),
+                  ),
+              ],
+            );
+          }
+
           return SafeArea(
             child: SingleChildScrollView(
               child: Column(
@@ -438,7 +666,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                     child: Column(
                       children: [
                         Text(
-                          'Filter businesses',
+                          'Filter places',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -446,37 +674,30 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'Applies to business markers and search. '
-                          'Landmarks and rewards stay visible.',
+                          'Each category filters its own markers and search '
+                          'results. EXP and voucher markers stay visible.',
                           textAlign: TextAlign.center,
                         ),
                       ],
                     ),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.apps),
-                    title: const Text('All businesses'),
-                    subtitle: const Text('Clear the category filter'),
-                    trailing: _selectedBusinessCategory == null
-                        ? const Icon(Icons.check, color: Colors.blue)
-                        : null,
-                    // Empty string means clear. Null means cancelled.
-                    onTap: () => Navigator.of(sheetContext).pop(''),
+                  categorySection(
+                    type: MapLocationType.business,
+                    heading: 'Businesses',
+                    allLabel: 'All businesses',
+                    categories: businessCategories,
+                    current: _selectedBusinessCategory,
+                    ready: businessesReady,
                   ),
-                  for (final category in categories)
-                    ListTile(
-                      leading: const Icon(Icons.storefront_outlined),
-                      title: Text(category),
-                      trailing: _selectedBusinessCategory == category
-                          ? const Icon(Icons.check, color: Colors.blue)
-                          : null,
-                      onTap: () => Navigator.of(sheetContext).pop(category),
-                    ),
-                  if (categories.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('No business categories are available.'),
-                    ),
+                  const Divider(),
+                  categorySection(
+                    type: MapLocationType.landmark,
+                    heading: 'Landmarks',
+                    allLabel: 'All landmarks',
+                    categories: landmarkCategories,
+                    current: _selectedLandmarkCategory,
+                    ready: landmarksReady,
+                  ),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -485,14 +706,58 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         },
       );
 
-      if (!mounted || selected == null) return;
+      if (!mounted || widget.user.id != touristId || selected == null) {
+        return;
+      }
 
       setState(() {
-        _selectedBusinessCategory = selected.isEmpty ? null : selected;
+        final category = selected.$2.isEmpty ? null : selected.$2;
+
+        if (selected.$1 == MapLocationType.business) {
+          _selectedBusinessCategory = category;
+        } else {
+          _selectedLandmarkCategory = category;
+        }
       });
     } finally {
       _filterSheetOpen = false;
     }
+  }
+
+  void _startLiveLandmarks() {
+    final requestId = ++_landmarkRequestId;
+    final previous = _landmarkSubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _liveLandmarks = const [];
+    _loadingLandmarks = true;
+    _landmarkLoadFailed = false;
+
+    _landmarkSubscription = MapRepository().watchActiveLandmarks().listen(
+      (landmarks) {
+        if (!mounted || requestId != _landmarkRequestId) return;
+
+        setState(() {
+          _liveLandmarks = List<MapLocation>.unmodifiable(landmarks);
+          _loadingLandmarks = false;
+          _landmarkLoadFailed = false;
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!mounted || requestId != _landmarkRequestId) return;
+
+        setState(() {
+          _liveLandmarks = const [];
+          _loadingLandmarks = false;
+          _landmarkLoadFailed = true;
+        });
+
+        debugPrint('Map: landmark loading failed: $error');
+      },
+    );
   }
 
   Future<void> _showLocationDetails(MapLocation location) async {
@@ -627,6 +892,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
   // Starts one live subscription. Repeated calls do not create duplicates.
   Future<void> _readPosition() async {
+    if (MapMovementTestConfig.enabled) {
+      _startTestLocation();
+      return;
+    }
     if (!mounted ||
         !_foreground ||
         !_locationAllowed ||
@@ -742,6 +1011,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _stopLiveLocation() {
+    _testMovementRunning = false;
     _publishNearbyBusinesses(const [], 'paused');
 
     // Invalidate callbacks before cancelling the native subscription.
@@ -778,18 +1048,14 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _centreOnFirstPosition() {
-    // Keep the demo area visible until the user requests GPS recentering.
     if (MapTestConfig.enabled && !_recenterWhenReady) return;
 
-    final position = _position;
+    final point = _displayPoint;
 
-    if (!_mapReady || position == null) return;
+    if (!_mapReady || point == null) return;
     if (_centredOnce && !_recenterWhenReady) return;
 
-    _mapController.move(
-      LatLng(position.latitude, position.longitude),
-      _centredOnce ? _mapController.camera.zoom : 16,
-    );
+    _mapController.move(point, _centredOnce ? _mapController.camera.zoom : 16);
 
     _centredOnce = true;
     _recenterWhenReady = false;
@@ -821,7 +1087,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     _recenterWhenReady = true;
 
-    if (_position != null) {
+    if (_displayPoint != null) {
       _centreOnFirstPosition();
     } else {
       // If already waiting, the next reading will recenter the map.
@@ -840,6 +1106,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final subscription = _businessSubscription;
     if (subscription != null) {
       unawaited(subscription.cancel());
+    }
+
+    _landmarkRequestId++;
+
+    final landmarkSubscription = _landmarkSubscription;
+    if (landmarkSubscription != null) {
+      unawaited(landmarkSubscription.cancel());
     }
     super.dispose();
   }
@@ -1052,6 +1325,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   Future<void> _showRewardDistance(RewardMarker reward) async {
+    if (MapMovementTestConfig.enabled) {
+      return;
+    }
     if (!mounted || !_foreground || _rewardDistanceDialogOpen) {
       return;
     }
@@ -1378,34 +1654,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       return;
     }
 
-    if (!mounted || !_foreground || !_locationAllowed) {
-      _publishNearbyBusinesses(const [], 'paused');
-      return;
-    }
+    final point = _discoveryPoint;
 
-    final position = _position;
-
-    if (_locationError != null || position == null) {
-      _publishNearbyBusinesses(const [], 'waiting for location');
-      return;
-    }
-
-    final quality = assessLocationQuality(
-      accuracy: position.accuracy,
-      recordedAt: position.timestamp,
-      now: DateTime.now(),
-    );
-
-    if (quality != LocationQuality.recent) {
-      _publishNearbyBusinesses(const [], 'paused: GPS ${quality.name}');
-      return;
-    }
-
-    if (!position.latitude.isFinite ||
-        !position.longitude.isFinite ||
-        position.latitude.abs() > 90 ||
-        position.longitude.abs() > 180) {
-      _publishNearbyBusinesses(const [], 'invalid location');
+    if (point == null) {
+      _publishNearbyBusinesses(
+        const [],
+        'paused: location unavailable or unreliable',
+      );
       return;
     }
 
@@ -1413,8 +1668,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       businesses: MapTestConfig.enabled
           ? MockMapData.businesses
           : _liveBusinesses,
-      userLatitude: position.latitude,
-      userLongitude: position.longitude,
+      userLatitude: point.latitude,
+      userLongitude: point.longitude,
       radiusMeters: _demoBusinessDiscoveryRadiusMeters,
     );
 
@@ -1424,7 +1679,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   void _publishNearbyBusinesses(List<NearbyBusiness> results, String status) {
     _nearbyBusinesses = results;
 
-    if (MapTestConfig.enabled && status == 'ready' && results.isNotEmpty) {
+    if (status == 'ready' && results.isNotEmpty) {
       _scheduleNearbyBusinessPrompt();
     }
 
@@ -1496,8 +1751,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   Future<void> _tryShowNearbyBusinessPrompt() async {
+    final demoMode = MapTestConfig.enabled;
+
     if (!mounted ||
-        !MapTestConfig.enabled ||
         !_foreground ||
         !_mapReady ||
         !_locationAllowed ||
@@ -1508,9 +1764,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         _filterSheetOpen ||
         _restoringMapStyle ||
         _savingMapStyle ||
-        _restoringClaims ||
-        _savingClaim ||
-        _claimStorageError != null) {
+        (!demoMode && (_loadingBusinesses || _businessLoadFailed)) ||
+        (demoMode &&
+            (_restoringClaims || _savingClaim || _claimStorageError != null))) {
       return;
     }
 
@@ -1525,31 +1781,14 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     if (nextAllowed != null && now.isBefore(nextAllowed)) return;
 
-    final position = _position;
+    final point = _discoveryPoint;
+    if (point == null) return;
 
-    if (_locationError != null || position == null) return;
-
-    if (assessLocationQuality(
-          accuracy: position.accuracy,
-          recordedAt: position.timestamp,
-          now: now,
-        ) !=
-        LocationQuality.recent) {
-      return;
-    }
-
-    if (!position.latitude.isFinite ||
-        !position.longitude.isFinite ||
-        position.latitude.abs() > 90 ||
-        position.longitude.abs() > 180) {
-      return;
-    }
-
-    // Recalculate immediately before presenting—not from an old result.
+    // Recheck proximity immediately before opening the popup.
     final currentNearby = findNearbyBusinesses(
-      businesses: MockMapData.businesses,
-      userLatitude: position.latitude,
-      userLongitude: position.longitude,
+      businesses: demoMode ? MockMapData.businesses : _liveBusinesses,
+      userLatitude: point.latitude,
+      userLongitude: point.longitude,
       radiusMeters: _demoBusinessDiscoveryRadiusMeters,
     );
 
@@ -1563,7 +1802,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final location = MapLocation.fromBusiness(candidate.business);
     if (location == null || !location.canDisplay) return;
 
-    final voucherOffers = _demoBusinessOffers(candidate.business);
+    final voucherOffers = demoMode
+        ? _demoBusinessOffers(candidate.business)
+        : <MapVoucherOffer>[];
 
     _nearbyBusinessDialogOpen = true;
     bool actionTaken = false;
@@ -1577,6 +1818,70 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
             if (actionTaken) return;
             actionTaken = true;
             Navigator.of(dialogContext).pop(viewDetails);
+          }
+
+          if (!demoMode) {
+            final business = candidate.business;
+
+            return AlertDialog(
+              icon: const Icon(
+                Icons.storefront_outlined,
+                color: Color(0xFF3267D8),
+                size: 36,
+              ),
+              title: Text(
+                MapMovementTestConfig.enabled
+                    ? 'Business nearby · TEST LOCATION'
+                    : 'Business nearby',
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      business.name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      business.category.trim().isEmpty
+                          ? 'Uncategorised'
+                          : business.category,
+                    ),
+                    if (business.address.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(business.address),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      'Approximately '
+                      '${candidate.distanceMeters.toStringAsFixed(0)} m '
+                      'away in a straight line when detected.',
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Live promotions and voucher claiming '
+                      'are not connected to this popup yet.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => closeWith(false),
+                  child: const Text('Dismiss'),
+                ),
+                FilledButton(
+                  onPressed: () => closeWith(true),
+                  child: const Text('View details'),
+                ),
+              ],
+            );
           }
 
           return NearbyBusinessDialog(
@@ -1636,6 +1941,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     required String voucherId,
     required List<MapVoucherOffer> offers,
   }) async {
+    if (MapMovementTestConfig.enabled) {
+      return BusinessVoucherClaimStatus.locationUnavailable;
+    }
+
     if (!mounted || !_foreground) {
       return BusinessVoucherClaimStatus.appInactive;
     }
@@ -1758,6 +2067,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     required List<MapVoucherOffer> offers,
     required bool Function() isPreviewOpen,
   }) async {
+    if (MapMovementTestConfig.enabled) {
+      return BusinessVoucherClaimStatus.locationUnavailable;
+    }
     if (!MapTestConfig.enabled || !isPreviewOpen()) {
       return BusinessVoucherClaimStatus.appInactive;
     }
@@ -1874,18 +2186,6 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       _selectedBusinessCategory,
     );
 
-    final message = failed
-        ? 'Could not load businesses. Check your connection and sign-in.'
-        : waiting
-        ? 'Loading businesses…'
-        : _liveLocations.isEmpty
-        ? 'No active businesses with valid map locations.'
-        : _selectedBusinessCategory == null
-        ? '${locations.length} businesses loaded'
-        : '${locations.length} businesses in '
-              '$_selectedBusinessCategory. '
-              'Choose All businesses to clear the filter.';
-
     return Stack(
       children: [
         MarkerLayer(
@@ -1922,35 +2222,52 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               ),
           ],
         ),
-        Positioned(
-          left: 16,
-          right: 84,
-          bottom: 150,
-          child: Material(
-            color: Colors.white,
-            elevation: 2,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (waiting) ...[
-                    const LinearProgressIndicator(),
-                    const SizedBox(height: 8),
+        if (waiting || failed || _loadingLandmarks || _landmarkLoadFailed)
+          Positioned(
+            left: 16,
+            right: 84,
+            bottom: 150,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (waiting || _loadingLandmarks) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 8),
+                    ],
+                    if (waiting) const Text('Loading businesses…'),
+                    if (_loadingLandmarks) const Text('Loading landmarks…'),
+                    if (failed) ...[
+                      const Text(
+                        'Could not load businesses. '
+                        'Check your connection and sign-in.',
+                      ),
+                      TextButton(
+                        onPressed: _retryLiveBusinesses,
+                        child: const Text('Retry businesses'),
+                      ),
+                    ],
+                    if (_landmarkLoadFailed) ...[
+                      const Text(
+                        'Could not load landmarks. '
+                        'Check your connection and permissions.',
+                      ),
+                      TextButton(
+                        onPressed: () => setState(_startLiveLandmarks),
+                        child: const Text('Retry landmarks'),
+                      ),
+                    ],
                   ],
-                  Text(message, style: const TextStyle(fontSize: 13)),
-                  if (failed)
-                    TextButton(
-                      onPressed: _retryLiveBusinesses,
-                      child: const Text('Retry businesses'),
-                    ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -1998,12 +2315,51 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     );
   }
 
+  Widget _buildLiveLandmarkLayer() {
+    return MarkerLayer(
+      markers: [
+        for (final location in filterMapLocations(
+          _liveLandmarks,
+          null,
+          selectedLandmarkCategory: _selectedLandmarkCategory,
+        ))
+          Marker(
+            key: ValueKey('live:${location.id}'),
+            point: LatLng(location.latitude, location.longitude),
+            width: 44,
+            height: 44,
+            rotate: true,
+            child: Tooltip(
+              message: location.title,
+              child: Material(
+                color: const Color(0xFF7656A3),
+                elevation: 3,
+                shape: const CircleBorder(
+                  side: BorderSide(color: Colors.white, width: 2),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    unawaited(_showLocationDetails(location));
+                  },
+                  child: const Icon(
+                    Icons.account_balance_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final position = _position;
-    final point = position == null
-        ? null
-        : LatLng(position.latitude, position.longitude);
+    final point = _displayPoint;
 
     final accuracy = position?.accuracy;
     final hasAccuracy = accuracy != null && accuracy.isFinite && accuracy > 0;
@@ -2036,6 +2392,20 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     return Stack(
       children: [
+        if (MapMovementTestConfig.enabled && _locationAllowed)
+          Positioned(
+            top: 130,
+            left: 16,
+            right: 84,
+            child: MapTestMovementControls(
+              enabled: _foreground && _testMovementRunning && _mapReady,
+              stepMeters: MapMovementTestConfig.stepMeters,
+              onMove: (direction) {
+                _changeTestPosition(direction: direction);
+              },
+              onReset: () => _changeTestPosition(),
+            ),
+          ),
         FlutterMap(
           mapController: _mapController,
           options: MapOptions(
@@ -2056,6 +2426,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           children: [
             MapTilesWithStatus(key: ValueKey(_mapStyle), style: _mapStyle),
 
+            if (!MapTestConfig.enabled) _buildLiveLandmarkLayer(),
             if (!MapTestConfig.enabled) _buildLiveBusinessLayer(),
 
             if (MapTestConfig.enabled &&
@@ -2063,6 +2434,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                 _claimStorageError == null)
               DemoMapMarkers(
                 selectedCategory: _selectedBusinessCategory,
+                selectedLandmarkCategory: _selectedLandmarkCategory,
                 onLocationSelected: _showLocationDetails,
                 onRewardSelected: _showRewardDistance,
                 hiddenRewardIds: widget.user.id.trim().isEmpty
@@ -2100,7 +2472,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                       height: 120,
                       alignment: Alignment.center,
                       rotate: false,
-                      child: const CompassUserMarker(),
+                      child: MapMovementTestConfig.enabled
+                          ? const Icon(
+                              Icons.person_pin_circle,
+                              color: Colors.deepOrange,
+                              size: 48,
+                            )
+                          : const CompassUserMarker(),
                     ),
                   ],
                 ),
@@ -2124,7 +2502,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
         // The permission notice is hidden when access is granted,
         // so this status card can use the same space.
-        if (_locationAllowed)
+        if (_locationAllowed && !MapMovementTestConfig.enabled)
           Positioned(
             top: 130,
             left: 16,
@@ -2219,7 +2597,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               onMapStyle: _selectMapStyle,
               onSearch: _openMapSearch,
               onFilter: _selectBusinessCategory,
-              filterActive: _selectedBusinessCategory != null,
+              filterActive:
+                  _selectedBusinessCategory != null ||
+                  _selectedLandmarkCategory != null,
               onDemoArea: MapTestConfig.enabled ? _showDemoArea : null,
             ),
           ),

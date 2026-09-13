@@ -18,6 +18,7 @@ class DemoMapMarkers extends StatefulWidget {
     super.key,
     this.now,
     this.selectedCategory,
+    this.selectedLandmarkCategory,
     this.onLocationSelected,
     this.onRewardSelected,
     this.hiddenRewardIds = const <String>{},
@@ -26,6 +27,7 @@ class DemoMapMarkers extends StatefulWidget {
   // Tests can supply a clock. Normal app usage uses real time.
   final DateTime Function()? now;
   final String? selectedCategory;
+  final String? selectedLandmarkCategory;
   final ValueChanged<MapLocation>? onLocationSelected;
   final ValueChanged<RewardMarker>? onRewardSelected;
   final Set<String> hiddenRewardIds;
@@ -199,6 +201,7 @@ class _DemoMapMarkersState extends State<DemoMapMarkers>
         for (final location in filterMapLocations(
           _locations,
           widget.selectedCategory,
+          selectedLandmarkCategory: widget.selectedLandmarkCategory,
         ))
           _marker(
             id: location.id,

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:collab/models/localquest_models.dart';
+import 'package:collab/models/map_location.dart';
+import 'package:collab/services/landmark_parser.dart';
 
 bool isMappableBusiness(Business business) {
   final latitude = business.latitude;
@@ -56,6 +58,38 @@ class MapRepository {
           });
 
           return List<Business>.unmodifiable(businesses);
+        });
+  }
+
+  Stream<List<MapLocation>> watchActiveLandmarks() {
+    return _firestore
+        .collection('landmarks')
+        .where('active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+          final landmarks = <MapLocation>[];
+
+          for (final document in snapshot.docs) {
+            final landmark = parseLandmark(document.id, document.data());
+
+            if (landmark != null) {
+              landmarks.add(landmark);
+            } else {
+              debugPrint('Map: skipped malformed landmark ${document.id}');
+            }
+          }
+
+          landmarks.sort((a, b) {
+            final titleComparison = a.title.toLowerCase().compareTo(
+              b.title.toLowerCase(),
+            );
+
+            return titleComparison != 0
+                ? titleComparison
+                : a.id.compareTo(b.id);
+          });
+
+          return List<MapLocation>.unmodifiable(landmarks);
         });
   }
 }

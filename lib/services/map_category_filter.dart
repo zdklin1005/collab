@@ -1,22 +1,23 @@
 import '../models/map_location.dart';
 
-String businessCategory(MapLocation location) {
+String _categoryLabel(MapLocation location) {
   final category = location.category.trim();
   return category.isEmpty ? 'Uncategorised' : category;
 }
 
-List<String> availableBusinessCategories(
+// Preserve the existing helper for compatibility.
+String businessCategory(MapLocation location) => _categoryLabel(location);
+
+List<String> _availableCategories(
   Iterable<MapLocation> locations,
+  MapLocationType type,
 ) {
   final categories = <String, String>{};
 
   for (final location in locations) {
-    if (!location.canDisplay ||
-        location.type != MapLocationType.business) {
-      continue;
-    }
+    if (!location.canDisplay || location.type != type) continue;
 
-    final label = businessCategory(location);
+    final label = _categoryLabel(location);
     categories.putIfAbsent(label.toLowerCase(), () => label);
   }
 
@@ -24,20 +25,32 @@ List<String> availableBusinessCategories(
     ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 }
 
+List<String> availableBusinessCategories(Iterable<MapLocation> locations) {
+  return _availableCategories(locations, MapLocationType.business);
+}
+
+List<String> availableLandmarkCategories(Iterable<MapLocation> locations) {
+  return _availableCategories(locations, MapLocationType.landmark);
+}
+
 List<MapLocation> filterMapLocations(
   Iterable<MapLocation> locations,
-  String? selectedCategory,
-) {
-  final selected = selectedCategory?.trim().toLowerCase();
+  String? selectedCategory, {
+  String? selectedLandmarkCategory,
+}) {
+  final businessFilter = selectedCategory?.trim().toLowerCase();
+  final landmarkFilter = selectedLandmarkCategory?.trim().toLowerCase();
 
   return locations.where((location) {
     if (!location.canDisplay) return false;
 
-    // Business filters must not hide landmarks.
-    if (location.type != MapLocationType.business) return true;
+    final selected = switch (location.type) {
+      MapLocationType.business => businessFilter,
+      MapLocationType.landmark => landmarkFilter,
+    };
 
     if (selected == null || selected.isEmpty) return true;
 
-    return businessCategory(location).toLowerCase() == selected;
+    return _categoryLabel(location).toLowerCase() == selected;
   }).toList();
 }
