@@ -816,6 +816,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       try {
         await showDialog<void>(
           context: context,
+          barrierDismissible: false,
           builder: (dialogContext) {
             void closePreview() {
               if (closing) return;
@@ -863,12 +864,15 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
-        showDragHandle: true,
+        isDismissible: false,
+        enableDrag: false,
+        showDragHandle: false,
         backgroundColor: Colors.white,
         builder: (sheetContext) {
           return FractionallySizedBox(
             heightFactor: 0.85,
             child: MapLocationDetails(
+              isDemo: MapTestConfig.enabled,
               location: location,
               onClose: () => Navigator.of(sheetContext).pop(),
               voucherSection: business == null
@@ -1478,6 +1482,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     try {
       final requestedCollection = await showDialog<bool>(
         context: context,
+        barrierDismissible: false,
         barrierColor: Colors.black54,
         builder: (dialogContext) {
           if (checkedWithinRange == true) {
@@ -1813,6 +1818,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     try {
       final requestedDetails = showDialog<bool>(
         context: context,
+        barrierDismissible: false,
         builder: (dialogContext) {
           void closeWith(bool viewDetails) {
             if (actionTaken) return;

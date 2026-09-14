@@ -1,9 +1,6 @@
 import 'localquest_models.dart';
 
-enum MapLocationType {
-  business,
-  landmark,
-}
+enum MapLocationType { business, landmark }
 
 class MapLocation {
   const MapLocation({
@@ -16,6 +13,11 @@ class MapLocation {
     this.address = '',
     this.category = '',
     this.businessId,
+    this.operatingHours = '',
+    this.phone = '',
+    this.website = '',
+    this.dietaryStatus = '',
+    this.photoUrl,
     this.active = true,
   });
 
@@ -28,6 +30,11 @@ class MapLocation {
   final String description;
   final String address;
   final String category;
+  final String operatingHours;
+  final String phone;
+  final String website;
+  final String dietaryStatus;
+  final String? photoUrl;
 
   // Links a business marker back to the existing Business record.
   // Landmarks do not need a businessId.
@@ -64,6 +71,12 @@ class MapLocation {
       address: business.address,
       category: business.category,
       businessId: business.id,
+      description: business.description?.trim() ?? '',
+      operatingHours: business.operatingHours?.trim() ?? '',
+      phone: business.phone.trim(),
+      website: business.website?.trim() ?? '',
+      dietaryStatus: business.dietaryStatus?.trim() ?? '',
+      photoUrl: business.photoUrl?.trim(),
       active: business.active,
     );
 
