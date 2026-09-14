@@ -634,23 +634,16 @@ void main() {
   });
 
   testWidgets(
-    'tourist profile displays stat subtitle badges and opens journey bottom sheets',
+    'tourist profile displays stat subtitle badges and journey items',
     (tester) async {
       await tester.pumpWidget(app(const TouristProfileScreen(user: tourist)));
 
       expect(find.text('3 expiring soon'), findsOneWidget);
       expect(find.text('Top 8% storyteller'), findsOneWidget);
 
-      await tester.tap(find.text('My vouchers'));
-      await tester.pumpAndSettle();
-      expect(find.text('REWARDS'), findsOneWidget);
-      expect(
-        find.textContaining('You currently have 3 vouchers ready in your passport'),
-        findsOneWidget,
-      );
-
-      Navigator.pop(tester.element(find.text('REWARDS')));
-      await tester.pumpAndSettle();
+      // My vouchers and Reviews & ratings items are present but no longer open sheets
+      expect(find.text('My vouchers'), findsOneWidget);
+      expect(find.text('Reviews & ratings'), findsOneWidget);
 
       await tester.ensureVisible(find.text('Missions'));
       await tester.tap(find.text('Missions'));

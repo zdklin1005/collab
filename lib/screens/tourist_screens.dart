@@ -333,11 +333,6 @@ class TouristProfileScreen extends StatelessWidget {
                             ? '${user.voucherCount > 3 ? 3 : user.voucherCount} expiring soon'
                             : '0 expiring soon',
                         icon: Icons.confirmation_num_outlined,
-                        onTap: () => _showMyVouchersSheet(
-                          context,
-                          user,
-                          onNavigateToRewards: onNavigateToRewards,
-                        ),
                       ),
                     ),
                     const SizedBox(
@@ -352,7 +347,6 @@ class TouristProfileScreen extends StatelessWidget {
                             ? 'Top 8% storyteller'
                             : 'Top storyteller',
                         icon: Icons.star_border,
-                        onTap: () => _showMyReviewsSheet(context, user),
                       ),
                     ),
                   ],
@@ -371,17 +365,13 @@ class TouristProfileScreen extends StatelessWidget {
                 icon: Icons.confirmation_num_outlined,
                 title: 'My vouchers',
                 subtitle: '${user.voucherCount} ready to use',
-                onTap: () => _showMyVouchersSheet(
-                  context,
-                  user,
-                  onNavigateToRewards: onNavigateToRewards,
-                ),
+                onTap: () {},
               ),
               _JourneyItem(
                 icon: Icons.star_outline,
                 title: 'Reviews & ratings',
                 subtitle: '${user.reviewCount} posted',
-                onTap: () => _showMyReviewsSheet(context, user),
+                onTap: () {},
               ),
               StreamBuilder<List<Mission>>(
                 stream: MissionService.instance.watchMissions(user.id),
@@ -408,11 +398,11 @@ class TouristProfileScreen extends StatelessWidget {
                   );
                 },
               ),
-              const _JourneyItem(
+              _JourneyItem(
                 icon: Icons.calendar_month_outlined,
                 title: 'Daily check-in',
                 subtitle: 'Keep your streak',
-                onTap: null,
+                onTap: () {},
               ),
               _JourneyItem(
                 icon: Icons.history,
@@ -466,17 +456,15 @@ class _Stat extends StatelessWidget {
     required this.value,
     required this.icon,
     this.badgeText,
-    this.onTap,
   });
   final String label;
   final String value;
   final IconData icon;
   final String? badgeText;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final content = Padding(
+    return Padding(
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,535 +497,10 @@ class _Stat extends StatelessWidget {
         ],
       ),
     );
-    if (onTap == null) return content;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: content,
-    );
   }
 }
 
-void _showVoucherRedemptionDialog(
-  BuildContext context,
-  String uid,
-  String voucherId,
-  String businessId,
-) {
-  showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      title: const Row(
-        children: [
-          Icon(Icons.qr_code_2, color: LqColors.primary),
-          SizedBox(width: 10),
-          Text('Redeem In-Store', style: TextStyle(fontWeight: FontWeight.w800)),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  height: 56,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '||| ||||| || |||| ||||| |||',
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        letterSpacing: 3,
-                        fontSize: 20,
-                        color: Colors.black.withAlpha(200),
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'CODE: ${voucherId.isNotEmpty ? (voucherId.length > 8 ? voucherId.substring(0, 8).toUpperCase() : voucherId.toUpperCase()) : "LQ-PASS"}',
-                  style: const TextStyle(
-                    fontFamily: 'DM Mono',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: LqColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Present this barcode to the cashier at checkout to claim your offer.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: LqColors.muted, height: 1.4),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Dismiss'),
-        ),
-        FilledButton(
-          onPressed: () async {
-            try {
-              if (voucherId.isNotEmpty) {
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(uid)
-                    .collection('claimedVouchers')
-                    .doc(voucherId)
-                    .set({'redeemed': true}, SetOptions(merge: true));
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(uid)
-                    .collection('vouchers')
-                    .doc(voucherId)
-                    .set({'redeemed': true}, SetOptions(merge: true));
-              }
-            } catch (_) {}
-            if (ctx.mounted) Navigator.pop(ctx);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Voucher marked as redeemed in-store!')),
-              );
-            }
-          },
-          child: const Text('Mark as used'),
-        ),
-      ],
-    ),
-  );
-}
 
-void _showMyVouchersSheet(
-  BuildContext context,
-  AppUser user, {
-  VoidCallback? onNavigateToRewards,
-}) {
-  showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.45,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-        decoration: const BoxDecoration(
-          color: LqColors.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: ListView(
-          controller: scrollController,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const LqTitleBlock(eyebrow: 'Rewards', title: 'My vouchers'),
-            const SizedBox(height: 16),
-            LqCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: LqColors.primarySoft,
-                    foregroundColor: LqColors.primary,
-                    child: Icon(Icons.confirmation_num_outlined),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'You currently have ${user.voucherCount} voucher${user.voucherCount == 1 ? '' : 's'} ready in your passport. Present active voucher barcodes in-store to participating local merchants.',
-                      style: const TextStyle(
-                        color: LqColors.muted,
-                        height: 1.5,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (onNavigateToRewards != null) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonalIcon(
-                  icon: const Icon(Icons.explore_outlined, size: 18),
-                  label: const Text('Browse Rewards & Missions Tab'),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    onNavigateToRewards();
-                  },
-                ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            Text('ACTIVE & CLAIMED VOUCHERS', style: monoLabel),
-            const SizedBox(height: 10),
-            () {
-              Stream<QuerySnapshot<Map<String, dynamic>>> claimedStream;
-              Stream<QuerySnapshot<Map<String, dynamic>>> levelVouchersStream;
-              try {
-                claimedStream = FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.id)
-                    .collection('claimedVouchers')
-                    .snapshots();
-                levelVouchersStream = FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.id)
-                    .collection('vouchers')
-                    .snapshots();
-              } catch (_) {
-                claimedStream = const Stream.empty();
-                levelVouchersStream = const Stream.empty();
-              }
-              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: claimedStream,
-                builder: (context, claimedSnap) {
-                  final claimed = (claimedSnap.data?.docs ?? []).map((d) => {...d.data(), 'id': d.id}).toList();
-                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: levelVouchersStream,
-                    builder: (context, levelVouchersSnap) {
-                      final levelVouchers = levelVouchersSnap.data?.docs ?? [];
-                      if (claimed.isEmpty && levelVouchers.isEmpty) {
-                        return const LqCard(
-                          child: Column(
-                            children: [
-                              Icon(Icons.confirmation_num_outlined, size: 40, color: LqColors.muted),
-                              SizedBox(height: 10),
-                              Text(
-                                'No vouchers claimed yet',
-                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                              ),
-                              SizedBox(height: 6),
-                              Text(
-                                'Explore nearby businesses on the map, claim welcome deals, or complete side quest missions to earn reward vouchers.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: LqColors.muted, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                    return Column(
-                      children: [
-                        ...claimed.map((v) {
-                          final voucherId = v['voucherId'] as String? ?? v['id'] as String? ?? '';
-                          final businessId = v['businessId'] as String? ?? '';
-                          final voucherType = v['voucherType'] as String? ?? 'voucher';
-                          final redeemed = v['redeemed'] as bool? ?? false;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: LqCard(
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: LqColors.primarySoft,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(Icons.local_offer_outlined, color: LqColors.primary),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '${voucherType.toUpperCase()} VOUCHER',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: LqColors.primary,
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                                          future: FirebaseFirestore.instance.collection('businesses').doc(businessId).get(),
-                                          builder: (context, bizSnap) {
-                                            final bizName = bizSnap.data?.data()?['name'] as String? ?? 'Local Merchant';
-                                            return Text(
-                                              bizName,
-                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                                            );
-                                          },
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          redeemed ? 'Redeemed in-store' : 'Ready to use',
-                                          style: TextStyle(
-                                            color: redeemed ? LqColors.muted : LqColors.success,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  FilledButton.tonal(
-                                    onPressed: redeemed
-                                        ? null
-                                        : () => _showVoucherRedemptionDialog(context, user.id, voucherId, businessId),
-                                    child: Text(redeemed ? 'Used' : 'Use'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                        ...levelVouchers.map((doc) {
-                          final data = doc.data();
-                          final source = data['source'] as String? ?? 'reward';
-                          final level = data['levelReached'] as num?;
-                          final redeemed = data['redeemed'] as bool? ?? false;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: LqCard(
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFBE0C4),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(Icons.military_tech_outlined, color: Color(0xFF8A5A22)),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          source == 'level_up' && level != null
-                                              ? 'LEVEL $level REWARD VOUCHER'
-                                              : 'MISSION REWARD VOUCHER',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF8A5A22),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        const Text(
-                                          'Exclusive Explorer Perk',
-                                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          redeemed ? 'Redeemed' : 'Ready to use',
-                                          style: TextStyle(
-                                            color: redeemed ? LqColors.muted : LqColors.success,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  FilledButton.tonal(
-                                    onPressed: redeemed
-                                        ? null
-                                        : () => _showVoucherRedemptionDialog(context, user.id, doc.id, ''),
-                                    child: Text(redeemed ? 'Used' : 'Use'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
-                    );
-                  },
-                );
-              },
-            );
-          }(),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-void _showMyReviewsSheet(BuildContext context, AppUser user) {
-  showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.45,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-        decoration: const BoxDecoration(
-          color: LqColors.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        child: ListView(
-          controller: scrollController,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const LqTitleBlock(eyebrow: 'Storyteller', title: 'Reviews & ratings'),
-            const SizedBox(height: 16),
-            LqCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: LqColors.primarySoft,
-                    foregroundColor: LqColors.primary,
-                    child: Icon(Icons.star_outline),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'You have contributed ${user.reviewCount} verified review${user.reviewCount == 1 ? '' : 's'}. Reviews can only be posted after visiting physical merchant checkpoints to safeguard authentic feedback.',
-                      style: const TextStyle(
-                        color: LqColors.muted,
-                        height: 1.5,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text('PLACES WAITING FOR YOUR REVIEW', style: monoLabel),
-            const SizedBox(height: 10),
-            () {
-              Stream<QuerySnapshot<Map<String, dynamic>>> visitedStream;
-              try {
-                visitedStream = UserRepository.instance.visitedPlaces(user.id);
-              } catch (_) {
-                visitedStream = const Stream.empty();
-              }
-              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: visitedStream,
-                builder: (context, snapshot) {
-                final docs = (snapshot.data?.docs ?? []).where((d) {
-                  final bid = d.data()['businessId'] as String? ?? '';
-                  return bid.isNotEmpty;
-                }).toList();
-
-                if (docs.isEmpty) {
-                  return const LqCard(
-                    child: Text(
-                      'No unreviewed visits yet. Check in or visit local merchants on your explorations to unlock verified review opportunities and earn EXP!',
-                      style: TextStyle(color: LqColors.muted, fontSize: 13),
-                    ),
-                  );
-                }
-
-                return Column(
-                  children: docs.take(4).map((doc) {
-                    final data = doc.data();
-                    final bizId = data['businessId'] as String? ?? '';
-                    final name = data['name'] as String? ?? 'Local Merchant';
-                    final area = data['area'] as String? ?? '';
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: LqCard(
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: LqColors.primarySoft,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.storefront_outlined, color: LqColors.primary, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                                  if (area.isNotEmpty)
-                                    Text(area, style: const TextStyle(color: LqColors.muted, fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            FilledButton.icon(
-                              icon: const Icon(Icons.rate_review_outlined, size: 16),
-                              label: const Text('Review'),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => WriteReviewScreen(
-                                      userId: user.id,
-                                      businessId: bizId,
-                                      businessName: name,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            );
-          }(),
-          ],
-        ),
-      ),
-    ),
-  );
-}
 
 class _JourneyItem extends StatelessWidget {
   const _JourneyItem({
