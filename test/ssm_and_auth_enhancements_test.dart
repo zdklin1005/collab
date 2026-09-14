@@ -430,37 +430,19 @@ BORANG E (KAEDAH 13)
   });
 
   group('VisitedPlacesScreen & Location History', () {
-    testWidgets('renders empty state and allows simulating visit check-in', (tester) async {
-      var recordCalled = false;
+    testWidgets('renders clean empty state without demo simulate buttons', (tester) async {
       UserRepository.instance.mockVisitedPlacesStream = (uid) => const Stream.empty();
-      UserRepository.instance.mockRecordVisit = ({
-        required userId,
-        required name,
-        required area,
-        businessId,
-        visitedAt,
-      }) async {
-        recordCalled = true;
-        return true;
-      };
 
       await tester.pumpWidget(testApp(const VisitedPlacesScreen(userId: 'test-tourist')));
       await tester.pumpAndSettle();
 
       expect(find.text('Visited places'), findsOneWidget);
       expect(find.text('No visited locations found.'), findsOneWidget);
-      expect(find.byKey(const Key('visited_places_empty_simulate_btn')), findsOneWidget);
-      expect(find.byKey(const Key('visited_places_demo_checkin_btn')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('visited_places_empty_simulate_btn')));
-      await tester.pumpAndSettle();
-
-      expect(recordCalled, isTrue);
-      expect(find.text('Demo visit recorded! Location history updated.'), findsOneWidget);
+      expect(find.byKey(const Key('visited_places_empty_simulate_btn')), findsNothing);
+      expect(find.byKey(const Key('visited_places_demo_checkin_btn')), findsNothing);
     });
 
-    testWidgets('shows warning when location history is disabled in Settings', (tester) async {
-      UserRepository.instance.mockVisitedPlacesStream = (uid) => const Stream.empty();
+    test('UserRepository recordVisit respects privacy settings', () async {
       UserRepository.instance.mockRecordVisit = ({
         required userId,
         required name,
@@ -471,16 +453,13 @@ BORANG E (KAEDAH 13)
         return false; // Disabled by privacy toggle
       };
 
-      await tester.pumpWidget(testApp(const VisitedPlacesScreen(userId: 'test-tourist')));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('visited_places_demo_checkin_btn')));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text('Could not record: Location history is disabled in Settings.'),
-        findsOneWidget,
+      final recorded = await UserRepository.instance.recordVisit(
+        userId: 'test-tourist',
+        name: 'Heritage Spot',
+        area: 'George Town',
       );
+
+      expect(recorded, isFalse);
     });
   });
 

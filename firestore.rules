@@ -32,8 +32,46 @@ service cloud.firestore {
         allow read, write: if owns(uid);
       }
 
+      // Missions are generated and completed client-side (MissionService)
+      match /missions/{missionId} {
+        allow read, write: if owns(uid);
+      }
+
+      // Vouchers awarded by RewardService via level up or mission rewards
+      match /vouchers/{voucherId} {
+        allow read, write: if owns(uid);
+      }
+
+      // EXP activity log written alongside awardExp() calls
+      match /expLog/{logId} {
+        allow read, write: if owns(uid);
+      }
+
       match /claimedVouchers/{voucherId} {
         allow read, write: if owns(uid);
+      }
+
+      match /friends/{friendId} {
+        allow read, write: if signedIn();
+      }
+
+      match /friendRequests/{requestId} {
+        allow read, write: if signedIn();
+      }
+
+      match /notes/{noteId} {
+        allow read: if signedIn();
+        allow write: if owns(uid);
+      }
+    }
+
+    match /chats/{chatId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+      allow create: if signedIn() && request.auth.uid in request.resource.data.participants;
+      allow update, delete: if signedIn() && request.auth.uid in resource.data.participants;
+
+      match /messages/{messageId} {
+        allow read, write: if signedIn();
       }
     }
 
@@ -41,11 +79,22 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if willBeMerchant()
         && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isMerchantNow()
-        && resource.data.ownerId == request.auth.uid
-        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if (isMerchantNow()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == request.auth.uid)
+        || (signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['reviewCount', 'ratingTotal']));
       allow delete: if isMerchantNow()
         && resource.data.ownerId == request.auth.uid;
+
+      // Reviews: anyone signed in can read; tourist can only create reviews authored as themselves
+      match /reviews/{reviewId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
 
     match /campaigns/{campaignId} {

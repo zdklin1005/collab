@@ -34,20 +34,6 @@ class CertificateScanButton extends StatefulWidget {
 class _CertificateScanButtonState extends State<CertificateScanButton> {
   bool busy = false;
 
-  static const String prototypeSsmSample = '''
-SURUHANJAYA SYARIKAT MALAYSIA
-COMPANIES COMMISSION OF MALAYSIA
-PERAKUAN PENDAFTARAN
-BORANG D (KAEDAH 13)
-AKTA PENDAFTARAN PERNIAGAAN 1956
-NOMBOR PENDAFTARAN: 202403108899 (003198899-K)
-NAMA PERNIAGAAN: LOCALQUEST CAFE ENTERPRISE
-ALAMAT PERNIAGAAN: 18 JALAN BUKIT BINTANG, KUALA LUMPUR
-TARIKH MULA: 10/01/2024
-TARIKH LUPUT: 10/01/2028
-STATUS: AKTIF (SAMPLE SPECIMEN)
-''';
-
   Future<void> scan() async {
     if (busy) return;
 
@@ -81,10 +67,26 @@ STATUS: AKTIF (SAMPLE SPECIMEN)
             ),
             const SizedBox(height: 8),
             const Text(
-              'Upload an image from your device or test with a realistic Malaysian Borang D prototype sample.',
+              'Capture a photo or upload a saved image of your Malaysian SSM Borang D registration certificate.',
               style: TextStyle(color: LqColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 16),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: LqColors.primarySoft,
+                foregroundColor: LqColors.primary,
+                child: Icon(Icons.photo_camera_outlined),
+              ),
+              title: const Text(
+                'Take photo with camera',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: const Text(
+                'Capture your SSM certificate directly with camera',
+                style: TextStyle(fontSize: 11, color: LqColors.muted),
+              ),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
             ListTile(
               leading: const CircleAvatar(
                 backgroundColor: LqColors.primarySoft,
@@ -96,55 +98,39 @@ STATUS: AKTIF (SAMPLE SPECIMEN)
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: const Text(
-                'Select any saved or web-downloaded SSM image',
+                'Select any saved or scanned SSM image from photos',
                 style: TextStyle(fontSize: 11, color: LqColors.muted),
               ),
               onTap: () => Navigator.pop(ctx, 'gallery'),
-            ),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: LqColors.greenSoft,
-                foregroundColor: Color(0xFF42723B),
-                child: Icon(Icons.auto_awesome_outlined),
-              ),
-              title: const Text(
-                'Use prototype sample SSM certificate',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: const Text(
-                'Instant demo verification without needing an image file',
-                style: TextStyle(fontSize: 11, color: LqColors.muted),
-              ),
-              onTap: () => Navigator.pop(ctx, 'sample'),
             ),
           ],
         ),
       ),
     );
 
-    if (source == 'sample') {
-      await _processTextAndReview(prototypeSsmSample);
+    if (source == 'camera') {
+      await _scanFromSource(ImageSource.camera);
     } else if (source == 'gallery') {
-      await _scanFromGallery();
+      await _scanFromSource(ImageSource.gallery);
     }
   }
 
-  Future<void> _scanFromGallery() async {
+  Future<void> _scanFromSource(ImageSource imageSource) async {
     if (kIsWeb ||
         (defaultTargetPlatform != TargetPlatform.android &&
             defaultTargetPlatform != TargetPlatform.iOS)) {
       showLqMessage(
         context,
-        'Device photo scanning is available on Android/iOS. Using prototype sample for preview.',
+        'Device photo scanning is available on Android and iOS devices.',
+        error: true,
       );
-      await _processTextAndReview(prototypeSsmSample);
       return;
     }
     setState(() => busy = true);
     final recognizer = TextRecognizer();
     try {
       final photo = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+        source: imageSource,
         maxWidth: 2400,
       );
       if (photo == null) return;

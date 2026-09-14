@@ -435,6 +435,7 @@ class _SignupScreenState extends State<SignupScreen> {
   int _step = 2;
   bool _busy = false;
   LqLocation? _businessLocation;
+  String? _dietaryStatus;
 
   Timer? _usernameDebounce;
   bool _isCheckingUsername = false;
@@ -610,9 +611,27 @@ class _SignupScreenState extends State<SignupScreen> {
           value: _category.text.isEmpty ? null : _category.text,
           label: 'Business category',
           items: lqBusinessCategories,
-          onChanged: (value) => setState(() => _category.text = value ?? ''),
+          onChanged: (value) => setState(() {
+            _category.text = value ?? '';
+            if (!lqIsDietaryCategory(_category.text)) {
+              _dietaryStatus = null;
+            }
+          }),
           validator: _required,
         ),
+        if (lqIsDietaryCategory(_category.text)) ...[
+          const SizedBox(height: 16),
+          LqDropdownField(
+            key: ValueKey('signup_dietary_${_category.text}_$_dietaryStatus'),
+            value: _dietaryStatus,
+            label: 'Halal & dietary certification',
+            items: lqDietaryStatuses,
+            onChanged: (value) => setState(() => _dietaryStatus = value),
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Choose a Halal & dietary certification.'
+                : null,
+          ),
+        ],
         const SizedBox(height: 16),
         LqAddressField(
           controller: _address,
@@ -833,6 +852,8 @@ class _SignupScreenState extends State<SignupScreen> {
           phone: _phone.text,
           latitude: _businessLocation?.latitude,
           longitude: _businessLocation?.longitude,
+          dietaryStatus:
+              lqIsDietaryCategory(_category.text) ? _dietaryStatus : null,
         );
       } else {
         await AuthService.instance.registerTourist(

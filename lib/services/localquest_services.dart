@@ -384,6 +384,7 @@ class AuthService {
     String state = '',
     double? latitude,
     double? longitude,
+    String? dietaryStatus,
   }) async {
     final passwordError = PasswordPolicy.validate(password);
     if (passwordError != null) throw LocalQuestException(passwordError);
@@ -433,6 +434,7 @@ class AuthService {
         'active': true,
         'latitude': ?latitude,
         'longitude': ?longitude,
+        'dietaryStatus': ?dietaryStatus?.trim(),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -586,6 +588,8 @@ class UserRepository {
 
   Stream<QuerySnapshot<Map<String, dynamic>>> Function(String uid)?
       mockVisitedPlacesStream;
+  Stream<AppUser> Function(String uid)? mockWatch;
+  Future<AppUser> Function(String uid)? mockGet;
   Future<bool> Function({
     required String userId,
     required String name,
@@ -593,6 +597,8 @@ class UserRepository {
     String? businessId,
     DateTime? visitedAt,
   })? mockRecordVisit;
+  Future<int> Function(String userId)? mockCleanDuplicateVisitedPlaces;
+  Future<void> Function(String uid, String key, bool value)? mockUpdatePreference;
 
   Future<UploadedPhoto> updatePhoto(String uid, Uint8List bytes) async {
     if (FirebaseAuth.instance.currentUser?.uid != uid) {
@@ -614,8 +620,19 @@ class UserRepository {
     return photo;
   }
 
-  Stream<AppUser> watch(String uid) =>
-      db.collection('users').doc(uid).snapshots().map((doc) {
+  Stream<AppUser> watch(String uid) {
+    if (mockWatch != null) return mockWatch!(uid);
+    try {
+      return db.collection('users').doc(uid).snapshots().map((doc) {
+        if (!doc.exists) {
+          return AppUser(
+            id: uid,
+            email: '',
+            displayName: 'LocalQuest Explorer',
+            username: '@explorer',
+            role: AccountRole.tourist,
+          );
+        }
         final user = AppUser.fromDoc(doc);
         AccountIdentifierCache.cache(
           username: user.username,
@@ -623,15 +640,47 @@ class UserRepository {
         );
         return user;
       });
+    } catch (_) {
+      return Stream.value(
+        AppUser(
+          id: uid,
+          email: '',
+          displayName: 'LocalQuest Explorer',
+          username: '@explorer',
+          role: AccountRole.tourist,
+        ),
+      );
+    }
+  }
 
   Future<AppUser> get(String uid) async {
-    final doc = await db.collection('users').doc(uid).get();
-    final user = AppUser.fromDoc(doc);
-    await AccountIdentifierCache.cache(
-      username: user.username,
-      email: user.email,
-    );
-    return user;
+    if (mockGet != null) return mockGet!(uid);
+    try {
+      final doc = await db.collection('users').doc(uid).get();
+      if (!doc.exists) {
+        return AppUser(
+          id: uid,
+          email: '',
+          displayName: 'LocalQuest Explorer',
+          username: '@explorer',
+          role: AccountRole.tourist,
+        );
+      }
+      final user = AppUser.fromDoc(doc);
+      await AccountIdentifierCache.cache(
+        username: user.username,
+        email: user.email,
+      );
+      return user;
+    } catch (_) {
+      return AppUser(
+        id: uid,
+        email: '',
+        displayName: 'LocalQuest Explorer',
+        username: '@explorer',
+        role: AccountRole.tourist,
+      );
+    }
   }
 
   Future<void> updateProfile({
@@ -662,11 +711,15 @@ class UserRepository {
     );
   }
 
-  Future<void> updatePreference(String uid, String key, bool value) =>
-      db.collection('users').doc(uid).update({
-        'preferences.$key': value,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+  Future<void> updatePreference(String uid, String key, bool value) {
+    if (mockUpdatePreference != null) {
+      return mockUpdatePreference!(uid, key, value);
+    }
+    return db.collection('users').doc(uid).update({
+      'preferences.$key': value,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> visitedPlaces(String uid) {
     if (mockVisitedPlacesStream != null) {
@@ -686,6 +739,8 @@ class UserRepository {
     required String area,
     String? businessId,
     DateTime? visitedAt,
+    double? latitude,
+    double? longitude,
   }) async {
     if (mockRecordVisit != null) {
       return mockRecordVisit!(
@@ -702,10 +757,49 @@ class UserRepository {
       if (prefs?['locationHistory'] == false) {
         return false;
       }
+
+      final targetTime = visitedAt ?? DateTime.now();
+
+      // Database deduplication: verify whether a visit for this business or name
+      // was already recorded within the last 10 minutes.
+      try {
+        final recentSnap = await db
+            .collection('users')
+            .doc(userId)
+            .collection('visitedPlaces')
+            .orderBy('visitedAt', descending: true)
+            .limit(3)
+            .get();
+
+        for (final existingDoc in recentSnap.docs) {
+          final data = existingDoc.data();
+          final existingBizId = (data['businessId'] as String? ?? '').trim();
+          final existingName = (data['name'] as String? ?? '').trim();
+          final existingTime = (data['visitedAt'] as Timestamp?)?.toDate();
+
+          final isSameBusiness = (businessId != null &&
+                  businessId.isNotEmpty &&
+                  existingBizId == businessId) ||
+              existingName.toLowerCase() == name.trim().toLowerCase();
+
+          if (isSameBusiness && existingTime != null) {
+            final diff = targetTime.difference(existingTime).abs();
+            if (diff < const Duration(minutes: 10)) {
+              // Existing record found within 10 minutes - drop duplicate!
+              return false;
+            }
+          }
+        }
+      } catch (_) {
+        // Continue safely if recent query encounters index or transient error
+      }
+
       await db.collection('users').doc(userId).collection('visitedPlaces').add({
         'name': name.trim(),
         'area': area.trim(),
         'businessId': businessId ?? '',
+        'latitude': latitude,
+        'longitude': longitude,
         'visitedAt': visitedAt != null
             ? Timestamp.fromDate(visitedAt)
             : FieldValue.serverTimestamp(),
@@ -713,6 +807,53 @@ class UserRepository {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Remove duplicate visited place records (same business/name within 3 minutes of each other).
+  Future<int> cleanDuplicateVisitedPlaces(String userId) async {
+    if (mockCleanDuplicateVisitedPlaces != null) {
+      return mockCleanDuplicateVisitedPlaces!(userId);
+    }
+    try {
+      final snap = await db
+          .collection('users')
+          .doc(userId)
+          .collection('visitedPlaces')
+          .orderBy('visitedAt', descending: true)
+          .get();
+
+      final seen = <String>{};
+      final duplicatesToDelete = <DocumentReference>[];
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final name = (data['name'] as String? ?? '').trim().toLowerCase();
+        final bizId = (data['businessId'] as String? ?? '').trim();
+        final date = (data['visitedAt'] as Timestamp?)?.toDate();
+        final timeKey = date != null
+            ? '${date.year}-${date.month}-${date.day}_${date.hour}:${date.minute}'
+            : '';
+        final key = '${bizId.isNotEmpty ? bizId : name}_$timeKey';
+
+        if (key.isNotEmpty && seen.contains(key)) {
+          duplicatesToDelete.add(doc.reference);
+        } else if (key.isNotEmpty) {
+          seen.add(key);
+        }
+      }
+
+      if (duplicatesToDelete.isNotEmpty) {
+        final batch = db.batch();
+        for (final ref in duplicatesToDelete) {
+          batch.delete(ref);
+        }
+        await batch.commit();
+      }
+
+      return duplicatesToDelete.length;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -806,7 +947,9 @@ class MerchantRepository {
         if (value.operatingHours != null && value.operatingHours!.trim().isNotEmpty)
           'operatingHours': value.operatingHours!.trim(),
         if (value.dietaryStatus != null && value.dietaryStatus!.trim().isNotEmpty)
-          'dietaryStatus': value.dietaryStatus!.trim(),
+          'dietaryStatus': value.dietaryStatus!.trim()
+        else if (value.id.isNotEmpty)
+          'dietaryStatus': FieldValue.delete(),
         if (value.website != null && value.website!.trim().isNotEmpty)
           'website': value.website!.trim(),
         if (value.description != null && value.description!.trim().isNotEmpty)
