@@ -676,8 +676,10 @@ void main() {
       expect(find.text('"Exploring Armenian Street!"'), findsOneWidget);
       expect(find.text('Island in the Sun'), findsOneWidget);
       expect(find.text('Weezer'), findsOneWidget);
-      expect(find.text('4'), findsOneWidget); // vouchers
-      expect(find.text('7'), findsOneWidget); // reviews
+      expect(find.text('Vouchers'), findsNothing);
+      expect(find.text('Reviews'), findsNothing);
+      expect(find.byKey(const Key('direct_chat_remove_friend_button')), findsOneWidget);
+      expect(find.text('Remove Friend'), findsOneWidget);
       expect(find.text('Direct messages are private between tourists within Penang LocalQuest.'), findsOneWidget);
 
       UserRepository.instance.mockWatch = null;

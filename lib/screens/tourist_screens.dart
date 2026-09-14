@@ -21,6 +21,11 @@ import 'direct_chat_screen.dart';
 import '../services/direct_chat_service.dart';
 import '../services/social_service.dart';
 import '../services/spotify_service.dart';
+import '../services/location_service.dart';
+import 'rewards_tab.dart';
+import 'mission_list_screen.dart';
+import 'write_review_screen.dart';
+import '../services/mission_service.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({
@@ -39,14 +44,30 @@ class _TouristHomeState extends State<TouristHome> {
   late int _index = widget.initialIndex;
 
   @override
+  void initState() {
+    super.initState();
+    final historyEnabled = widget.user.preferences['locationHistory'] as bool? ?? true;
+    LocationTrackerService.instance.setLocationHistoryEnabled(historyEnabled);
+    if (historyEnabled) {
+      LocationTrackerService.instance.startTracking(userId: widget.user.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    LocationTrackerService.instance.stopTracking();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final profile = TouristProfileScreen(user: widget.user);
+    final profile = TouristProfileScreen(
+      user: widget.user,
+      onNavigateToRewards: () => setState(() => _index = 1),
+    );
     final pages = [
       InteractiveMapScreen(user: widget.user),
-      const _ModulePlaceholder(
-        title: 'Rewards',
-        subtitle: 'Rewards and missions belong to the Reward & Review module.',
-      ),
+      RewardsTab(user: widget.user),
       profile,
     ];
     return Scaffold(
@@ -94,11 +115,16 @@ class _FloatingAiGuideButton extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: () {
+          final lastPos = LocationTrackerService.instance.lastPosition;
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (_) => AiAssistantSheet(user: user),
+            builder: (_) => AiAssistantSheet(
+              user: user,
+              currentLat: lastPos?.latitude ?? 5.4141,
+              currentLng: lastPos?.longitude ?? 100.3288,
+            ),
           );
         },
         child: Container(
@@ -126,26 +152,14 @@ class _FloatingAiGuideButton extends StatelessWidget {
   }
 }
 
-class _ModulePlaceholder extends StatelessWidget {
-  const _ModulePlaceholder({required this.title, required this.subtitle});
-  final String title;
-  final String subtitle;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(24),
-    child: Center(
-      child: LqTitleBlock(
-        eyebrow: 'LocalQuest',
-        title: title,
-        subtitle: subtitle,
-      ),
-    ),
-  );
-}
-
 class TouristProfileScreen extends StatelessWidget {
-  const TouristProfileScreen({super.key, required this.user});
+  const TouristProfileScreen({
+    super.key,
+    required this.user,
+    this.onNavigateToRewards,
+  });
   final AppUser user;
+  final VoidCallback? onNavigateToRewards;
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
@@ -319,6 +333,11 @@ class TouristProfileScreen extends StatelessWidget {
                             ? '${user.voucherCount > 3 ? 3 : user.voucherCount} expiring soon'
                             : '0 expiring soon',
                         icon: Icons.confirmation_num_outlined,
+                        onTap: () => _showMyVouchersSheet(
+                          context,
+                          user,
+                          onNavigateToRewards: onNavigateToRewards,
+                        ),
                       ),
                     ),
                     const SizedBox(
@@ -333,6 +352,7 @@ class TouristProfileScreen extends StatelessWidget {
                             ? 'Top 8% storyteller'
                             : 'Top storyteller',
                         icon: Icons.star_border,
+                        onTap: () => _showMyReviewsSheet(context, user),
                       ),
                     ),
                   ],
@@ -351,53 +371,48 @@ class TouristProfileScreen extends StatelessWidget {
                 icon: Icons.confirmation_num_outlined,
                 title: 'My vouchers',
                 subtitle: '${user.voucherCount} ready to use',
-                onTap: () => _showJourneySheet(
+                onTap: () => _showMyVouchersSheet(
                   context,
-                  title: 'My vouchers',
-                  eyebrow: 'Rewards',
-                  icon: Icons.confirmation_num_outlined,
-                  message:
-                      'You currently have ${user.voucherCount} voucher${user.voucherCount == 1 ? '' : 's'} ready in your passport. Present active voucher barcodes in-store to participating local merchants.',
+                  user,
+                  onNavigateToRewards: onNavigateToRewards,
                 ),
               ),
               _JourneyItem(
                 icon: Icons.star_outline,
                 title: 'Reviews & ratings',
                 subtitle: '${user.reviewCount} posted',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Reviews & ratings',
-                  eyebrow: 'Storyteller',
-                  icon: Icons.star_outline,
-                  message:
-                      'You have contributed ${user.reviewCount} verified review${user.reviewCount == 1 ? '' : 's'}. Reviews can only be posted after visiting physical merchant checkpoints to safeguard authentic feedback.',
-                ),
+                onTap: () => _showMyReviewsSheet(context, user),
               ),
-              _JourneyItem(
-                icon: Icons.auto_awesome_outlined,
-                title: 'Missions',
-                subtitle: '2 in progress',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Dynamic Missions',
-                  eyebrow: 'Side quests',
-                  icon: Icons.auto_awesome_outlined,
-                  message:
-                      '2 location missions currently in progress! Complete heritage photo check-ins and merchant explorations to earn bonus experience points.',
-                ),
+              StreamBuilder<List<Mission>>(
+                stream: MissionService.instance.watchMissions(user.id),
+                initialData: const <Mission>[],
+                builder: (context, snapshot) {
+                  final missions = snapshot.data ?? const <Mission>[];
+                  final activeCount = missions
+                      .where((m) => m.status == MissionStatus.active)
+                      .length;
+                  return _JourneyItem(
+                    icon: Icons.auto_awesome_outlined,
+                    title: 'Missions',
+                    subtitle: '$activeCount in progress',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MissionListScreen(
+                          uid: user.id,
+                          currentLat: LocationTrackerService.instance.lastPosition?.latitude ?? 5.4141,
+                          currentLng: LocationTrackerService.instance.lastPosition?.longitude ?? 100.3288,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-              _JourneyItem(
+              const _JourneyItem(
                 icon: Icons.calendar_month_outlined,
                 title: 'Daily check-in',
                 subtitle: 'Keep your streak',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Daily check-in streak',
-                  eyebrow: 'Activity',
-                  icon: Icons.calendar_month_outlined,
-                  message:
-                      'Daily check-ins reward +100 EXP every day. Log in each day during your Visit Malaysia exploration to maintain your multiplier streak!',
-                ),
+                onTap: null,
               ),
               _JourneyItem(
                 icon: Icons.history,
@@ -406,7 +421,7 @@ class TouristProfileScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => VisitedPlacesScreen(userId: user.id),
+                    builder: (_) => VisitedPlacesScreen(userId: user.id, user: user),
                   ),
                 ),
               ),
@@ -451,103 +466,574 @@ class _Stat extends StatelessWidget {
     required this.value,
     required this.icon,
     this.badgeText,
+    this.onTap,
   });
   final String label;
   final String value;
   final IconData icon;
   final String? badgeText;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(18),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label.toUpperCase(), style: monoLabel),
-            Icon(icon, color: LqColors.primary),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-        ),
-        if (badgeText != null && badgeText!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            badgeText!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: LqColors.muted,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
+  Widget build(BuildContext context) {
+    final content = Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label.toUpperCase(), style: monoLabel),
+              Icon(icon, color: LqColors.primary),
+            ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+          ),
+          if (badgeText != null && badgeText!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              badgeText!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: LqColors.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: content,
+    );
+  }
 }
 
-void _showJourneySheet(
-  BuildContext context, {
-  required String title,
-  required String eyebrow,
-  required IconData icon,
-  required String message,
-}) {
-  showModalBottomSheet<void>(
+void _showVoucherRedemptionDialog(
+  BuildContext context,
+  String uid,
+  String voucherId,
+  String businessId,
+) {
+  showDialog<void>(
     context: context,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      decoration: const BoxDecoration(
-        color: LqColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: const Row(
+        children: [
+          Icon(Icons.qr_code_2, color: LqColors.primary),
+          SizedBox(width: 10),
+          Text('Redeem In-Store', style: TextStyle(fontWeight: FontWeight.w800)),
+        ],
       ),
-      child: Column(
+      content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40,
-            height: 4,
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFCBD5E1),
-              borderRadius: BorderRadius.circular(2),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
-          ),
-          const SizedBox(height: 20),
-          LqTitleBlock(eyebrow: eyebrow, title: title),
-          const SizedBox(height: 16),
-          LqCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
               children: [
-                CircleAvatar(
-                  backgroundColor: LqColors.primarySoft,
-                  foregroundColor: LqColors.primary,
-                  child: Icon(icon),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(
-                      color: LqColors.muted,
-                      height: 1.5,
-                      fontSize: 13,
+                Container(
+                  height: 56,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '||| ||||| || |||| ||||| |||',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        letterSpacing: 3,
+                        fontSize: 20,
+                        color: Colors.black.withAlpha(200),
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'CODE: ${voucherId.isNotEmpty ? (voucherId.length > 8 ? voucherId.substring(0, 8).toUpperCase() : voucherId.toUpperCase()) : "LQ-PASS"}',
+                  style: const TextStyle(
+                    fontFamily: 'DM Mono',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: LqColors.primary,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 14),
+          const Text(
+            'Present this barcode to the cashier at checkout to claim your offer.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: LqColors.muted, height: 1.4),
+          ),
         ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Dismiss'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            try {
+              if (voucherId.isNotEmpty) {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(uid)
+                    .collection('claimedVouchers')
+                    .doc(voucherId)
+                    .set({'redeemed': true}, SetOptions(merge: true));
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(uid)
+                    .collection('vouchers')
+                    .doc(voucherId)
+                    .set({'redeemed': true}, SetOptions(merge: true));
+              }
+            } catch (_) {}
+            if (ctx.mounted) Navigator.pop(ctx);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Voucher marked as redeemed in-store!')),
+              );
+            }
+          },
+          child: const Text('Mark as used'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showMyVouchersSheet(
+  BuildContext context,
+  AppUser user, {
+  VoidCallback? onNavigateToRewards,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        decoration: const BoxDecoration(
+          color: LqColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: ListView(
+          controller: scrollController,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCBD5E1),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const LqTitleBlock(eyebrow: 'Rewards', title: 'My vouchers'),
+            const SizedBox(height: 16),
+            LqCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: LqColors.primarySoft,
+                    foregroundColor: LqColors.primary,
+                    child: Icon(Icons.confirmation_num_outlined),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      'You currently have ${user.voucherCount} voucher${user.voucherCount == 1 ? '' : 's'} ready in your passport. Present active voucher barcodes in-store to participating local merchants.',
+                      style: const TextStyle(
+                        color: LqColors.muted,
+                        height: 1.5,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onNavigateToRewards != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  icon: const Icon(Icons.explore_outlined, size: 18),
+                  label: const Text('Browse Rewards & Missions Tab'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    onNavigateToRewards();
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            Text('ACTIVE & CLAIMED VOUCHERS', style: monoLabel),
+            const SizedBox(height: 10),
+            () {
+              Stream<QuerySnapshot<Map<String, dynamic>>> claimedStream;
+              Stream<QuerySnapshot<Map<String, dynamic>>> levelVouchersStream;
+              try {
+                claimedStream = FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.id)
+                    .collection('claimedVouchers')
+                    .snapshots();
+                levelVouchersStream = FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.id)
+                    .collection('vouchers')
+                    .snapshots();
+              } catch (_) {
+                claimedStream = const Stream.empty();
+                levelVouchersStream = const Stream.empty();
+              }
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: claimedStream,
+                builder: (context, claimedSnap) {
+                  final claimed = (claimedSnap.data?.docs ?? []).map((d) => {...d.data(), 'id': d.id}).toList();
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: levelVouchersStream,
+                    builder: (context, levelVouchersSnap) {
+                      final levelVouchers = levelVouchersSnap.data?.docs ?? [];
+                      if (claimed.isEmpty && levelVouchers.isEmpty) {
+                        return const LqCard(
+                          child: Column(
+                            children: [
+                              Icon(Icons.confirmation_num_outlined, size: 40, color: LqColors.muted),
+                              SizedBox(height: 10),
+                              Text(
+                                'No vouchers claimed yet',
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Explore nearby businesses on the map, claim welcome deals, or complete side quest missions to earn reward vouchers.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: LqColors.muted, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                    return Column(
+                      children: [
+                        ...claimed.map((v) {
+                          final voucherId = v['voucherId'] as String? ?? v['id'] as String? ?? '';
+                          final businessId = v['businessId'] as String? ?? '';
+                          final voucherType = v['voucherType'] as String? ?? 'voucher';
+                          final redeemed = v['redeemed'] as bool? ?? false;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: LqCard(
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: LqColors.primarySoft,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.local_offer_outlined, color: LqColors.primary),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${voucherType.toUpperCase()} VOUCHER',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: LqColors.primary,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                                          future: FirebaseFirestore.instance.collection('businesses').doc(businessId).get(),
+                                          builder: (context, bizSnap) {
+                                            final bizName = bizSnap.data?.data()?['name'] as String? ?? 'Local Merchant';
+                                            return Text(
+                                              bizName,
+                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          redeemed ? 'Redeemed in-store' : 'Ready to use',
+                                          style: TextStyle(
+                                            color: redeemed ? LqColors.muted : LqColors.success,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.tonal(
+                                    onPressed: redeemed
+                                        ? null
+                                        : () => _showVoucherRedemptionDialog(context, user.id, voucherId, businessId),
+                                    child: Text(redeemed ? 'Used' : 'Use'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        ...levelVouchers.map((doc) {
+                          final data = doc.data();
+                          final source = data['source'] as String? ?? 'reward';
+                          final level = data['levelReached'] as num?;
+                          final redeemed = data['redeemed'] as bool? ?? false;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: LqCard(
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFBE0C4),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.military_tech_outlined, color: Color(0xFF8A5A22)),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          source == 'level_up' && level != null
+                                              ? 'LEVEL $level REWARD VOUCHER'
+                                              : 'MISSION REWARD VOUCHER',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF8A5A22),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        const Text(
+                                          'Exclusive Explorer Perk',
+                                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          redeemed ? 'Redeemed' : 'Ready to use',
+                                          style: TextStyle(
+                                            color: redeemed ? LqColors.muted : LqColors.success,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.tonal(
+                                    onPressed: redeemed
+                                        ? null
+                                        : () => _showVoucherRedemptionDialog(context, user.id, doc.id, ''),
+                                    child: Text(redeemed ? 'Used' : 'Use'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                );
+              },
+            );
+          }(),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+void _showMyReviewsSheet(BuildContext context, AppUser user) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        decoration: const BoxDecoration(
+          color: LqColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: ListView(
+          controller: scrollController,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCBD5E1),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const LqTitleBlock(eyebrow: 'Storyteller', title: 'Reviews & ratings'),
+            const SizedBox(height: 16),
+            LqCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: LqColors.primarySoft,
+                    foregroundColor: LqColors.primary,
+                    child: Icon(Icons.star_outline),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      'You have contributed ${user.reviewCount} verified review${user.reviewCount == 1 ? '' : 's'}. Reviews can only be posted after visiting physical merchant checkpoints to safeguard authentic feedback.',
+                      style: const TextStyle(
+                        color: LqColors.muted,
+                        height: 1.5,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text('PLACES WAITING FOR YOUR REVIEW', style: monoLabel),
+            const SizedBox(height: 10),
+            () {
+              Stream<QuerySnapshot<Map<String, dynamic>>> visitedStream;
+              try {
+                visitedStream = UserRepository.instance.visitedPlaces(user.id);
+              } catch (_) {
+                visitedStream = const Stream.empty();
+              }
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: visitedStream,
+                builder: (context, snapshot) {
+                final docs = (snapshot.data?.docs ?? []).where((d) {
+                  final bid = d.data()['businessId'] as String? ?? '';
+                  return bid.isNotEmpty;
+                }).toList();
+
+                if (docs.isEmpty) {
+                  return const LqCard(
+                    child: Text(
+                      'No unreviewed visits yet. Check in or visit local merchants on your explorations to unlock verified review opportunities and earn EXP!',
+                      style: TextStyle(color: LqColors.muted, fontSize: 13),
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: docs.take(4).map((doc) {
+                    final data = doc.data();
+                    final bizId = data['businessId'] as String? ?? '';
+                    final name = data['name'] as String? ?? 'Local Merchant';
+                    final area = data['area'] as String? ?? '';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: LqCard(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: LqColors.primarySoft,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.storefront_outlined, color: LqColors.primary, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                  if (area.isNotEmpty)
+                                    Text(area, style: const TextStyle(color: LqColors.muted, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            FilledButton.icon(
+                              icon: const Icon(Icons.rate_review_outlined, size: 16),
+                              label: const Text('Review'),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => WriteReviewScreen(
+                                      userId: user.id,
+                                      businessId: bizId,
+                                      businessName: name,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            );
+          }(),
+          ],
+        ),
       ),
     ),
   );
@@ -1023,14 +1509,39 @@ class _PreferenceTileState extends State<_PreferenceTile> {
       onChanged: (next) async {
         setState(() => value = next);
         try {
+          widget.user.preferences[widget.keyName] = next;
+        } catch (_) {}
+        if (widget.keyName == 'locationHistory') {
+          LocationTrackerService.instance.setLocationHistoryEnabled(next);
+          if (next) {
+            await LocationTrackerService.instance.startTracking(userId: widget.user.id);
+          } else {
+            await LocationTrackerService.instance.stopTracking();
+          }
+        }
+        try {
           await UserRepository.instance.updatePreference(
             widget.user.id,
             widget.keyName,
             next,
           );
+          if (context.mounted && widget.keyName == 'locationHistory') {
+            showLqMessage(
+              context,
+              next
+                  ? 'Location history enabled: automatic visit logging active.'
+                  : 'Location history paused: automatic visit logging turned off.',
+            );
+          }
         } catch (_) {
           if (context.mounted) {
             setState(() => value = !next);
+            try {
+              widget.user.preferences[widget.keyName] = !next;
+            } catch (_) {}
+            if (widget.keyName == 'locationHistory') {
+              LocationTrackerService.instance.setLocationHistoryEnabled(!next);
+            }
             showLqMessage(
               context,
               'Could not update this preference. Please try again.',
@@ -1368,9 +1879,26 @@ class _SimpleFormPage extends StatelessWidget {
   );
 }
 
-class VisitedPlacesScreen extends StatelessWidget {
-  const VisitedPlacesScreen({super.key, required this.userId});
+class VisitedPlacesScreen extends StatefulWidget {
+  const VisitedPlacesScreen({
+    super.key,
+    required this.userId,
+    this.user,
+  });
   final String userId;
+  final AppUser? user;
+
+  @override
+  State<VisitedPlacesScreen> createState() => _VisitedPlacesScreenState();
+}
+
+class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Auto-clean any existing duplicate records in the database
+    UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
+  }
 
   static const _pastelBgs = [
     Color(0xFFF5D9CE), // warm peach / terracotta (#FEF4EF in figma)
@@ -1418,19 +1946,159 @@ class VisitedPlacesScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const LqBackButton(label: 'Profile'),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Visited places',
-                    style: TextStyle(
-                      fontSize: 32,
-                      height: 1.12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1.2,
-                      color: LqColors.ink,
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LqBackButton(label: 'Profile'),
+                    SizedBox(height: 8),
+                    Text(
+                      'Visited places',
+                      style: TextStyle(
+                        fontSize: 32,
+                        height: 1.12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -1.2,
+                        color: LqColors.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: LqColors.muted),
+                tooltip: 'Tracker Options & Simulation',
+                onSelected: (value) async {
+                  if (value == 'simulate_chinahouse') {
+                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
+                      if (context.mounted) {
+                        showLqMessage(
+                          context,
+                          'Location history logging is paused in Settings.',
+                          error: true,
+                        );
+                      }
+                      return;
+                    }
+                    final ok = await LocationTrackerService.instance.simulateArrival(
+                      businessId: 'demo_biz_chinahouse_penang',
+                      userId: widget.userId,
+                    );
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        ok
+                            ? 'Simulated arrival at ChinaHouse Cafe! Visit recorded.'
+                            : 'Already dwelling at or cooldown active for ChinaHouse.',
+                      );
+                    }
+                  } else if (value == 'simulate_tohsoon') {
+                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
+                      if (context.mounted) {
+                        showLqMessage(
+                          context,
+                          'Location history logging is paused in Settings.',
+                          error: true,
+                        );
+                      }
+                      return;
+                    }
+                    final ok = await LocationTrackerService.instance.simulateArrival(
+                      businessId: 'demo_biz_toh_soon_penang',
+                      userId: widget.userId,
+                    );
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        ok
+                            ? 'Simulated arrival at Toh Soon Cafe! Visit recorded.'
+                            : 'Already dwelling at or cooldown active for Toh Soon.',
+                      );
+                    }
+                  } else if (value == 'resume_tracking') {
+                    final ok = await LocationTrackerService.instance.startTracking(userId: widget.userId);
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        ok ? 'Automatic tracking active.' : 'Could not start tracking (check GPS permission or Settings).',
+                      );
+                    }
+                  } else if (value == 'open_settings') {
+                    final targetUser = widget.user ??
+                        AppUser(
+                          id: widget.userId,
+                          email: '',
+                          displayName: 'Explorer',
+                          username: '@explorer',
+                          role: AccountRole.tourist,
+                        );
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(user: targetUser),
+                      ),
+                    );
+                  } else if (value == 'clean_duplicates') {
+                    final removed = await UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        removed > 0
+                            ? 'Removed $removed duplicate record(s).'
+                            : 'No duplicate records found.',
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'simulate_chinahouse',
+                    child: Row(
+                      children: [
+                        Icon(Icons.coffee, size: 18, color: LqColors.primary),
+                        SizedBox(width: 8),
+                        Text('Simulate Arrival: ChinaHouse'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'simulate_tohsoon',
+                    child: Row(
+                      children: [
+                        Icon(Icons.breakfast_dining, size: 18, color: LqColors.primary),
+                        SizedBox(width: 8),
+                        Text('Simulate Arrival: Toh Soon'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'resume_tracking',
+                    child: Row(
+                      children: [
+                        Icon(Icons.my_location, size: 18, color: LqColors.muted),
+                        SizedBox(width: 8),
+                        Text('Re-check GPS Tracking'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'clean_duplicates',
+                    child: Row(
+                      children: [
+                        Icon(Icons.cleaning_services_outlined, size: 18, color: LqColors.primary),
+                        SizedBox(width: 8),
+                        Text('Clean Duplicate Records'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'open_settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.tune, size: 18, color: LqColors.muted),
+                        SizedBox(width: 8),
+                        Text('Location History Settings'),
+                      ],
                     ),
                   ),
                 ],
@@ -1449,26 +2117,46 @@ class VisitedPlacesScreen extends StatelessWidget {
           const SizedBox(height: 14),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: UserRepository.instance.visitedPlaces(userId),
+              stream: UserRepository.instance.visitedPlaces(widget.userId),
               builder: (context, snapshot) {
-                final docs = snapshot.data?.docs ?? [];
+                final rawDocs = snapshot.data?.docs ?? [];
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
+                // Deduplicate display: if multiple records share the same business/name
+                // with timestamps within 3 minutes of each other, show only one clean card!
+                final docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                final seenKeys = <String>{};
+                for (final doc in rawDocs) {
+                  final data = doc.data();
+                  final name = (data['name'] as String? ?? '').trim().toLowerCase();
+                  final bizId = (data['businessId'] as String? ?? '').trim();
+                  final date = (data['visitedAt'] as Timestamp?)?.toDate();
+                  final timeKey = date != null
+                      ? '${date.year}-${date.month}-${date.day}_${date.hour}:${date.minute}'
+                      : doc.id;
+                  final dedupeKey = '${bizId.isNotEmpty ? bizId : name}_$timeKey';
+
+                  if (!seenKeys.contains(dedupeKey)) {
+                    seenKeys.add(dedupeKey);
+                    docs.add(doc);
+                  }
+                }
                 if (docs.isEmpty) {
-                  return Center(
+                  return const Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(
-                            Icons.location_off_outlined,
+                          Icon(
+                            Icons.storefront_outlined,
                             size: 48,
                             color: LqColors.muted,
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
+                          SizedBox(height: 12),
+                          Text(
                             'No visited locations found.',
                             style: TextStyle(
                               color: LqColors.muted,
@@ -1476,11 +2164,14 @@ class VisitedPlacesScreen extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'When you visit partnered merchants or local spots, they will be automatically recorded here.',
+                          SizedBox(height: 8),
+                          Text(
+                            'When you visit registered local businesses, they will be automatically recorded here.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: LqColors.muted, fontSize: 13),
+                            style: TextStyle(
+                              color: LqColors.muted,
+                              fontSize: 13,
+                            ),
                           ),
                         ],
                       ),
@@ -1493,6 +2184,7 @@ class VisitedPlacesScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final data = docs[index].data();
                     final date = (data['visitedAt'] as Timestamp?)?.toDate();
+                    final businessId = data['businessId'] as String? ?? '';
                     final pastelBg = _pastelBgs[index % _pastelBgs.length];
                     final iconColor = _iconColors[index % _iconColors.length];
 
@@ -1556,13 +2248,74 @@ class VisitedPlacesScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 10),
-                            Text(
-                              _formatVisitedDate(date),
-                              style: const TextStyle(
-                                fontFamily: 'DM Mono',
-                                fontSize: 10,
-                                color: LqColors.muted,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _formatVisitedDate(date),
+                                  style: const TextStyle(
+                                    fontFamily: 'DM Mono',
+                                    fontSize: 10,
+                                    color: LqColors.muted,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (businessId.isNotEmpty) ...[
+                                      InkWell(
+                                        key: Key('visited_place_review_${docs[index].id}'),
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => WriteReviewScreen(
+                                              userId: widget.userId,
+                                              businessId: businessId,
+                                              businessName: data['name'] as String? ?? 'this business',
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4),
+                                          child: Icon(
+                                            Icons.rate_review_outlined,
+                                            size: 18,
+                                            color: LqColors.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    InkWell(
+                                      key: Key('visited_place_delete_${docs[index].id}'),
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () async {
+                                        final placeName = data['name'] as String? ?? 'Visited place';
+                                        await docs[index].reference.delete();
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Removed $placeName from history'),
+                                              behavior: SnackBarBehavior.floating,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.delete_outline,
+                                          size: 18,
+                                          color: Color(0xFFB0B7C3),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ],
                         ),

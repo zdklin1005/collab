@@ -93,8 +93,19 @@ void main() {
   testWidgets('merchant editors expose business campaign and voucher CRUD', (
     tester,
   ) async {
-    await tester.pumpWidget(app(const BusinessEditor(user: merchant)));
-    expect(find.text('Add business'), findsOneWidget);
+    const foodBusiness = Business(
+      id: 'biz-cafe',
+      ownerId: 'merchant-test',
+      name: 'Georgetown Cafe',
+      category: 'Cafe',
+      address: '123 Beach St',
+      phone: '+60123456789',
+      postcode: '10300',
+      area: 'George Town',
+      state: 'Penang',
+    );
+    await tester.pumpWidget(app(const BusinessEditor(user: merchant, business: foodBusiness)));
+    expect(find.text('Edit business'), findsOneWidget);
     expect(find.text('Business name'), findsOneWidget);
     expect(find.text('Business category'), findsOneWidget);
     expect(find.byType(LqDropdownField), findsNWidgets(3));

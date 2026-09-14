@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/localquest_models.dart';
 
 class SeedBusinessData {
   const SeedBusinessData({
@@ -36,6 +37,27 @@ class SeedBusinessData {
   final String? dietaryStatus;
   final String? website;
   final String? description;
+
+  Business toBusiness({String ownerId = 'demo_merchant_penang'}) => Business(
+        id: id,
+        ownerId: ownerId,
+        name: name,
+        category: category,
+        address: address,
+        phone: phone,
+        area: area,
+        postcode: postcode,
+        state: state,
+        registrationNumber: registrationNumber,
+        verificationStatus: 'verified',
+        active: true,
+        latitude: latitude,
+        longitude: longitude,
+        operatingHours: operatingHours,
+        dietaryStatus: dietaryStatus,
+        website: website,
+        description: description,
+      );
 }
 
 class SeedVoucherData {
@@ -78,6 +100,36 @@ class SeedVoucherData {
   final String terms;
 
   String? get effectiveHours => validHours ?? redemptionHours;
+
+  Campaign toCampaign({
+    String ownerId = 'demo_merchant_penang',
+    String businessId = '',
+  }) =>
+      Campaign(
+        id: id,
+        ownerId: ownerId,
+        businessId: businessId,
+        name: name,
+        description: description,
+        type: 'voucher',
+        startDate: DateTime.now(),
+        endDate: DateTime.now().add(const Duration(days: 30)),
+        status: 'active',
+        voucherType: voucherType,
+        collectionMethod: collectionMethod,
+        discountType: discountType,
+        discountValue: discountValue,
+        minimumSpend: minimumSpend,
+        quantity: quantity,
+        perCustomerLimit: perCustomerLimit,
+        seasonName: seasonName,
+        linkedAdId: linkedAdId,
+        validDays: validDays,
+        validHours: validHours,
+        redemptionHours: redemptionHours,
+        dailyQuota: dailyQuota,
+        terms: terms,
+      );
 }
 
 class DemoDatabaseSeeder {

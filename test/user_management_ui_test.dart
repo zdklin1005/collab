@@ -268,7 +268,11 @@ void main() {
     expect(find.text('1250/3,000XP'), findsOneWidget);
     expect(find.text('My vouchers'), findsOneWidget);
     expect(find.text('Reviews & ratings'), findsOneWidget);
+    expect(find.text('Missions'), findsOneWidget);
+    expect(find.text('Daily check-in'), findsOneWidget);
     expect(find.text('Visited places'), findsOneWidget);
+    expect(find.text('My Friends'), findsOneWidget);
+    expect(find.text('Leaderboard'), findsOneWidget);
     expect(find.byType(LqTierBadge), findsOneWidget);
     expect(
       find.byWidgetPredicate(

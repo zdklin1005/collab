@@ -545,6 +545,7 @@ class _LqFieldState extends State<LqField> {
 const lqBusinessCategories = <String>[
   'Cafe',
   'Restaurant',
+  'Food & Beverage',
   'Accommodation',
   'Attraction',
   'Retail',
@@ -552,6 +553,33 @@ const lqBusinessCategories = <String>[
   'Tour & activity',
   'Other',
 ];
+
+/// Business categories that require Halal & dietary certification declarations.
+const lqDietaryCategories = <String>[
+  'Cafe',
+  'Restaurant',
+  'Food & Beverage',
+];
+
+/// Returns whether the provided category represents a food & beverage or dining
+/// business that requires Halal & dietary certification.
+bool lqIsDietaryCategory(String? category) {
+  if (category == null || category.trim().isEmpty) return false;
+  final cat = category.trim().toLowerCase();
+  return cat == 'cafe' ||
+      cat == 'restaurant' ||
+      cat == 'food & beverage' ||
+      cat.contains('food') ||
+      cat.contains('dining') ||
+      cat.contains('beverage') ||
+      cat.contains('cafe') ||
+      cat.contains('coffee') ||
+      cat.contains('restaurant') ||
+      cat.contains('bakery') ||
+      cat.contains('dessert') ||
+      cat.contains('eatery') ||
+      cat.contains('bistro');
+}
 
 const lqDietaryStatuses = <String>[
   'Halal Certified',

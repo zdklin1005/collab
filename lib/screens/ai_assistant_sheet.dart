@@ -1,9 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../core/demo_database_seeder.dart';
 import '../core/localquest_theme.dart';
 import '../core/localquest_widgets.dart';
 import '../models/localquest_models.dart';
+import 'package:geolocator/geolocator.dart';
 import '../services/ai_tourist_guide_service.dart';
 import '../services/localquest_services.dart';
+import '../services/location_service.dart';
 
 class AiAssistantSheet extends StatefulWidget {
   const AiAssistantSheet({
@@ -26,11 +31,13 @@ class _AiChatMessage {
     required this.isUser,
     required this.text,
     required this.time,
+    this.modelUsed,
   });
 
   final bool isUser;
   final String text;
   final DateTime time;
+  final String? modelUsed;
 }
 
 class _AiAssistantSheetState extends State<AiAssistantSheet> {
@@ -40,15 +47,42 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
   final _scrollController = ScrollController();
   final List<_AiChatMessage> _messages = [];
   bool _isLoading = false;
+  bool _hasApiKey = false;
 
   List<Business> _cachedBusinesses = [];
   List<Campaign> _cachedVouchers = [];
+  List<Map<String, dynamic>> _cachedVisitedPlaces = [];
+
+  double? _liveLat;
+  double? _liveLng;
+
+  double get _currentLat => _liveLat ?? widget.currentLat;
+  double get _currentLng => _liveLng ?? widget.currentLng;
 
   List<String> _getDynamicLocationPrompts() {
     final prompts = <String>[
       '🎁 Where can I get Welcome Vouchers?',
       '🍜 Authentic Penang Laksa & Cendol',
+      '☕ Best artisan cafes & cakes',
+      '🍳 Traditional kopitiam breakfast',
+      '🍛 Famous Halal Nasi Kandar',
+      '🛍️ Batik & artisan craft souvenirs',
     ];
+
+    // Context from user's visited places:
+    if (_cachedVisitedPlaces.isNotEmpty) {
+      final lastVisited = _cachedVisitedPlaces.first['name'] as String?;
+      if (lastVisited != null && lastVisited.isNotEmpty) {
+        prompts.insert(0, '📍 What should I explore after visiting $lastVisited?');
+      }
+    }
+
+    // Mainland / Seberang Perai region dynamic prompt:
+    if (_currentLng >= 100.36 && _currentLat >= 5.10 && _currentLat <= 5.65) {
+      prompts.add('📍 Where am I right now?');
+      prompts.add('🌉 How to get from Mainland to George Town?');
+      prompts.add('🍛 Famous food spots in Seberang Perai & Butterworth');
+    }
 
     // 1. Context from verified merchants in Firestore:
     if (_cachedBusinesses.isNotEmpty) {
@@ -79,16 +113,14 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     }
 
     // 2. Dynamic coordinate-based Penang recommendations:
-    if (widget.currentLat >= 5.41 && widget.currentLat <= 5.43) {
+    if (_currentLat >= 5.41 && _currentLat <= 5.43) {
       prompts.add('🏛️ George Town UNESCO Heritage Walk');
-      prompts.add('🍜 Authentic Penang Laksa & Cendol');
-    } else if (widget.currentLat >= 5.39 && widget.currentLat < 5.41) {
+    } else if (_currentLat >= 5.39 && _currentLat < 5.41) {
       prompts.add('🏯 Kek Lok Si Temple & Air Itam Laksa');
       prompts.add('🚡 Penang Hill funicular & nature trails');
-    } else if (widget.currentLat >= 5.43 && widget.currentLat <= 5.46) {
+    } else if (_currentLat >= 5.43 && _currentLat <= 5.46) {
       prompts.add('🌊 Gurney Drive seaside dining & hawker stalls');
     } else {
-      prompts.add('🍜 Authentic Penang Laksa & Cendol');
       prompts.add('🎨 Street Art Murals along Armenian Street');
     }
 
@@ -105,7 +137,6 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     }
 
     // 4. Voucher discovery prompts:
-    prompts.add('🎁 Where can I get Welcome Vouchers?');
     prompts.add('🏷️ What vouchers can I claim right now?');
 
     return prompts.toSet().toList();
@@ -114,7 +145,9 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
   @override
   void initState() {
     super.initState();
+    _checkApiKey();
     _loadLocalContext();
+    _resolveLiveLocation();
     _messages.add(
       _AiChatMessage(
         isUser: false,
@@ -127,23 +160,149 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     );
   }
 
+  Future<void> _resolveLiveLocation() async {
+    // 1. Check LocationTrackerService last known GPS position
+    final trackerPos = LocationTrackerService.instance.lastPosition;
+    if (trackerPos != null && trackerPos.latitude.isFinite && trackerPos.longitude.isFinite) {
+      if (mounted) {
+        setState(() {
+          _liveLat = trackerPos.latitude;
+          _liveLng = trackerPos.longitude;
+        });
+      }
+    }
+
+    // 2. Query Geolocator for fresh GPS fix
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (enabled) {
+        final permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.always ||
+            permission == LocationPermission.whileInUse) {
+          final lastKnown = await Geolocator.getLastKnownPosition();
+          if (lastKnown != null && mounted) {
+            setState(() {
+              _liveLat = lastKnown.latitude;
+              _liveLng = lastKnown.longitude;
+            });
+          }
+
+          final fresh = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 4),
+            ),
+          );
+          if (mounted) {
+            setState(() {
+              _liveLat = fresh.latitude;
+              _liveLng = fresh.longitude;
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 3. Fallback: check recent visited places if GPS fix wasn't retrieved
+    if (_liveLat == null && _cachedVisitedPlaces.isNotEmpty) {
+      for (final place in _cachedVisitedPlaces) {
+        final lat = place['latitude'] as num?;
+        final lng = place['longitude'] as num?;
+        if (lat != null && lng != null && lat.toDouble().isFinite && lng.toDouble().isFinite) {
+          if (mounted) {
+            setState(() {
+              _liveLat = lat.toDouble();
+              _liveLng = lng.toDouble();
+            });
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  Future<void> _checkApiKey() async {
+    final key = await _aiService.getEffectiveApiKey();
+    if (mounted) {
+      setState(() {
+        _hasApiKey = key != null && key.isNotEmpty;
+      });
+    }
+  }
+
   Future<void> _loadLocalContext() async {
     try {
       final bizSnap = await MerchantRepository.instance.db
           .collection('businesses')
-          .limit(20)
+          .limit(30)
           .get();
-      _cachedBusinesses = bizSnap.docs.map(Business.fromDoc).toList();
+      final firestoreBiz = bizSnap.docs.map(Business.fromDoc).toList();
 
       final campSnap = await MerchantRepository.instance.db
           .collection('campaigns')
-          .limit(20)
+          .limit(50)
           .get();
-      _cachedVouchers = campSnap.docs.map(Campaign.fromDoc).toList();
-      if (mounted) setState(() {});
+      final firestoreCamps = campSnap.docs.map(Campaign.fromDoc).toList();
+
+      // Combine authentic Penang partner venues with live Firestore businesses,
+      // guaranteeing full coverage of Penang heritage spots and active Welcome Vouchers
+      final combinedBiz = <String, Business>{};
+      for (final b in DemoDatabaseSeeder.sampleMalaysianBusinesses.map((e) => e.toBusiness())) {
+        combinedBiz[b.id] = b;
+      }
+      for (final b in firestoreBiz) {
+        combinedBiz[b.id] = b;
+      }
+      _cachedBusinesses = combinedBiz.values.toList();
+
+      final combinedCamps = <String, Campaign>{};
+      for (final c in DemoDatabaseSeeder.sampleMalaysianBusinesses.expand((b) => b.vouchers.map((v) => v.toCampaign(businessId: b.id)))) {
+        combinedCamps[c.id] = c;
+      }
+      for (final c in firestoreCamps) {
+        combinedCamps[c.id] = c;
+      }
+      _cachedVouchers = combinedCamps.values.toList();
+
+      // Fetch user's recent visited places from Firestore
+      try {
+        final visitSnap = await UserRepository.instance.db
+            .collection('users')
+            .doc(widget.user.id)
+            .collection('visitedPlaces')
+            .orderBy('visitedAt', descending: true)
+            .limit(5)
+            .get();
+
+        _cachedVisitedPlaces = visitSnap.docs.map((d) {
+          final data = d.data();
+          final date = (data['visitedAt'] as Timestamp?)?.toDate();
+          return {
+            'name': data['name'] ?? '',
+            'area': data['area'] ?? '',
+            'businessId': data['businessId'] ?? '',
+            'latitude': data['latitude'],
+            'longitude': data['longitude'],
+            'time': date != null ? DateFormat('d MMM, HH:mm').format(date) : '',
+          };
+        }).toList();
+
+        // If GPS wasn't yet acquired, check if recent visited place can supply coordinates
+        if (_liveLat == null) {
+          _resolveLiveLocation();
+        }
+      } catch (_) {}
     } catch (_) {
-      // Offline fallback is handled gracefully
+      // Offline fallback
+      _cachedBusinesses = DemoDatabaseSeeder.sampleMalaysianBusinesses
+          .map((b) => b.toBusiness())
+          .toList();
+      _cachedVouchers = DemoDatabaseSeeder.sampleMalaysianBusinesses
+          .expand((b) => b.vouchers.map((v) => v.toCampaign(businessId: b.id)))
+          .toList();
     }
+
+    if (mounted) setState(() {});
   }
 
   @override
@@ -183,12 +342,24 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     _scrollToBottom();
 
     try {
+      final history = _messages
+          .where((m) => m.text.isNotEmpty)
+          .map((m) => AiChatMessageHistory(
+                isUser: m.isUser,
+                text: m.text,
+                time: m.time,
+              ))
+          .toList();
+
       final response = await _aiService.askGuide(
         userPrompt: query,
-        userLat: widget.currentLat,
-        userLng: widget.currentLng,
+        userLat: _currentLat,
+        userLng: _currentLng,
         nearbyBusinesses: _cachedBusinesses,
         activeVouchers: _cachedVouchers,
+        userProfile: widget.user,
+        visitedPlacesHistory: _cachedVisitedPlaces,
+        conversationHistory: history,
       );
 
       if (mounted) {
@@ -198,6 +369,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
               isUser: false,
               text: response,
               time: DateTime.now(),
+              modelUsed: _aiService.lastSuccessfulModel,
             ),
           );
           _isLoading = false;
@@ -222,7 +394,152 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     }
   }
 
+  Future<void> _showApiKeyDialog() async {
+    final currentKey = await _aiService.getEffectiveApiKey() ?? '';
+    if (!mounted) return;
+    final keyController = TextEditingController(text: currentKey);
 
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.key, color: LqColors.primary, size: 22),
+            SizedBox(width: 8),
+            Text('Gemini AI Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _hasApiKey ? const Color(0xFFE8F5E9) : const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _hasApiKey ? Icons.check_circle : Icons.offline_bolt_outlined,
+                    size: 18,
+                    color: _hasApiKey ? const Color(0xFF2E7D32) : const Color(0xFF6B7280),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _hasApiKey
+                              ? (_aiService.lastSuccessfulModel != null
+                                  ? 'Active Gemini: ${_aiService.lastSuccessfulModel}'
+                                  : 'Gemini Multi-Model Auto Failover')
+                              : 'Penang Local Expert Engine (Offline Ready)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _hasApiKey ? const Color(0xFF1B5E20) : const Color(0xFF374151),
+                          ),
+                        ),
+                        if (_hasApiKey) ...[
+                          const SizedBox(height: 2),
+                          const Text(
+                            'All Gemini models supported (3.8-flash, 3.1-flash, 2.5-flash, 2.0-flash, 1.5-flash, pro & lite). Seamlessly auto-switches if daily limits (RPD) or RPM quotas occur.',
+                            style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32)),
+                          ),
+                          if (_aiService.rateLimitedModels.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Rate-limited (switched over): ${_aiService.rateLimitedModels.join(", ")}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFFE65100),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Enter your Google Gemini API Key from Google AI Studio to unlock generative live chat:',
+              style: TextStyle(fontSize: 12, color: LqColors.muted),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: keyController,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: 'AIzaSy...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Multi-model auto-switching ensures uninterrupted chat even when individual model rate limits (RPD) are reached on the free tier.',
+              style: TextStyle(fontSize: 11, color: LqColors.muted),
+            ),
+          ],
+        ),
+        actions: [
+          if (_hasApiKey && _aiService.rateLimitedModels.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                _aiService.resetRateLimits();
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) showLqMessage(context, 'Rate limits reset. All Gemini models re-enabled.');
+              },
+              child: const Text('Reset Limits', style: TextStyle(color: Color(0xFFE65100))),
+            ),
+          if (currentKey.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                await _aiService.saveCustomApiKey('');
+                await _checkApiKey();
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) showLqMessage(context, 'Gemini API key cleared.');
+              },
+              child: const Text('Clear Key', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newKey = keyController.text.trim();
+              await _aiService.saveCustomApiKey(newKey);
+              await _checkApiKey();
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                showLqMessage(
+                  context,
+                  newKey.isNotEmpty
+                      ? 'Gemini API key saved! Live AI active.'
+                      : 'Switched to Penang Local Expert Engine.',
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: LqColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -252,37 +569,42 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
 
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [LqColors.primary, Color(0xFF6C5CE7)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: LqColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
+                InkWell(
+                  onTap: _showApiKeyDialog,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [LqColors.primary, Color(0xFF6C5CE7)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome,
-                    color: Colors.white,
-                    size: 24,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: LqColors.primary.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
                         'LocalQuest AI Guide',
@@ -292,11 +614,11 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
                           color: LqColors.ink,
                         ),
                       ),
-                      const SizedBox(height: 2),
                       const Text(
-                        'Authentic Penang insights & voucher discovery',
+                        'Penang Travel & Heritage Guide',
                         style: TextStyle(
                           fontSize: 12,
+                          fontWeight: FontWeight.w500,
                           color: LqColors.muted,
                         ),
                       ),

@@ -462,69 +462,73 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      // Stats Row: Vouchers & Stories
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
-                              ),
-                              child: Column(
-                                children: [
-                                  const Icon(Icons.confirmation_num_outlined, size: 20, color: LqColors.primary),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${user?.voucherCount ?? 0}',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                      color: LqColors.ink,
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Vouchers',
-                                    style: TextStyle(fontSize: 11, color: LqColors.muted),
-                                  ),
-                                ],
-                              ),
-                            ),
+                      // Remove Friend Action Button
+                      OutlinedButton.icon(
+                        key: const Key('direct_chat_remove_friend_button'),
+                        icon: const Icon(
+                          Icons.person_remove_outlined,
+                          size: 18,
+                          color: LqColors.danger,
+                        ),
+                        label: const Text(
+                          'Remove Friend',
+                          style: TextStyle(
+                            color: LqColors.danger,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
-                              ),
-                              child: Column(
-                                children: [
-                                  const Icon(Icons.star_border_rounded, size: 20, color: Color(0xFFF59E0B)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${user?.reviewCount ?? 0}',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                      color: LqColors.ink,
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Reviews',
-                                    style: TextStyle(fontSize: 11, color: LqColors.muted),
-                                  ),
-                                ],
-                              ),
-                            ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 44),
+                          side: const BorderSide(color: Color(0xFFFCA5A5)),
+                          backgroundColor: const Color(0xFFFEF2F2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                        ],
+                        ),
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: ctx,
+                            builder: (dialogCtx) => AlertDialog(
+                              title: const Text('Remove Friend'),
+                              content: Text(
+                                'Are you sure you want to remove $displayName from your friends list?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogCtx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogCtx, true),
+                                  child: const Text(
+                                    'Remove',
+                                    style: TextStyle(color: LqColors.danger),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            await SocialService.instance.removeFriend(
+                              currentUserId: widget.currentUser.id,
+                              friendUserId: widget.targetUserId,
+                            );
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content: Text('Removed $displayName from friends'),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
+                        },
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       const Divider(color: LqColors.line),
                       const SizedBox(height: 10),
 
