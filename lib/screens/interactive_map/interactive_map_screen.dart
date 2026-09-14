@@ -53,6 +53,7 @@ import '../../services/map_test_movement_controller.dart';
 import 'map_test_movement_controls.dart';
 
 import 'live_exp_preview_layer.dart';
+import 'live_exp_collection_check.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
@@ -2390,6 +2391,86 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     );
   }
 
+  static const double _liveExpCollectionRadiusMeters = 50;
+
+  Future<LiveRewardCollectionCheck> _checkLiveExpAvailability(
+    RewardMarker selectedReward,
+    List<RewardMarker> Function(DateTime instant) currentRewardsAt,
+    bool Function() rewardSourceReady,
+  ) async {
+    if (MapMovementTestConfig.enabled) {
+      return const LiveRewardCollectionCheck(
+        LiveRewardCollectionStatus.simulationBlocked,
+      );
+    }
+
+    final touristId = widget.user.id;
+    final requestId = _requestId;
+
+    bool deviceAccessAllowed;
+
+    try {
+      final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+      final permission = await Geolocator.checkPermission();
+
+      deviceAccessAllowed =
+          servicesEnabled &&
+          (permission == LocationPermission.whileInUse ||
+              permission == LocationPermission.always);
+    } catch (_) {
+      deviceAccessAllowed = false;
+    }
+
+    // Device access checks are asynchronous. Recheck the screen/session
+    // before reading the current position and generated rewards.
+    if (!mounted || !_foreground || widget.user.id != touristId) {
+      return const LiveRewardCollectionCheck(
+        LiveRewardCollectionStatus.localCheckFailed,
+        localCheck: RewardCollectionCheck(
+          status: RewardCollectionCheckStatus.appInactive,
+        ),
+      );
+    }
+
+    if (requestId != _requestId) {
+      return const LiveRewardCollectionCheck(
+        LiveRewardCollectionStatus.localCheckFailed,
+        localCheck: RewardCollectionCheck(
+          status: RewardCollectionCheckStatus.locationUnavailable,
+        ),
+      );
+    }
+
+    final sourceReady =
+        !_loadingBusinesses &&
+        !_businessLoadFailed &&
+        !_loadingLandmarks &&
+        !_landmarkLoadFailed &&
+        rewardSourceReady();
+
+    final now = DateTime.now();
+
+    // Use the native GPS stream—not the displayed/simulated map point.
+    final position = _locationError == null ? _position : null;
+
+    return checkLiveRewardCollection(
+      selectedReward: selectedReward,
+      currentRewards: sourceReady
+          ? currentRewardsAt(now)
+          : const <RewardMarker>[],
+      sourceReady: sourceReady,
+      simulationActive: MapMovementTestConfig.enabled,
+      now: now,
+      appIsForeground: _foreground,
+      locationAllowed: _locationAllowed && deviceAccessAllowed,
+      radiusMeters: _liveExpCollectionRadiusMeters,
+      userLatitude: position?.latitude,
+      userLongitude: position?.longitude,
+      accuracyMeters: position?.accuracy,
+      recordedAt: position?.timestamp,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final position = _position;
@@ -2461,6 +2542,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                   if (!_loadingLandmarks && !_landmarkLoadFailed)
                     ..._liveLandmarks,
                 ],
+                onCheckExpAvailability: _checkLiveExpAvailability,
+                collectionRadiusMeters: _liveExpCollectionRadiusMeters,
+                onFocusReward: _focusOnReward,
               ),
 
             if (MapTestConfig.enabled &&

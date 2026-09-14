@@ -11,15 +11,33 @@ import '../../models/localquest_models.dart';
 import '../../services/live_reward_preview_generator.dart';
 import '../../services/map_repository.dart';
 
+import 'live_exp_collection_check.dart';
+import 'reward_collection_check.dart';
+import 'out_of_range_dialog.dart';
+import 'reward_preview_dialog.dart';
+
+typedef LiveExpAvailabilityCheck =
+    Future<LiveRewardCollectionCheck> Function(
+      RewardMarker selectedReward,
+      List<RewardMarker> Function(DateTime instant) currentRewardsAt,
+      bool Function() sourceReady,
+    );
+
 class LiveExpPreviewLayer extends StatefulWidget {
   const LiveExpPreviewLayer({
     super.key,
     required this.places,
     required this.businesses,
+    required this.onCheckExpAvailability,
+    required this.collectionRadiusMeters,
+    required this.onFocusReward,
   });
 
   final List<MapLocation> places;
   final List<Business> businesses;
+  final LiveExpAvailabilityCheck onCheckExpAvailability;
+  final double collectionRadiusMeters;
+  final ValueChanged<RewardMarker> onFocusReward;
 
   @override
   State<LiveExpPreviewLayer> createState() => _LiveExpPreviewLayerState();
@@ -92,59 +110,105 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
   }
 
   Future<void> _showPreview(RewardMarker reward) async {
+    final now = DateTime.now();
+
     if (_dialogOpen ||
         ModalRoute.of(context)?.isCurrent != true ||
-        !reward.canDisplayAt(DateTime.now()) ||
-        !_rewardsAt(DateTime.now()).any((current) => current.id == reward.id)) {
+        !reward.canDisplayAt(now) ||
+        !_rewardsAt(now).any((current) => current.id == reward.id)) {
       return;
     }
 
     _dialogOpen = true;
 
     try {
-      await showDialog<void>(
+      final check = await widget.onCheckExpAvailability(
+        reward,
+        _rewardsAt,
+        () => mounted && !_loadingVouchers && !_voucherLoadFailed,
+      );
+
+      if (!mounted ||
+          ModalRoute.of(context)?.isCurrent != true ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+
+      var locationName = reward.locationType == MapLocationType.business
+          ? 'this business'
+          : 'this landmark';
+
+      for (final place in widget.places) {
+        if (place.type == reward.locationType &&
+            place.sourceDocumentId == reward.locationId) {
+          locationName = place.title;
+          break;
+        }
+      }
+
+      final distance = check.localCheck?.distanceMeters;
+      var focusRequested = false;
+
+      final shouldFocus = await showDialog<bool>(
         context: context,
         useRootNavigator: false,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(
-            reward.type == RewardType.voucher
-                ? 'Voucher preview'
-                : 'EXP preview',
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  reward.title,
-                  style: Theme.of(dialogContext).textTheme.titleLarge,
+        barrierColor: Colors.black54,
+        builder: (dialogContext) {
+          if (check.status == LiveRewardCollectionStatus.localCheckFailed &&
+              check.localCheck?.status ==
+                  RewardCollectionCheckStatus.outOfRange &&
+              distance != null) {
+            return OutOfRangeDialog(
+              distanceMeters: distance,
+              radiusMeters: widget.collectionRadiusMeters,
+              isDemo: false,
+              onGetCloser: () {
+                if (focusRequested) return;
+
+                focusRequested = true;
+                Navigator.of(dialogContext).pop(true);
+              },
+            );
+          }
+
+          // Do not describe a blocked or unavailable EXP reward as ready.
+          if (!check.canAttemptClaim) {
+            return AlertDialog(
+              title: const Text('Cannot collect yet'),
+              content: SingleChildScrollView(
+                child: Text(_expAvailabilityMessage(check)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Back to map'),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Preview only. Collection and account rewards '
-                  'are not connected yet.',
-                ),
-                if (reward.voucherId != null)
-                  Text('Voucher offer ID: ${reward.voucherId}'),
-                const SizedBox(height: 16),
-                Text('Location type: ${reward.locationType.name}'),
-                Text('Location ID: ${reward.locationId}'),
-                Text('Checkpoint: ${reward.checkpointId}'),
-                const SizedBox(height: 8),
-                const Text('Daily availability follows Malaysia time.'),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
+            );
+          }
+
+          return RewardPreviewDialog(
+            reward: reward,
+            locationName: locationName,
+            isDemo: false,
+            noteOverride: reward.type == RewardType.exp
+                ? 'Your current location passed the local range checks.\n'
+                      'Collection is not enabled yet. No EXP has been awarded.'
+                : 'Your current location passed the local range checks.\n'
+                      'Voucher claiming is not enabled yet. No voucher has been issued.',
+            // Keep Collect disabled until real claims are connected.
+            onCollect: null,
+          );
+        },
       );
+
+      if (shouldFocus == true &&
+          mounted &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        widget.onFocusReward(reward);
+      }
     } finally {
       _dialogOpen = false;
     }
@@ -253,6 +317,47 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
             ),
       ],
     );
+  }
+
+  String _expAvailabilityMessage(LiveRewardCollectionCheck check) {
+    switch (check.status) {
+      case LiveRewardCollectionStatus.ready:
+        return 'Your current GPS and this reward passed the local checks. '
+            'No EXP has been awarded yet.';
+
+      case LiveRewardCollectionStatus.simulationBlocked:
+        return 'Movement testing is enabled. Live reward collection is blocked.';
+
+      case LiveRewardCollectionStatus.sourceUnavailable:
+        return 'Reward data is not ready. Wait for loading to finish '
+            'or retry the failed connection.';
+
+      case LiveRewardCollectionStatus.rewardChanged:
+        return 'This reward has changed or is no longer available. '
+            'Close this preview and select a current marker.';
+
+      case LiveRewardCollectionStatus.localCheckFailed:
+        return switch (check.localCheck?.status) {
+          RewardCollectionCheckStatus.appInactive =>
+            'Return to Discover and try again.',
+          RewardCollectionCheckStatus.rewardUnavailable =>
+            'This reward is no longer available.',
+          RewardCollectionCheckStatus.locationAccessRequired =>
+            'Enable location permission and location services.',
+          RewardCollectionCheckStatus.locationUnavailable =>
+            'Wait for a fresh GPS position, then try again.',
+          RewardCollectionCheckStatus.locationUnreliable =>
+            'Your GPS reading is stale or not accurate enough. '
+                'Try again somewhere with a clearer GPS signal.',
+          RewardCollectionCheckStatus.invalidCoordinates =>
+            'The location coordinates are invalid.',
+          RewardCollectionCheckStatus.outOfRange =>
+            'You are outside the collection radius. '
+                'Current distance: '
+                '${check.localCheck!.distanceMeters!.toStringAsFixed(0)} m.',
+          _ => 'Could not confirm collection eligibility. Please try again.',
+        };
+    }
   }
 
   @override
