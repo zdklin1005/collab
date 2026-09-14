@@ -230,7 +230,7 @@ class MissionService {
   final FirebaseFirestore db = FirebaseFirestore.instance;
   final Random _random = Random();
 
-  static const double _checkpointRadiusMeters = 50;
+  static const double checkpointRadiusMeters = 50;
 
   CollectionReference<Map<String, dynamic>> _missionsRef(String uid) =>
       db.collection('users').doc(uid).collection('missions');
@@ -533,21 +533,21 @@ class MissionService {
 
     final checkpoint = mission.checkpoints[checkpointIndex];
 
-    if (checkpoint.type == MissionType.visit) {
-      final distance = _distanceMeters(
-        currentLat,
-        currentLng,
-        checkpoint.targetLatitude,
-        checkpoint.targetLongitude,
+    final distance = _distanceMeters(
+      currentLat,
+      currentLng,
+      checkpoint.targetLatitude,
+      checkpoint.targetLongitude,
+    );
+    if (distance > checkpointRadiusMeters) {
+      return CheckpointCompletionResult(
+        success: false,
+        failureReason:
+        'Too far away (${distance.round()}m) — get closer to complete this checkpoint.',
       );
-      if (distance > _checkpointRadiusMeters) {
-        return CheckpointCompletionResult(
-          success: false,
-          failureReason:
-          'Too far away (${distance.round()}m) — get closer to complete this checkpoint.',
-        );
-      }
-    } else {
+    }
+
+    if (checkpoint.type == MissionType.photo) {
       if (photoPath == null || !await _verifyPhoto(checkpoint, photoPath)) {
         return const CheckpointCompletionResult(
           success: false,
