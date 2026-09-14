@@ -15,6 +15,7 @@ class MapLocation {
     this.description = '',
     this.address = '',
     this.category = '',
+    this.dietaryStatus,
     this.businessId,
     this.active = true,
   });
@@ -28,6 +29,7 @@ class MapLocation {
   final String description;
   final String address;
   final String category;
+  final String? dietaryStatus;
 
   // Links a business marker back to the existing Business record.
   // Landmarks do not need a businessId.
@@ -63,6 +65,7 @@ class MapLocation {
       longitude: longitude,
       address: business.address,
       category: business.category,
+      dietaryStatus: business.dietaryStatus,
       businessId: business.id,
       active: business.active,
     );

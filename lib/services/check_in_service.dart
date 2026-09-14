@@ -37,7 +37,9 @@ class CheckInService {
   CheckInService._();
   static final instance = CheckInService._();
 
-  final FirebaseFirestore db = FirebaseFirestore.instance;
+  FirebaseFirestore? _db;
+  FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
+  set db(FirebaseFirestore customDb) => _db = customDb;
 
   /// EXP granted per check-in. Scales gently with streak length, capped
   /// so it doesn't run away — tune freely, everything reads through here.

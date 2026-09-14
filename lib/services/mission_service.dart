@@ -227,7 +227,9 @@ class MissionService {
   MissionService._();
   static final instance = MissionService._();
 
-  final FirebaseFirestore db = FirebaseFirestore.instance;
+  FirebaseFirestore? _db;
+  FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
+  set db(FirebaseFirestore customDb) => _db = customDb;
   final Random _random = Random();
 
   static const double checkpointRadiusMeters = 50;

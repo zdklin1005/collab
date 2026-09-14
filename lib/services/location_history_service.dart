@@ -17,8 +17,22 @@ class LocationHistoryService {
   }
 
   Future<bool> hasVisited(String uid, String businessId) async {
-    final doc = await db.collection('users').doc(uid)
-        .collection('visitedPlaces').doc(businessId).get();
-    return doc.exists;
+    if (businessId.isEmpty) return false;
+    final doc = await db
+        .collection('users')
+        .doc(uid)
+        .collection('visitedPlaces')
+        .doc(businessId)
+        .get();
+    if (doc.exists) return true;
+
+    final query = await db
+        .collection('users')
+        .doc(uid)
+        .collection('visitedPlaces')
+        .where('businessId', isEqualTo: businessId)
+        .limit(1)
+        .get();
+    return query.docs.isNotEmpty;
   }
 }

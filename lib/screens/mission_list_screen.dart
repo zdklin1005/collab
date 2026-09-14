@@ -39,8 +39,24 @@ class MissionListScreen extends StatefulWidget {
 class _MissionListScreenState extends State<MissionListScreen> {
   @override
   Widget build(BuildContext context) {
+    final canPop = Navigator.canPop(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF3EFE7),
+      appBar: canPop
+          ? AppBar(
+              backgroundColor: const Color(0xFFF3EFE7),
+              elevation: 0,
+              leading: const BackButton(color: Color(0xFF1B1F5C)),
+              title: const Text(
+                'Missions',
+                style: TextStyle(
+                  color: Color(0xFF1B1F5C),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: MissionListView(
           uid: widget.uid,
@@ -72,7 +88,6 @@ class MissionListView extends StatefulWidget {
 
 class _MissionListViewState extends State<MissionListView> {
   static const _navy = Color(0xFF1B1F5C);
-  static const _cream = Color(0xFFF3EFE7);
 
   int _tabIndex = 0; // 0 = In progress, 1 = Available
   bool _refreshing = false;
@@ -188,7 +203,7 @@ class _MissionListViewState extends State<MissionListView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'MY MISSIONS',
+                    'SIDE QUESTS',
                     style: TextStyle(
                       color: Colors.black54,
                       fontWeight: FontWeight.w600,
@@ -198,7 +213,7 @@ class _MissionListViewState extends State<MissionListView> {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    'Explore & earn',
+                    'Dynamic Missions',
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
@@ -311,11 +326,11 @@ class _InProgressList extends StatelessWidget {
     return StreamBuilder<List<Mission>>(
       stream: MissionService.instance.watchMissions(uid),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final missions = snapshot.data!
+        final missions = (snapshot.data ?? const <Mission>[])
             .where((m) => m.status == MissionStatus.active)
             .toList();
 

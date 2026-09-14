@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'location_history_service.dart';
 import 'reward_service.dart';
 
 class Review {
@@ -52,13 +53,16 @@ class ReviewSubmissionResult {
     this.failureReason,
     this.review,
     this.expAwarded = 0,
+    this.levelUpResult,
   });
 
   final bool success;
   final String? failureReason;
   final Review? review;
   final int expAwarded;
+  final ExpAwardResult? levelUpResult;
 }
+
 
 /// Handles business reviews/ratings, including the "did they actually
 /// visit" verification.
@@ -79,7 +83,9 @@ class ReviewService {
   ReviewService._();
   static final instance = ReviewService._();
 
-  final FirebaseFirestore db = FirebaseFirestore.instance;
+  FirebaseFirestore? _db;
+  FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
+  set db(FirebaseFirestore customDb) => _db = customDb;
 
   /// EXP awarded for leaving a review. This is an assumption, not
   /// something from the original spec — remove or adjust freely if the
@@ -98,12 +104,13 @@ class ReviewService {
   ///     .limit(1).get();
   /// return visits.docs.isNotEmpty;
   /// ```
-  Future<bool> _hasVisitedStub(String uid, String businessId) async {
-    return true;
+  /// Checks whether the user has visited this business by querying visitedPlaces.
+  Future<bool> hasVisited(String uid, String businessId) async {
+    return LocationHistoryService.instance.hasVisited(uid, businessId);
   }
 
   /// Submits a review for [businessId] by [uid]. Verifies the tourist
-  /// has visited first (currently stubbed — see class doc), writes the
+  /// has visited first, writes the
   /// review, increments the tourist's `reviewCount` on their user doc
   /// (field already exists on `AppUser`), and updates a running rating
   /// total on the business doc.
@@ -119,6 +126,7 @@ class ReviewService {
     required double rating,
     String text = '',
     List<String> photoUrls = const [],
+    bool bypassVisitedCheck = false,
   }) async {
     if (rating < 1 || rating > 5) {
       return const ReviewSubmissionResult(
@@ -127,8 +135,8 @@ class ReviewService {
       );
     }
 
-    final hasVisited = await _hasVisitedStub(uid, businessId);
-    if (!hasVisited) {
+    final visited = bypassVisitedCheck || await hasVisited(uid, businessId);
+    if (!visited) {
       return const ReviewSubmissionResult(
         success: false,
         failureReason:
@@ -168,6 +176,7 @@ class ReviewService {
       success: true,
       review: Review.fromDoc(await reviewDocRef.get()),
       expAwarded: _reviewExpReward,
+      levelUpResult: awardResult.leveledUp ? awardResult : null,
     );
   }
 

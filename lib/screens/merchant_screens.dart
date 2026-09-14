@@ -2826,14 +2826,18 @@ class _BusinessSelector extends StatelessWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
+        ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         decoration: const BoxDecoration(
           color: LqColors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(
               child: Container(
@@ -2946,7 +2950,8 @@ class _BusinessSelector extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   @override
@@ -3170,6 +3175,43 @@ class BusinessRegistrationsScreen extends StatelessWidget {
                                             const SsmVerifiedBadge(
                                               compact: true,
                                             ),
+                                          if (item.dietaryStatus != null &&
+                                              item.dietaryStatus!.trim().isNotEmpty &&
+                                              lqIsDietaryCategory(item.category))
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 7,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFE8F5E9),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: const Color(0xFFA5D6A7),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.restaurant_outlined,
+                                                    size: 11,
+                                                    color: Color(0xFF2E7D32),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    item.dietaryStatus!,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF2E7D32),
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           LqStatusPill(active: item.active),
                                         ],
                                       ),
@@ -3331,6 +3373,9 @@ class _BusinessEditorState extends State<BusinessEditor> {
   @override
   void initState() {
     super.initState();
+    if (!lqIsDietaryCategory(_category.text)) {
+      _dietaryStatus = null;
+    }
     _operatingHoursSlots = _parseOperatingHours(widget.business?.operatingHours);
     if (_postcode.text.isEmpty && _address.text.isNotEmpty) {
       final parsed = MalaysianAddressComponents.parse(
@@ -3405,8 +3450,14 @@ class _BusinessEditorState extends State<BusinessEditor> {
                     value: _category.text.isEmpty ? null : _category.text,
                     label: 'Business category',
                     items: lqBusinessCategories,
-                    onChanged: (value) =>
-                        setState(() => _category.text = value ?? ''),
+                    onChanged: (value) => setState(() {
+                      _category.text = value ?? '';
+                      if (!lqIsDietaryCategory(_category.text)) {
+                        _dietaryStatus = null;
+                      }
+                    }),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Choose a business category.' : null,
                   ),
                   const SizedBox(height: 16),
                   LqField(
@@ -3504,13 +3555,25 @@ class _BusinessEditorState extends State<BusinessEditor> {
                   ),
                   const SizedBox(height: 16),
                   _buildOperatingHoursSection(),
-                  const SizedBox(height: 16),
-                  LqDropdownField(
-                    value: _dietaryStatus,
-                    label: 'Halal & dietary certification',
-                    items: lqDietaryStatuses,
-                    onChanged: (value) => setState(() => _dietaryStatus = value),
-                  ),
+                  if (lqIsDietaryCategory(_category.text)) ...[
+                    const SizedBox(height: 16),
+                    LqDropdownField(
+                      key: ValueKey('dietary_status_${_category.text}_$_dietaryStatus'),
+                      value: _dietaryStatus,
+                      label: 'Halal & dietary certification',
+                      items: lqDietaryStatuses,
+                      onChanged: (value) =>
+                          setState(() => _dietaryStatus = value),
+                      validator: (v) {
+                        if (lqIsDietaryCategory(_category.text)) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Please choose a Halal & dietary certification.';
+                          }
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   LqField(
                     controller: _website,
@@ -3588,6 +3651,15 @@ class _BusinessEditorState extends State<BusinessEditor> {
       showLqMessage(context, 'Choose a business category.', error: true);
       return;
     }
+    if (lqIsDietaryCategory(_category.text) &&
+        (_dietaryStatus == null || _dietaryStatus!.trim().isEmpty)) {
+      showLqMessage(
+        context,
+        'Please choose a Halal & dietary certification for your food business.',
+        error: true,
+      );
+      return;
+    }
     setState(() => busy = true);
     try {
       await MerchantRepository.instance.saveBusiness(
@@ -3607,7 +3679,8 @@ class _BusinessEditorState extends State<BusinessEditor> {
           latitude: _location?.latitude,
           longitude: _location?.longitude,
           operatingHours: _formattedOperatingHours(),
-          dietaryStatus: _dietaryStatus,
+          dietaryStatus:
+              lqIsDietaryCategory(_category.text) ? _dietaryStatus : null,
           website: _website.text.trim().isEmpty ? null : _website.text.trim(),
           description: _description.text.trim().isEmpty
               ? null

@@ -33,7 +33,9 @@ class RewardService {
   RewardService._();
   static final instance = RewardService._();
 
-  final FirebaseFirestore db = FirebaseFirestore.instance;
+  FirebaseFirestore? _db;
+  FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
+  set db(FirebaseFirestore customDb) => _db = customDb;
 
   /// EXP curve: total cumulative EXP required to *reach* [level].
   /// Level 1 requires 0 EXP (everyone starts here). Tune this formula

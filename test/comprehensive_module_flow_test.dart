@@ -257,6 +257,8 @@ void main() {
       expect(find.text('Missions'), findsOneWidget);
       expect(find.text('Reviews & ratings'), findsOneWidget);
       expect(find.text('Daily check-in'), findsOneWidget);
+      expect(find.text('My Friends'), findsOneWidget);
+      expect(find.text('Leaderboard'), findsOneWidget);
 
       // Settings action
       expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
