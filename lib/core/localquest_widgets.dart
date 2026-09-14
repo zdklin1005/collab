@@ -405,38 +405,81 @@ class LqButton extends StatelessWidget {
     this.busy = false,
     this.icon,
     this.destructive = false,
+    this.pill = false,
   });
+
+  const LqButton.pill({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.busy = false,
+    this.destructive = false,
+  }) : icon = null, pill = true;
 
   final String label;
   final VoidCallback? onPressed;
   final bool busy;
   final IconData? icon;
   final bool destructive;
+  final bool pill;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 50,
-    child: FilledButton.icon(
-      onPressed: busy ? null : onPressed,
-      icon: busy
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon ?? Icons.arrow_forward_rounded, size: 18),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      style: FilledButton.styleFrom(
-        backgroundColor: destructive ? LqColors.danger : LqColors.primary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        elevation: 5,
-        shadowColor: destructive
-            ? LqColors.danger.withValues(alpha: .25)
-            : LqColors.primary.withValues(alpha: .3),
+  Widget build(BuildContext context) {
+    if (pill) {
+      return FilledButton(
+        onPressed: busy ? null : onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFFE8EEFA),
+          foregroundColor: const Color(0xFF2563EB),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          minimumSize: const Size(0, 42),
+        ),
+        child: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF2563EB),
+                ),
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: FilledButton.icon(
+        onPressed: busy ? null : onPressed,
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon ?? Icons.arrow_forward_rounded, size: 18),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        style: FilledButton.styleFrom(
+          backgroundColor: destructive ? LqColors.danger : LqColors.primary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          elevation: 5,
+          shadowColor: destructive
+              ? LqColors.danger.withValues(alpha: .25)
+              : LqColors.primary.withValues(alpha: .3),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class LqBackButton extends StatelessWidget {

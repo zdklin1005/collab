@@ -9,8 +9,13 @@ import '../services/cloudinary_images.dart';
 import '../services/localquest_services.dart';
 
 class ProfilePhotoEditor extends StatefulWidget {
-  const ProfilePhotoEditor({super.key, required this.user});
+  const ProfilePhotoEditor({
+    super.key,
+    required this.user,
+    this.showInfoText = true,
+  });
   final AppUser user;
+  final bool showInfoText;
   @override
   State<ProfilePhotoEditor> createState() => _ProfilePhotoEditorState();
 }
@@ -162,11 +167,13 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        const Text(
-          'JPG, PNG or WEBP · under 5 MB',
-          style: TextStyle(fontSize: 12),
-        ),
+        if (widget.showInfoText) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'JPG, PNG or WEBP · under 5 MB',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
       ],
     );
   }

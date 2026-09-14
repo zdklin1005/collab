@@ -1028,51 +1028,137 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   late final _name = TextEditingController(text: widget.user.displayName);
   late final _username = TextEditingController(text: widget.user.username);
   late final _phone = TextEditingController(text: widget.user.phone);
+  late DateTime? _selectedBirthday = widget.user.birthday;
   late final _birthday = TextEditingController(
     text: widget.user.birthday == null
         ? ''
-        : DateFormat('dd/MM/yyyy').format(widget.user.birthday!),
+        : DateFormat('d MMMM yyyy').format(widget.user.birthday!),
   );
   bool _busy = false;
+
   @override
-  Widget build(BuildContext context) => _SimpleFormPage(
-    eyebrow: 'Identity',
-    title: 'Account details',
-    subtitle: 'Your personal details and how we reach you.',
-    headerIcon: Icons.person_outline,
-    children: [
-      ProfilePhotoEditor(user: widget.user),
-      const SizedBox(height: 20),
-      LqField(controller: _name, label: 'Display name'),
-      const SizedBox(height: 16),
-      LqField(controller: _username, label: 'Username'),
-      const SizedBox(height: 16),
-      LqField(controller: _phone, label: 'Phone number'),
-      const SizedBox(height: 16),
-      LqField(
-        controller: _birthday,
-        label: 'Birthday',
-        hint: 'Choose date',
-        readOnly: true,
-        suffixIcon: Icons.calendar_month_outlined,
-        onTap: _pickBirthday,
+  void dispose() {
+    _name.dispose();
+    _username.dispose();
+    _phone.dispose();
+    _birthday.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LqPage(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const LqBackButton(label: 'Profile'),
+          const SizedBox(height: 14),
+          const LqTitleBlock(
+            eyebrow: 'Identity',
+            title: 'Account details',
+          ),
+          const SizedBox(height: 20),
+          // Top profile card matching Photo 2 design
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F0FE),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                ProfilePhotoEditor(user: widget.user, showInfoText: false),
+                const SizedBox(height: 12),
+                Text(
+                  _name.text.trim().isNotEmpty
+                      ? _name.text.trim()
+                      : (widget.user.displayName.isNotEmpty
+                          ? widget.user.displayName
+                          : 'Explorer'),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: LqColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_username.text.trim().isNotEmpty ? _username.text.trim() : widget.user.username} · ${widget.user.email}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: LqColors.muted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Form card with dashed border matching Photo 2
+          LqCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LqField(
+                  controller: _name,
+                  label: 'Display name',
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                LqField(
+                  controller: _username,
+                  label: 'Username',
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                LqField(
+                  controller: _phone,
+                  label: 'Phone number',
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                LqField(
+                  controller: _birthday,
+                  label: 'Birthday',
+                  hint: 'Choose date',
+                  readOnly: true,
+                  suffixIcon: Icons.calendar_month_outlined,
+                  onTap: _pickBirthday,
+                ),
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: LqButton.pill(
+                    label: 'Save changes',
+                    busy: _busy,
+                    onPressed: _save,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      const SizedBox(height: 24),
-      LqButton(
-        label: 'Save changes',
-        busy: _busy,
-        icon: Icons.save_outlined,
-        onPressed: _save,
-      ),
-    ],
+    ),
   );
 
   Future<void> _save() async {
     setState(() => _busy = true);
-    final parts = _birthday.text.split('/');
-    final birthday = parts.length == 3
-        ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
-        : null;
+    DateTime? birthday = _selectedBirthday;
+    if (birthday == null && _birthday.text.isNotEmpty) {
+      try {
+        birthday = DateFormat('d MMMM yyyy').parse(_birthday.text);
+      } catch (_) {
+        final parts = _birthday.text.split('/');
+        if (parts.length == 3) {
+          birthday = DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}');
+        } else {
+          birthday = DateTime.tryParse(_birthday.text);
+        }
+      }
+    }
     try {
       await UserRepository.instance.updateProfile(
         uid: widget.user.id,
@@ -1096,19 +1182,18 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   }
 
   Future<void> _pickBirthday() async {
-    final parts = _birthday.text.split('/');
-    final current = parts.length == 3
-        ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
-        : null;
     final chosen = await showLqDatePicker(
       context,
-      initialDate: current ?? DateTime(2000, 1, 1),
+      initialDate: _selectedBirthday ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       title: 'Select birthday',
     );
     if (chosen != null) {
-      setState(() => _birthday.text = DateFormat('dd/MM/yyyy').format(chosen));
+      setState(() {
+        _selectedBirthday = chosen;
+        _birthday.text = DateFormat('d MMMM yyyy').format(chosen);
+      });
     }
   }
 }
@@ -1174,7 +1259,14 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
               style: TextStyle(color: LqColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 24),
-            LqButton(label: 'Send verification', busy: _busy, onPressed: _save),
+            Align(
+              alignment: Alignment.centerRight,
+              child: LqButton.pill(
+                label: 'Save changes',
+                busy: _busy,
+                onPressed: _save,
+              ),
+            ),
           ],
         ),
       ),
@@ -1258,11 +1350,13 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
               },
             ),
             const SizedBox(height: 24),
-            LqButton(
-              label: 'Save changes',
-              busy: _busy,
-              icon: Icons.lock_outline,
-              onPressed: _save,
+            Align(
+              alignment: Alignment.centerRight,
+              child: LqButton.pill(
+                label: 'Save changes',
+                busy: _busy,
+                onPressed: _save,
+              ),
             ),
           ],
         ),
@@ -1845,8 +1939,6 @@ class NotificationsScreen extends StatelessWidget {
                     const LqTitleBlock(
                       eyebrow: 'Activity',
                       title: 'Notifications',
-                      subtitle: 'Messages, friend requests & updates in one place.',
-                      icon: Icons.notifications_none_outlined,
                     ),
                     const SizedBox(height: 20),
 
