@@ -65,10 +65,16 @@ class MissionCheckpoint {
   }
 
   factory MissionCheckpoint.fromMap(Map<String, dynamic> map) {
+    final typeStr = (map['type'] as String? ?? 'visit').toLowerCase();
+    final type = MissionType.values.cast<MissionType?>().firstWhere(
+      (t) => t?.name.toLowerCase() == typeStr,
+      orElse: () => MissionType.visit,
+    ) ?? MissionType.visit;
+
     return MissionCheckpoint(
       businessId: map['businessId'] as String? ?? '',
       businessName: map['businessName'] as String? ?? '',
-      type: MissionType.values.byName(map['type'] as String? ?? 'visit'),
+      type: type,
       targetLatitude: (map['targetLatitude'] as num?)?.toDouble() ?? 0,
       targetLongitude: (map['targetLongitude'] as num?)?.toDouble() ?? 0,
       completed: map['completed'] as bool? ?? false,
@@ -163,19 +169,39 @@ class Mission {
 
   factory Mission.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
-    final checkpointMaps = (data['checkpoints'] as List? ?? const [])
-        .cast<Map<String, dynamic>>();
+    final rawCheckpoints = data['checkpoints'] as List? ?? const [];
+    final checkpoints = <MissionCheckpoint>[];
+    for (final item in rawCheckpoints) {
+      if (item is Map<String, dynamic>) {
+        try {
+          checkpoints.add(MissionCheckpoint.fromMap(item));
+        } catch (_) {}
+      } else if (item is Map) {
+        try {
+          checkpoints.add(MissionCheckpoint.fromMap(Map<String, dynamic>.from(item)));
+        } catch (_) {}
+      }
+    }
+
+    final rewardTypeStr = (data['rewardType'] as String? ?? 'exp').toLowerCase();
+    final rewardType = MissionRewardType.values.cast<MissionRewardType?>().firstWhere(
+      (r) => r?.name.toLowerCase() == rewardTypeStr,
+      orElse: () => MissionRewardType.exp,
+    ) ?? MissionRewardType.exp;
+
+    final statusStr = (data['status'] as String? ?? 'active').toLowerCase();
+    final status = MissionStatus.values.cast<MissionStatus?>().firstWhere(
+      (s) => s?.name.toLowerCase() == statusStr,
+      orElse: () => MissionStatus.active,
+    ) ?? MissionStatus.active;
+
     return Mission(
       id: doc.id,
       title: data['title'] as String? ?? 'Mission',
       description: data['description'] as String? ?? '',
-      rewardType: MissionRewardType.values.byName(
-        data['rewardType'] as String? ?? 'exp',
-      ),
-      status: MissionStatus.values.byName(
-        data['status'] as String? ?? 'active',
-      ),
-      checkpoints: checkpointMaps.map(MissionCheckpoint.fromMap).toList(),
+      rewardType: rewardType,
+      status: status,
+      checkpoints: checkpoints,
       generatedAt:
       (data['generatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       expiresAt:
@@ -209,6 +235,7 @@ class CheckpointCompletionResult {
   const CheckpointCompletionResult({
     required this.success,
     this.failureReason,
+    this.checkpointCompleted = false,
     this.missionCompleted = false,
     this.expAwarded = 0,
     this.voucherAwarded = false,
@@ -217,6 +244,7 @@ class CheckpointCompletionResult {
 
   final bool success;
   final String? failureReason;
+  final bool checkpointCompleted;
   final bool missionCompleted;
   final int expAwarded;
   final bool voucherAwarded;
@@ -275,11 +303,21 @@ class MissionService {
   /// StreamBuilder — the "In progress" list stays up to date as
   /// checkpoints are completed elsewhere.
   Stream<List<Mission>> watchMissions(String uid) {
+    if (uid.trim().isEmpty) {
+      return Stream.value(const <Mission>[]);
+    }
     try {
       return _missionsRef(uid)
           .orderBy('generatedAt', descending: true)
           .snapshots()
-          .map((snap) => snap.docs.map(Mission.fromDoc).toList());
+          .map((snap) => snap.docs.map((doc) {
+                try {
+                  return Mission.fromDoc(doc);
+                } catch (_) {
+                  return null;
+                }
+              }).whereType<Mission>().toList())
+          .handleError((_) => const <Mission>[]);
     } catch (_) {
       return Stream.value(const <Mission>[]);
     }

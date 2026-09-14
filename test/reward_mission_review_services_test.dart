@@ -204,7 +204,7 @@ void main() {
       expect(find.text('Keep your streak'), findsOneWidget);
     });
 
-    testWidgets('Tapping My vouchers opens bottom sheet', (tester) async {
+    testWidgets('My vouchers journey item is displayed with chevron and does not trigger removed popup', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -216,11 +216,12 @@ void main() {
 
       await tester.ensureVisible(find.text('My vouchers'));
       await tester.pumpAndSettle();
+      expect(find.text('My vouchers'), findsOneWidget);
+      expect(find.text('4 ready to use'), findsOneWidget);
+
       await tester.tap(find.text('My vouchers'));
       await tester.pumpAndSettle();
-
-      expect(find.text('My vouchers'), findsWidgets);
-      expect(find.textContaining('ready in your passport'), findsOneWidget);
+      expect(find.textContaining('ready in your passport'), findsNothing);
     });
 
     testWidgets('Tapping Missions opens missions screen directly', (tester) async {
@@ -243,7 +244,7 @@ void main() {
       expect(find.text('Dynamic Missions'), findsOneWidget);
     });
 
-    testWidgets('Tapping Reviews & ratings opens storyteller reviews sheet', (tester) async {
+    testWidgets('Reviews & ratings journey item is displayed with chevron and does not trigger removed popup', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -255,12 +256,12 @@ void main() {
 
       await tester.ensureVisible(find.text('Reviews & ratings'));
       await tester.pumpAndSettle();
+      expect(find.text('Reviews & ratings'), findsOneWidget);
+      expect(find.text('7 posted'), findsOneWidget);
+
       await tester.tap(find.text('Reviews & ratings'));
       await tester.pumpAndSettle();
-
-      expect(find.text('STORYTELLER'), findsOneWidget);
-      expect(find.text('Reviews & ratings'), findsWidgets);
-      expect(find.textContaining('You have contributed 7 verified reviews'), findsOneWidget);
+      expect(find.text('STORYTELLER'), findsNothing);
     });
 
     testWidgets('Daily check-in journey option remains present but unlinked without standalone UI', (tester) async {
@@ -279,13 +280,13 @@ void main() {
       expect(find.text('Daily check-in'), findsOneWidget);
       expect(find.text('Keep your streak'), findsOneWidget);
 
-      // Tapping does nothing because onTap is null
+      // Tapping does nothing because standalone UI is not linked
       await tester.tap(find.text('Daily check-in'));
       await tester.pumpAndSettle();
       expect(find.byType(TouristProfileScreen), findsOneWidget);
     });
 
-    testWidgets('Tapping Vouchers and Reviews stat blocks triggers sheets', (tester) async {
+    testWidgets('Vouchers and Reviews stat blocks display counts accurately', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -295,19 +296,10 @@ void main() {
       );
       await tester.pump();
 
-      // Tap Vouchers stat
-      await tester.tap(find.text('VOUCHERS'));
-      await tester.pumpAndSettle();
-      expect(find.text('My vouchers'), findsWidgets);
-
-      // Dismiss sheet
-      Navigator.of(tester.element(find.text('My vouchers').first)).pop();
-      await tester.pumpAndSettle();
-
-      // Tap Reviews stat
-      await tester.tap(find.text('REVIEWS'));
-      await tester.pumpAndSettle();
-      expect(find.text('Reviews & ratings'), findsWidgets);
+      expect(find.text('VOUCHERS'), findsOneWidget);
+      expect(find.text('4'), findsWidgets);
+      expect(find.text('REVIEWS'), findsOneWidget);
+      expect(find.text('7'), findsOneWidget);
     });
 
     test('Active mission count correctly filters active status missions dynamically', () {
