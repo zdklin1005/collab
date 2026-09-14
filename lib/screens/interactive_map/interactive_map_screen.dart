@@ -2392,20 +2392,6 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     return Stack(
       children: [
-        if (MapMovementTestConfig.enabled && _locationAllowed)
-          Positioned(
-            top: 130,
-            left: 16,
-            right: 84,
-            child: MapTestMovementControls(
-              enabled: _foreground && _testMovementRunning && _mapReady,
-              stepMeters: MapMovementTestConfig.stepMeters,
-              onMove: (direction) {
-                _changeTestPosition(direction: direction);
-              },
-              onReset: () => _changeTestPosition(),
-            ),
-          ),
         FlutterMap(
           mapController: _mapController,
           options: MapOptions(
@@ -2502,6 +2488,21 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
         // The permission notice is hidden when access is granted,
         // so this status card can use the same space.
+        if (MapMovementTestConfig.enabled && _locationAllowed)
+          Positioned(
+            top: 130,
+            left: 16,
+            right: 84,
+            child: MapTestMovementControls(
+              enabled: _foreground && _testMovementRunning && _mapReady,
+              stepMeters: MapMovementTestConfig.stepMeters,
+              onMove: (direction) {
+                _changeTestPosition(direction: direction);
+              },
+              onReset: () => _changeTestPosition(),
+            ),
+          ),
+
         if (_locationAllowed && !MapMovementTestConfig.enabled)
           Positioned(
             top: 130,
