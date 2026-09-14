@@ -12,6 +12,7 @@ import '../core/merchant_validation.dart';
 import '../core/certificate_scan.dart';
 import '../core/ssm_verification.dart';
 import '../core/business_photo_field.dart';
+import '../core/lq_image_cropper.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
 import 'tourist_screens.dart';
@@ -2230,8 +2231,8 @@ class _CampaignEditorState extends State<CampaignEditor> {
     try {
       final file = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1600,
-        imageQuality: 88,
+        maxWidth: 2048,
+        imageQuality: 90,
       );
       if (file == null) return;
       final bytes = await file.readAsBytes();
@@ -2245,9 +2246,18 @@ class _CampaignEditorState extends State<CampaignEditor> {
         );
         return;
       }
+      final croppedBytes = await cropImageFile(
+        context: context,
+        sourcePath: file.path,
+        aspectRatioX: 4.0,
+        aspectRatioY: 3.0,
+        lockAspectRatio: false,
+        title: type == 'voucher' ? 'Crop Voucher Poster' : 'Crop Campaign Poster',
+      );
+      if (croppedBytes == null || !mounted) return;
       setState(() {
-        poster = bytes;
-        extension = format;
+        poster = croppedBytes;
+        extension = 'png';
       });
     } catch (_) {
       if (mounted) {

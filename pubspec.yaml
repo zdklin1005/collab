@@ -30,6 +30,7 @@ dependencies:
   google_mlkit_image_labeling: ^0.15.0
   local_auth: ^3.0.2
   crypto: ^3.0.7
+  image_cropper: ^12.2.1
 
 dev_dependencies:
   flutter_test:
