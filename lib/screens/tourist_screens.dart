@@ -1408,8 +1408,8 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(
+            children: const [
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1427,144 +1427,6 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                     ),
                   ],
                 ),
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: LqColors.muted),
-                tooltip: 'Tracker Options & Simulation',
-                onSelected: (value) async {
-                  if (value == 'simulate_chinahouse') {
-                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          'Location history logging is paused in Settings.',
-                          error: true,
-                        );
-                      }
-                      return;
-                    }
-                    final ok = await LocationTrackerService.instance.simulateArrival(
-                      businessId: 'demo_biz_chinahouse_penang',
-                      userId: widget.userId,
-                    );
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok
-                            ? 'Simulated arrival at ChinaHouse Cafe! Visit recorded.'
-                            : 'Already dwelling at or cooldown active for ChinaHouse.',
-                      );
-                    }
-                  } else if (value == 'simulate_tohsoon') {
-                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          'Location history logging is paused in Settings.',
-                          error: true,
-                        );
-                      }
-                      return;
-                    }
-                    final ok = await LocationTrackerService.instance.simulateArrival(
-                      businessId: 'demo_biz_toh_soon_penang',
-                      userId: widget.userId,
-                    );
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok
-                            ? 'Simulated arrival at Toh Soon Cafe! Visit recorded.'
-                            : 'Already dwelling at or cooldown active for Toh Soon.',
-                      );
-                    }
-                  } else if (value == 'resume_tracking') {
-                    final ok = await LocationTrackerService.instance.startTracking(userId: widget.userId);
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok ? 'Automatic tracking active.' : 'Could not start tracking (check GPS permission or Settings).',
-                      );
-                    }
-                  } else if (value == 'open_settings') {
-                    final targetUser = widget.user ??
-                        AppUser(
-                          id: widget.userId,
-                          email: '',
-                          displayName: 'Explorer',
-                          username: '@explorer',
-                          role: AccountRole.tourist,
-                        );
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SettingsScreen(user: targetUser),
-                      ),
-                    );
-                  } else if (value == 'clean_duplicates') {
-                    final removed = await UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        removed > 0
-                            ? 'Removed $removed duplicate record(s).'
-                            : 'No duplicate records found.',
-                      );
-                    }
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'simulate_chinahouse',
-                    child: Row(
-                      children: [
-                        Icon(Icons.coffee, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Simulate Arrival: ChinaHouse'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'simulate_tohsoon',
-                    child: Row(
-                      children: [
-                        Icon(Icons.breakfast_dining, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Simulate Arrival: Toh Soon'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'resume_tracking',
-                    child: Row(
-                      children: [
-                        Icon(Icons.my_location, size: 18, color: LqColors.muted),
-                        SizedBox(width: 8),
-                        Text('Re-check GPS Tracking'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'clean_duplicates',
-                    child: Row(
-                      children: [
-                        Icon(Icons.cleaning_services_outlined, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Clean Duplicate Records'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'open_settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.tune, size: 18, color: LqColors.muted),
-                        SizedBox(width: 8),
-                        Text('Location History Settings'),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ],
           ),

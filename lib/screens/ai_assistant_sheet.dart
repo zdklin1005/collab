@@ -881,7 +881,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
   }
 
   String _cleanAiMarkdown(String raw) {
-    var text = raw;
+    var text = AiTouristGuideService.sanitizeTechnicalInformation(raw);
     // Replace markdown list asterisks (* **, * , - ) with clean bullet character (• )
     text = text.replaceAll(RegExp(r'^\s*[*•-]\s*\*{1,2}', multiLine: true), '• ');
     text = text.replaceAll(RegExp(r'^\s*[*•-]\s+', multiLine: true), '• ');
