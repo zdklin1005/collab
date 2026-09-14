@@ -5,6 +5,11 @@ import 'package:collab/models/localquest_models.dart';
 import 'package:collab/models/map_location.dart';
 import 'package:collab/services/landmark_parser.dart';
 
+import 'package:collab/models/reward_checkpoint.dart';
+import 'package:collab/services/reward_checkpoint_parser.dart';
+
+import 'package:collab/services/map_voucher_data_validation.dart';
+
 bool isMappableBusiness(Business business) {
   final latitude = business.latitude;
   final longitude = business.longitude;
@@ -90,6 +95,73 @@ class MapRepository {
           });
 
           return List<MapLocation>.unmodifiable(landmarks);
+        });
+  }
+
+  Stream<List<RewardCheckpoint>> watchApprovedRewardCheckpoints() {
+    return _firestore
+        .collection('rewardCheckpoints')
+        .where('active', isEqualTo: true)
+        .where('placementApproved', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+          final checkpoints = <RewardCheckpoint>[];
+
+          for (final document in snapshot.docs) {
+            final checkpoint = parseRewardCheckpoint(
+              document.id,
+              document.data(),
+            );
+
+            if (checkpoint != null) {
+              checkpoints.add(checkpoint);
+            } else {
+              debugPrint(
+                'Map: skipped malformed reward checkpoint ${document.id}',
+              );
+            }
+          }
+
+          checkpoints.sort((a, b) => a.id.compareTo(b.id));
+
+          return List<RewardCheckpoint>.unmodifiable(checkpoints);
+        });
+  }
+
+  Stream<List<Campaign>> watchActiveVoucherCampaigns() {
+    return _firestore
+        .collection('campaigns')
+        .where('type', isEqualTo: 'voucher')
+        .snapshots()
+        .map((snapshot) {
+          final campaigns = <Campaign>[];
+
+          for (final document in snapshot.docs) {
+            final data = document.data();
+
+            if (data['status'] != 'active') {
+              continue;
+            }
+
+            if (!hasValidMapVoucherData(data)) {
+              debugPrint(
+                'Map: skipped incomplete voucher campaign ${document.id}',
+              );
+              continue;
+            }
+
+            try {
+              // Keep the team's shared model and all its restrictions.
+              campaigns.add(Campaign.fromDoc(document));
+            } on TypeError {
+              debugPrint(
+                'Map: skipped malformed voucher campaign ${document.id}',
+              );
+            }
+          }
+
+          campaigns.sort((a, b) => a.id.compareTo(b.id));
+          return List<Campaign>.unmodifiable(campaigns);
         });
   }
 }

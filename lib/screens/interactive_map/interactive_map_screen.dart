@@ -52,6 +52,8 @@ import '../../core/map_movement_test_config.dart';
 import '../../services/map_test_movement_controller.dart';
 import 'map_test_movement_controls.dart';
 
+import 'live_exp_preview_layer.dart';
+
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
 
@@ -2184,6 +2186,89 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     setState(_startLiveBusinesses);
   }
 
+  Marker _buildNamedPlaceMarker(MapLocation location) {
+    final isBusiness = location.type == MapLocationType.business;
+
+    return Marker(
+      key: ValueKey('live:${location.id}'),
+      point: LatLng(location.latitude, location.longitude),
+      width: 160,
+      height: 116,
+      alignment: Alignment.center,
+      rotate: true,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 32,
+            child: IgnorePointer(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x22000000), blurRadius: 3),
+                    ],
+                  ),
+                  child: Text(
+                    location.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF19243D),
+                      fontSize: 11,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Tooltip(
+                message: location.title,
+                child: Material(
+                  color: isBusiness
+                      ? const Color(0xFF467A45)
+                      : const Color(0xFF7656A3),
+                  elevation: 3,
+                  shape: const CircleBorder(
+                    side: BorderSide(color: Colors.white, width: 2),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => unawaited(_showLocationDetails(location)),
+                    child: Icon(
+                      isBusiness
+                          ? Icons.storefront_outlined
+                          : Icons.account_balance_outlined,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLiveBusinessLayer() {
     final waiting = _loadingBusinesses;
     final failed = _businessLoadFailed;
@@ -2196,36 +2281,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       children: [
         MarkerLayer(
           markers: [
-            for (final location in locations)
-              Marker(
-                key: ValueKey('live:${location.id}'),
-                point: LatLng(location.latitude, location.longitude),
-                width: 44,
-                height: 44,
-                rotate: true,
-                child: Tooltip(
-                  message: location.title,
-                  child: Material(
-                    color: const Color(0xFF467A45),
-                    elevation: 3,
-                    shape: const CircleBorder(
-                      side: BorderSide(color: Colors.white, width: 2),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () {
-                        unawaited(_showLocationDetails(location));
-                      },
-                      child: const Icon(
-                        Icons.storefront_outlined,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            for (final location in locations) _buildNamedPlaceMarker(location),
           ],
         ),
         if (waiting || failed || _loadingLandmarks || _landmarkLoadFailed)
@@ -2329,35 +2385,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           null,
           selectedLandmarkCategory: _selectedLandmarkCategory,
         ))
-          Marker(
-            key: ValueKey('live:${location.id}'),
-            point: LatLng(location.latitude, location.longitude),
-            width: 44,
-            height: 44,
-            rotate: true,
-            child: Tooltip(
-              message: location.title,
-              child: Material(
-                color: const Color(0xFF7656A3),
-                elevation: 3,
-                shape: const CircleBorder(
-                  side: BorderSide(color: Colors.white, width: 2),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () {
-                    unawaited(_showLocationDetails(location));
-                  },
-                  child: const Icon(
-                    Icons.account_balance_outlined,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _buildNamedPlaceMarker(location),
       ],
     );
   }
@@ -2420,6 +2448,20 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
             if (!MapTestConfig.enabled) _buildLiveLandmarkLayer(),
             if (!MapTestConfig.enabled) _buildLiveBusinessLayer(),
+
+            if (!MapTestConfig.enabled)
+              LiveExpPreviewLayer(
+                key: ValueKey('live-reward-previews:${widget.user.id}'),
+                businesses: !_loadingBusinesses && !_businessLoadFailed
+                    ? _liveBusinesses
+                    : const <Business>[],
+                places: [
+                  if (!_loadingBusinesses && !_businessLoadFailed)
+                    ..._liveLocations,
+                  if (!_loadingLandmarks && !_landmarkLoadFailed)
+                    ..._liveLandmarks,
+                ],
+              ),
 
             if (MapTestConfig.enabled &&
                 !_restoringClaims &&

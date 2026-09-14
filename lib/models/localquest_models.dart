@@ -90,6 +90,7 @@ class Business {
     this.dietaryStatus,
     this.website,
     this.description,
+    this.rewardPlacementApproved = false,
   });
 
   final String id;
@@ -112,6 +113,7 @@ class Business {
   final String? dietaryStatus;
   final String? website;
   final String? description;
+  final bool rewardPlacementApproved;
 
   bool get isSsmVerified => verificationStatus == 'verified';
 
@@ -138,6 +140,7 @@ class Business {
       dietaryStatus: data['dietaryStatus'] as String?,
       website: data['website'] as String?,
       description: data['description'] as String?,
+      rewardPlacementApproved: data['rewardPlacementApproved'] == true,
     );
   }
 }
@@ -213,7 +216,8 @@ class Campaign {
 
   factory Campaign.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
-    final validHrs = data['validHours'] as String? ?? data['redemptionHours'] as String?;
+    final validHrs =
+        data['validHours'] as String? ?? data['redemptionHours'] as String?;
     return Campaign(
       id: doc.id,
       ownerId: data['ownerId'] as String? ?? '',

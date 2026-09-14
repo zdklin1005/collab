@@ -19,6 +19,8 @@ class MapLocation {
     this.dietaryStatus = '',
     this.photoUrl,
     this.active = true,
+    this.sourceDocumentId,
+    this.rewardPlacementApproved = false,
   });
 
   // Map-specific identifier, separate from a Firestore document ID.
@@ -40,6 +42,12 @@ class MapLocation {
   // Landmarks do not need a businessId.
   final String? businessId;
   final bool active;
+
+  // Original Firestore document ID, without the map's type prefix.
+  final String? sourceDocumentId;
+
+  // Missing approval must never enable reward spawning.
+  final bool rewardPlacementApproved;
 
   bool get hasValidCoordinates {
     return latitude.isFinite &&
@@ -78,6 +86,8 @@ class MapLocation {
       dietaryStatus: business.dietaryStatus?.trim() ?? '',
       photoUrl: business.photoUrl?.trim(),
       active: business.active,
+      sourceDocumentId: business.id,
+      rewardPlacementApproved: business.rewardPlacementApproved,
     );
 
     return location.hasValidCoordinates ? location : null;

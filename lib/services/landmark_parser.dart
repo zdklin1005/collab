@@ -32,6 +32,8 @@ MapLocation? parseLandmark(String documentId, Map<String, dynamic> data) {
     latitude: latitude.toDouble(),
     longitude: longitude.toDouble(),
     active: true,
+    sourceDocumentId: documentId,
+    rewardPlacementApproved: data['rewardPlacementApproved'] == true,
   );
 
   return location.canDisplay ? location : null;
