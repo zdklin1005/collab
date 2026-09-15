@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:image_cropper/image_cropper.dart';
 
 /// Launches the phone-provided native crop/resize tool (uCrop on Android / TOCropViewController on iOS).
 ///
@@ -14,108 +13,49 @@ Future<Uint8List?> cropImageFile({
   required String sourcePath,
   double? aspectRatioX,
   double? aspectRatioY,
-  bool lockAspectRatio = false,
+  bool lockAspectRatio = true,
   bool circular = false,
   String title = 'Crop Photo',
 }) async {
   try {
-    CropAspectRatio? cropRatio;
-    CropAspectRatioPreset initPreset = CropAspectRatioPreset.original;
-    List<CropAspectRatioPreset> presets = [
-      CropAspectRatioPreset.original,
-      CropAspectRatioPreset.square,
-      CropAspectRatioPreset.ratio4x3,
-      CropAspectRatioPreset.ratio16x9,
-    ];
-
-    if (aspectRatioX != null && aspectRatioY != null && aspectRatioY > 0) {
-      cropRatio = CropAspectRatio(ratioX: aspectRatioX, ratioY: aspectRatioY);
-      if (aspectRatioX == 1.0 && aspectRatioY == 1.0) {
-        initPreset = CropAspectRatioPreset.square;
-        presets = [CropAspectRatioPreset.square];
-      } else if ((aspectRatioX / aspectRatioY - 16.0 / 9.0).abs() < 0.05) {
-        initPreset = CropAspectRatioPreset.ratio16x9;
-        presets = [
-          CropAspectRatioPreset.ratio16x9,
-          CropAspectRatioPreset.ratio4x3,
-          CropAspectRatioPreset.square,
-        ];
-      } else if ((aspectRatioX / aspectRatioY - 4.0 / 3.0).abs() < 0.05) {
-        initPreset = CropAspectRatioPreset.ratio4x3;
-        presets = [
-          CropAspectRatioPreset.ratio4x3,
-          CropAspectRatioPreset.ratio16x9,
-          CropAspectRatioPreset.square,
-        ];
+    if (context.mounted && io.File(sourcePath).existsSync()) {
+      final bytes = await io.File(sourcePath).readAsBytes();
+      if (!context.mounted) return null;
+      final double ratio;
+      if (aspectRatioX != null && aspectRatioY != null && aspectRatioY > 0) {
+        ratio = aspectRatioX / aspectRatioY;
+      } else if (circular) {
+        ratio = 1.0;
+      } else {
+        ratio = 16.0 / 9.0;
       }
+      return showLqImageCropper(
+        context: context,
+        imageBytes: bytes,
+        aspectRatio: ratio,
+        lockAspectRatio: lockAspectRatio,
+        circularMask: circular,
+        title: title,
+      );
     }
-
-    final cropped = await ImageCropper().cropImage(
-      sourcePath: sourcePath,
-      aspectRatio: lockAspectRatio ? cropRatio : null,
-      compressFormat: ImageCompressFormat.png,
-      compressQuality: 92,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: title,
-          toolbarColor: const Color(0xFF0F172A),
-          toolbarWidgetColor: Colors.white,
-          activeControlsWidgetColor: const Color(0xFF22C55E),
-          dimmedLayerColor: Colors.black.withValues(alpha: 0.75),
-          cropFrameColor: Colors.white,
-          cropGridColor: Colors.white.withValues(alpha: 0.4),
-          showCropGrid: true,
-          initAspectRatio: initPreset,
-          lockAspectRatio: lockAspectRatio,
-          cropStyle: circular ? CropStyle.circle : CropStyle.rectangle,
-          aspectRatioPresets: presets,
-        ),
-        IOSUiSettings(
-          title: title,
-          aspectRatioLockEnabled: lockAspectRatio,
-          cropStyle: circular ? CropStyle.circle : CropStyle.rectangle,
-        ),
-      ],
-    );
-
-    if (cropped != null) {
-      return await cropped.readAsBytes();
-    }
-    return null;
-  } catch (_) {
-    // Fallback to in-app cropper if native cropper is unavailable
-    try {
-      if (context.mounted && io.File(sourcePath).existsSync()) {
-        final bytes = await io.File(sourcePath).readAsBytes();
-        if (!context.mounted) return null;
-        final double ratio =
-            (aspectRatioX != null && aspectRatioY != null && aspectRatioY > 0)
-                ? (aspectRatioX / aspectRatioY)
-                : 1.0;
-        return showLqImageCropper(
-          context: context,
-          imageBytes: bytes,
-          aspectRatio: ratio,
-          lockAspectRatio: lockAspectRatio,
-          circularMask: circular,
-          title: title,
-        );
-      }
-    } catch (_) {}
-    return null;
+  } catch (e) {
+    debugPrint('cropImageFile error: $e');
   }
+  return null;
 }
+
 
 /// Launches the interactive LocalQuest Image Cropper.
 ///
 /// Allows tourists and merchants to pinch-to-zoom, pan, rotate, and crop photos
 /// to a designated aspect ratio (e.g. 1:1 for profile picture, 16:9 for business banner,
-/// 4:3 for campaign ad / voucher posters).
+/// voucher banner, and campaign ads).
+/// Strictly clamps all gestures so photos cannot be dragged beyond crop boundaries.
 Future<Uint8List?> showLqImageCropper({
   required BuildContext context,
   required Uint8List imageBytes,
-  double aspectRatio = 1.0,
-  bool lockAspectRatio = false,
+  double aspectRatio = 16.0 / 9.0,
+  bool lockAspectRatio = true,
   bool circularMask = false,
   String title = 'Crop & Resize Photo',
 }) {
@@ -138,8 +78,8 @@ class LqImageCropperScreen extends StatefulWidget {
   const LqImageCropperScreen({
     super.key,
     required this.imageBytes,
-    this.aspectRatio = 1.0,
-    this.lockAspectRatio = false,
+    this.aspectRatio = 16.0 / 9.0,
+    this.lockAspectRatio = true,
     this.circularMask = false,
     this.title = 'Crop & Resize Photo',
   });
@@ -155,25 +95,28 @@ class LqImageCropperScreen extends StatefulWidget {
 }
 
 class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
-  final TransformationController _transformController =
-      TransformationController();
-
   ui.Image? _decodedImage;
   late double _selectedAspectRatio = widget.aspectRatio;
   int _quarterTurns = 0;
   bool _isProcessing = false;
   String? _errorMessage;
 
+  // Strict boundary clamped gesture tracking
+  double _scale = 1.0;
+  double _baseScale = 1.0;
+  Offset _panOffset = Offset.zero;
+  Offset _basePanOffset = Offset.zero;
+  Offset _startFocalPoint = Offset.zero;
+
+  // Track the latest calculated layout values
+  Rect _currentCropRect = Rect.zero;
+  double _currentRenderW = 0.0;
+  double _currentRenderH = 0.0;
+
   @override
   void initState() {
     super.initState();
     _decodeImageBytes();
-  }
-
-  @override
-  void dispose() {
-    _transformController.dispose();
-    super.dispose();
   }
 
   void _decodeImageBytes() {
@@ -189,14 +132,14 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
   void _rotateClockwise() {
     setState(() {
       _quarterTurns = (_quarterTurns + 1) % 4;
-      // Reset transform on rotation so image stays well-centered
-      _transformController.value = Matrix4.identity();
+      _scale = 1.0;
+      _panOffset = Offset.zero;
     });
   }
 
   Future<ui.Image> _rotateImage(ui.Image src, int turns) async {
-    if (turns % 4 == 0) return src;
     final int normalizedTurns = turns % 4;
+    if (normalizedTurns == 0) return src;
     final bool isSideways = normalizedTurns == 1 || normalizedTurns == 3;
     final int newW = isSideways ? src.height : src.width;
     final int newH = isSideways ? src.width : src.height;
@@ -214,52 +157,63 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
     return picture.toImage(newW, newH);
   }
 
-  Future<void> _cropAndFinish({
-    required Size viewportSize,
-    required Rect cropRect,
-    required Size childSize,
-    required Offset childOffset,
-  }) async {
-    if (_decodedImage == null || _isProcessing) return;
+  Future<void> _cropAndFinish() async {
+    if (_decodedImage == null || _isProcessing || _currentCropRect.isEmpty) return;
     setState(() => _isProcessing = true);
 
     try {
-      // 1. Rotate base image if needed
+      // 1. Rotate base image if necessary
       final rotatedImage = await _rotateImage(_decodedImage!, _quarterTurns);
 
-      // 2. Compute output dimensions preserving sharpness
-      final double targetAspect = cropRect.width / cropRect.height;
+      // 2. Compute the exact position of the rendered image relative to the crop window
+      final double maxPanX =
+          math.max(0.0, (_currentRenderW - _currentCropRect.width) / 2.0);
+      final double maxPanY =
+          math.max(0.0, (_currentRenderH - _currentCropRect.height) / 2.0);
+      final Offset clampedPan = Offset(
+        _panOffset.dx.clamp(-maxPanX, maxPanX),
+        _panOffset.dy.clamp(-maxPanY, maxPanY),
+      );
+
+      final double imgLeft =
+          _currentCropRect.center.dx + clampedPan.dx - (_currentRenderW / 2.0);
+      final double imgTop =
+          _currentCropRect.center.dy + clampedPan.dy - (_currentRenderH / 2.0);
+
+      // 3. Compute relative crop rectangle on the rendered image
+      final double relCropX = math.max(0.0, _currentCropRect.left - imgLeft);
+      final double relCropY = math.max(0.0, _currentCropRect.top - imgTop);
+
+      // 4. Map from screen render coordinates to high-res source rotated image coordinates
+      final double scaleFactor = rotatedImage.width / _currentRenderW;
+
+      final double srcX =
+          (relCropX * scaleFactor).clamp(0.0, rotatedImage.width.toDouble());
+      final double srcY =
+          (relCropY * scaleFactor).clamp(0.0, rotatedImage.height.toDouble());
+      final double srcW =
+          (_currentCropRect.width * scaleFactor).clamp(1.0, rotatedImage.width - srcX);
+      final double srcH =
+          (_currentCropRect.height * scaleFactor).clamp(1.0, rotatedImage.height - srcY);
+      final Rect srcRect = Rect.fromLTWH(srcX, srcY, srcW, srcH);
+
+      // 5. Compute crisp output dimensions preserving aspect ratio
       int outWidth = 1080;
-      int outHeight = (1080 / targetAspect).round();
+      int outHeight = (1080 / _selectedAspectRatio).round();
       if (outHeight > 1080) {
         outHeight = 1080;
-        outWidth = (1080 * targetAspect).round();
+        outWidth = (1080 * _selectedAspectRatio).round();
       }
 
-      // 3. Render cropped viewport to high-res canvas
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
+      final dstRect =
+          Rect.fromLTWH(0, 0, outWidth.toDouble(), outHeight.toDouble());
 
-      // Clip canvas to final output size
-      canvas.clipRect(Rect.fromLTWH(0, 0, outWidth.toDouble(), outHeight.toDouble()));
-
-      // Scale factor from on-screen crop box to final output
-      final double scaleToOutput = outWidth / cropRect.width;
-      canvas.scale(scaleToOutput);
-      canvas.translate(-cropRect.left, -cropRect.top);
-
-      // Apply user's interactive pan & zoom
-      final Matrix4 transform = _transformController.value;
-      canvas.transform(transform.storage);
-
-      // Translate to child unscaled offset and draw rotated image scaled to childSize
-      canvas.translate(childOffset.dx, childOffset.dy);
-      final double scaleX = childSize.width / rotatedImage.width;
-      final double scaleY = childSize.height / rotatedImage.height;
-      canvas.scale(scaleX, scaleY);
-      canvas.drawImage(
+      canvas.drawImageRect(
         rotatedImage,
-        Offset.zero,
+        srcRect,
+        dstRect,
         Paint()..filterQuality = FilterQuality.high,
       );
 
@@ -290,17 +244,17 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
   Widget build(BuildContext context) {
     if (_decodedImage == null) {
       return const Scaffold(
-        backgroundColor: Color(0xFF0F172A),
+        backgroundColor: Colors.black,
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF4ADE80)),
+          child: CircularProgressIndicator(color: Colors.white),
         ),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: Colors.black,
         elevation: 0,
         centerTitle: true,
         title: Text(
@@ -312,7 +266,7 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white70),
+          icon: const Icon(Icons.close, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -321,9 +275,9 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
           final double totalWidth = constraints.maxWidth;
           final double totalHeight = constraints.maxHeight;
 
-          // Compute crop box dimensions based on chosen aspect ratio
-          const double horizontalPadding = 32.0;
-          const double verticalPadding = 24.0;
+          // Target crop window dimensions based on chosen aspect ratio
+          const double horizontalPadding = 28.0;
+          const double verticalPadding = 20.0;
           final double availableW = totalWidth - (horizontalPadding * 2);
           final double availableH = totalHeight - (verticalPadding * 2);
 
@@ -337,6 +291,7 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
           final double cropLeft = (totalWidth - cropW) / 2.0;
           final double cropTop = (totalHeight - cropH) / 2.0;
           final Rect cropRect = Rect.fromLTWH(cropLeft, cropTop, cropW, cropH);
+          _currentCropRect = cropRect;
 
           // Effective dimensions of the rotated image
           final bool isSideways = _quarterTurns % 2 == 1;
@@ -347,50 +302,53 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
               (isSideways ? _decodedImage!.width : _decodedImage!.height)
                   .toDouble();
 
-          // Calculate initial fit size within crop rectangle
-          double childW = cropW;
-          double childH = childW * (effectiveH / effectiveW);
-          if (childH < cropH) {
-            childH = cropH;
-            childW = childH * (effectiveW / effectiveH);
-          }
+          // Calculate minimal scale needed so image completely covers cropRect (1.0x baseline)
+          final double coverScale = math.max(
+            cropRect.width / effectiveW,
+            cropRect.height / effectiveH,
+          );
+          final double baseRenderW = effectiveW * coverScale;
+          final double baseRenderH = effectiveH * coverScale;
 
-          final double childLeft = (totalWidth - childW) / 2.0;
-          final double childTop = (totalHeight - childH) / 2.0;
+          // Current rendered dimensions with clamped user zoom scale [1.0, 5.0]
+          final double currentW = baseRenderW * _scale;
+          final double currentH = baseRenderH * _scale;
+          _currentRenderW = currentW;
+          _currentRenderH = currentH;
+
+          // Compute strict pan clamping bounds (image CANNOT be dragged inside the crop window)
+          final double maxPanX = math.max(0.0, (currentW - cropRect.width) / 2.0);
+          final double maxPanY = math.max(0.0, (currentH - cropRect.height) / 2.0);
+          final Offset clampedPan = Offset(
+            _panOffset.dx.clamp(-maxPanX, maxPanX),
+            _panOffset.dy.clamp(-maxPanY, maxPanY),
+          );
+
+          final double imgLeft =
+              cropRect.center.dx + clampedPan.dx - (currentW / 2.0);
+          final double imgTop =
+              cropRect.center.dy + clampedPan.dy - (currentH / 2.0);
 
           return Stack(
             fit: StackFit.expand,
             children: [
-              // 1. Interactive pan and zoom layer
-              InteractiveViewer(
-                transformationController: _transformController,
-                minScale: 0.2,
-                maxScale: 6.0,
-                boundaryMargin: const EdgeInsets.all(1200),
-                child: SizedBox(
-                  width: totalWidth,
-                  height: totalHeight,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: childLeft,
-                        top: childTop,
-                        width: childW,
-                        height: childH,
-                        child: RotatedBox(
-                          quarterTurns: _quarterTurns,
-                          child: Image.memory(
-                            widget.imageBytes,
-                            fit: BoxFit.fill,
-                          ),
-                        ),
-                      ),
-                    ],
+              // 1. Clamped image layer
+              Positioned(
+                left: imgLeft,
+                top: imgTop,
+                width: currentW,
+                height: currentH,
+                child: RotatedBox(
+                  quarterTurns: _quarterTurns,
+                  child: Image.memory(
+                    widget.imageBytes,
+                    fit: BoxFit.fill,
+                    filterQuality: FilterQuality.high,
                   ),
                 ),
               ),
 
-              // 2. Dark scrim overlay with clear crop window and rule-of-thirds grid
+              // 2. Dark scrim overlay with clear crop window, 3x3 grid & corner brackets
               IgnorePointer(
                 child: CustomPaint(
                   size: Size(totalWidth, totalHeight),
@@ -402,7 +360,44 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
                 ),
               ),
 
-              // 3. Error toast if any
+              // 3. Strict pan & pinch-to-zoom gesture listener
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onDoubleTap: () {
+                  setState(() {
+                    if (_scale > 1.1) {
+                      _scale = 1.0;
+                      _panOffset = Offset.zero;
+                    } else {
+                      _scale = 2.0;
+                    }
+                  });
+                },
+                onScaleStart: (details) {
+                  _baseScale = _scale;
+                  _startFocalPoint = details.focalPoint;
+                  _basePanOffset = clampedPan;
+                },
+                onScaleUpdate: (details) {
+                  setState(() {
+                    _scale = (_baseScale * details.scale).clamp(1.0, 5.0);
+                    final double curW = baseRenderW * _scale;
+                    final double curH = baseRenderH * _scale;
+                    final double mX =
+                        math.max(0.0, (curW - cropRect.width) / 2.0);
+                    final double mY =
+                        math.max(0.0, (curH - cropRect.height) / 2.0);
+                    final Offset delta = details.focalPoint - _startFocalPoint;
+                    final Offset proposed = _basePanOffset + delta;
+                    _panOffset = Offset(
+                      proposed.dx.clamp(-mX, mX),
+                      proposed.dy.clamp(-mY, mY),
+                    );
+                  });
+                },
+              ),
+
+              // 4. Error toast if any
               if (_errorMessage != null)
                 Positioned(
                   top: 16,
@@ -422,15 +417,15 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
                   ),
                 ),
 
-              // 4. Processing overlay
+              // 5. Processing overlay
               if (_isProcessing)
                 Container(
-                  color: Colors.black54,
+                  color: Colors.black87,
                   child: const Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(color: Color(0xFF4ADE80)),
+                        CircularProgressIndicator(color: Colors.white),
                         SizedBox(height: 16),
                         Text(
                           'Cropping image…',
@@ -450,23 +445,23 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
       ),
       bottomNavigationBar: SafeArea(
         child: Container(
-          color: const Color(0xFF0F172A),
+          color: Colors.black,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Aspect ratio chips (if ratio unlocked)
+              // Aspect ratio chips (if ratio explicitly unlocked)
               if (!widget.lockAspectRatio) ...[
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildRatioChip('1:1 (Square)', 1.0),
-                      const SizedBox(width: 8),
-                      _buildRatioChip('4:3 (Poster)', 4.0 / 3.0),
-                      const SizedBox(width: 8),
                       _buildRatioChip('16:9 (Banner)', 16.0 / 9.0),
+                      const SizedBox(width: 8),
+                      _buildRatioChip('4:3 (Landscape)', 4.0 / 3.0),
+                      const SizedBox(width: 8),
+                      _buildRatioChip('1:1 (Square)', 1.0),
                     ],
                   ),
                 ),
@@ -479,11 +474,12 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
                 children: [
                   // Cancel
                   TextButton(
-                    onPressed: _isProcessing ? null : () => Navigator.pop(context),
+                    onPressed:
+                        _isProcessing ? null : () => Navigator.pop(context),
                     child: const Text(
                       'Cancel',
                       style: TextStyle(
-                        color: Color(0xFF4ADE80),
+                        color: Colors.white70,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -502,83 +498,14 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
                   ),
 
                   // Done
-                  LayoutBuilder(
-                    builder: (context, _) => TextButton(
-                      onPressed: _isProcessing
-                          ? null
-                          : () {
-                              final renderBox =
-                                  context.findRenderObject() as RenderBox?;
-                              if (renderBox == null) return;
-                              // Retrieve LayoutBuilder sizes from context
-                              final size = MediaQuery.of(context).size;
-                              final double totalWidth = size.width;
-                              final double totalHeight = size.height -
-                                  kToolbarHeight -
-                                  MediaQuery.of(context).padding.top -
-                                  (widget.lockAspectRatio ? 70 : 120);
-
-                              const double horizontalPadding = 32.0;
-                              const double verticalPadding = 24.0;
-                              final double availableW =
-                                  totalWidth - (horizontalPadding * 2);
-                              final double availableH =
-                                  totalHeight - (verticalPadding * 2);
-
-                              double cropW = availableW;
-                              double cropH = cropW / _selectedAspectRatio;
-                              if (cropH > availableH) {
-                                cropH = availableH;
-                                cropW = cropH * _selectedAspectRatio;
-                              }
-
-                              final double cropLeft =
-                                  (totalWidth - cropW) / 2.0;
-                              final double cropTop =
-                                  (totalHeight - cropH) / 2.0;
-                              final Rect cropRect = Rect.fromLTWH(
-                                cropLeft,
-                                cropTop,
-                                cropW,
-                                cropH,
-                              );
-
-                              final bool isSideways = _quarterTurns % 2 == 1;
-                              final double effectiveW = (isSideways
-                                      ? _decodedImage!.height
-                                      : _decodedImage!.width)
-                                  .toDouble();
-                              final double effectiveH = (isSideways
-                                      ? _decodedImage!.width
-                                      : _decodedImage!.height)
-                                  .toDouble();
-
-                              double childW = cropW;
-                              double childH = childW * (effectiveH / effectiveW);
-                              if (childH < cropH) {
-                                childH = cropH;
-                                childW = childH * (effectiveW / effectiveH);
-                              }
-
-                              final double childLeft =
-                                  (totalWidth - childW) / 2.0;
-                              final double childTop =
-                                  (totalHeight - childH) / 2.0;
-
-                              _cropAndFinish(
-                                viewportSize: Size(totalWidth, totalHeight),
-                                cropRect: cropRect,
-                                childSize: Size(childW, childH),
-                                childOffset: Offset(childLeft, childTop),
-                              );
-                            },
-                      child: const Text(
-                        'Done',
-                        style: TextStyle(
-                          color: Color(0xFF4ADE80),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
+                  TextButton(
+                    onPressed: _isProcessing ? null : _cropAndFinish,
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -598,25 +525,24 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
       onTap: () {
         setState(() {
           _selectedAspectRatio = ratio;
-          _transformController.value = Matrix4.identity();
+          _scale = 1.0;
+          _panOffset = Offset.zero;
         });
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF4ADE80).withValues(alpha: 0.2)
-              : Colors.white10,
+          color: isSelected ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF4ADE80) : Colors.white24,
+            color: isSelected ? Colors.white : Colors.white24,
             width: 1.2,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? const Color(0xFF4ADE80) : Colors.white70,
+            color: isSelected ? Colors.black : Colors.white70,
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
           ),
@@ -625,6 +551,8 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
     );
   }
 }
+
+
 
 /// Custom painter for the cropping overlay with scrim, rule-of-thirds grid,
 /// corner brackets, and optional circular mask guide.
@@ -646,7 +574,7 @@ class _CropOverlayPainter extends CustomPainter {
     scrimPath.fillType = PathFillType.evenOdd;
 
     final scrimPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.72)
+      ..color = Colors.black.withValues(alpha: 0.85)
       ..style = PaintingStyle.fill;
     canvas.drawPath(scrimPath, scrimPaint);
 

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/localquest_models.dart';
@@ -101,6 +102,22 @@ class AuthService {
   FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
   FirebaseFirestore? _db;
   set mockDb(FirebaseFirestore? value) => _db = value;
+
+  GoogleSignIn get googleSignIn => _googleSignIn ?? GoogleSignIn();
+  GoogleSignIn? _googleSignIn;
+  set mockGoogleSignIn(GoogleSignIn? value) => _googleSignIn = value;
+
+  Future<UserCredential> Function()? mockGoogleAuthHandler;
+  Future<AppUser?> Function({
+    required AccountRole expectedRole,
+    Map<String, dynamic>? additionalData,
+  })? mockSignInWithGoogle;
+  Future<bool> Function([String? userId])? mockIsGoogleLinked;
+  Future<String?> Function([String? userId])? mockGetLinkedGoogleEmail;
+  Future<bool> Function()? mockCanUnlinkGoogle;
+  Future<bool> Function()? mockLinkGoogleAccount;
+  Future<void> Function()? mockUnlinkGoogleAccount;
+  Future<bool> Function()? mockHasPassword;
 
   final LoginThrottle throttle = LoginThrottle();
 
@@ -319,6 +336,210 @@ class AuthService {
     }
   }
 
+  Future<AppUser?> signInWithGoogle({
+    required AccountRole expectedRole,
+    Map<String, dynamic>? additionalData,
+  }) async {
+    if (mockSignInWithGoogle != null) {
+      return mockSignInWithGoogle!(
+        expectedRole: expectedRole,
+        additionalData: additionalData,
+      );
+    }
+    try {
+      final UserCredential credential;
+      if (mockGoogleAuthHandler != null) {
+        credential = await mockGoogleAuthHandler!();
+      } else {
+        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+        if (googleUser == null) {
+          // User canceled the Google sign-in dialog
+          return null;
+        }
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+        final OAuthCredential authCred = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        credential = await auth.signInWithCredential(authCred);
+      }
+
+      final user = credential.user;
+      if (user == null) {
+        throw const LocalQuestException('Failed to sign in with Google.');
+      }
+
+      BiometricAuthService.instance.markSessionAuthenticated(user.uid);
+      final profileRef = db.collection('users').doc(user.uid);
+      var doc = await profileRef.get();
+
+      if (!doc.exists) {
+        // Handle new account creation
+        if (expectedRole == AccountRole.merchant) {
+          final businessName = additionalData?['businessName'] as String?;
+          final category = additionalData?['category'] as String?;
+          final address = additionalData?['address'] as String?;
+          final phone = additionalData?['phone'] as String?;
+
+          if (businessName == null ||
+              businessName.trim().isEmpty ||
+              category == null ||
+              category.trim().isEmpty ||
+              address == null ||
+              address.trim().isEmpty) {
+            await auth.signOut();
+            throw const LocalQuestException(
+              'No merchant account found for this Google account. Please create an account first.',
+            );
+          }
+
+          final rawMerchant = businessName
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9]'), '');
+          final email =
+              (user.email ?? additionalData?['email'] as String? ?? '')
+                  .trim()
+                  .toLowerCase();
+          final area = (additionalData?['area'] as String? ?? '').trim();
+          final postcode =
+              (additionalData?['postcode'] as String? ?? '').trim();
+          final state = (additionalData?['state'] as String? ?? '').trim();
+          final latitude = additionalData?['latitude'] as double?;
+          final longitude = additionalData?['longitude'] as double?;
+          final dietaryStatus = additionalData?['dietaryStatus'] as String?;
+
+          final business = db.collection('businesses').doc();
+          final batch = db.batch();
+          batch.set(profileRef, {
+            'email': email,
+            'displayName': businessName.trim(),
+            'username': '@$rawMerchant',
+            'usernameLower': rawMerchant,
+            'phone': phone?.trim() ?? '',
+            'role': AccountRole.merchant.value,
+            'avatarUrl': user.photoURL ?? '',
+            'preferences': {
+              'campaignNotifications': true,
+              'claimNotifications': true,
+            },
+            'googleLinked': true,
+            'googleEmail': email,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          batch.set(business, {
+            'ownerId': user.uid,
+            'name': businessName.trim(),
+            'category': category.trim(),
+            'address': address.trim(),
+            'area': area,
+            'postcode': postcode,
+            'state': state,
+            'phone': phone?.trim() ?? '',
+            'registrationNumber': '',
+            'active': true,
+            'latitude': latitude,
+            'longitude': longitude,
+            'dietaryStatus': dietaryStatus?.trim(),
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          await batch.commit();
+          doc = await profileRef.get();
+        } else {
+          // Tourist account
+          final email =
+              (user.email ?? additionalData?['email'] as String? ?? '')
+                  .trim()
+                  .toLowerCase();
+          final rawDisplayName =
+              (additionalData?['displayName'] as String?)?.trim();
+          final displayName = (rawDisplayName != null &&
+                  rawDisplayName.isNotEmpty)
+              ? rawDisplayName
+              : (user.displayName?.trim().isNotEmpty == true
+                  ? user.displayName!.trim()
+                  : (email.isNotEmpty ? email.split('@').first : 'Explorer'));
+
+          final customUsername =
+              (additionalData?['username'] as String?)?.trim();
+          final rawUsername = (customUsername != null &&
+                  customUsername.isNotEmpty)
+              ? customUsername.replaceFirst(RegExp(r'^@'), '')
+              : displayName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+          final cleanTouristUser = rawUsername.isEmpty
+              ? 'user${user.uid.length >= 6 ? user.uid.substring(0, 6) : user.uid}'
+              : rawUsername;
+
+          final phone = (additionalData?['phone'] as String? ?? '').trim();
+          final birthday = additionalData?['birthday'] as DateTime?;
+
+          await profileRef.set({
+            'email': email,
+            'displayName': displayName,
+            'username': _username(cleanTouristUser),
+            'usernameLower': cleanTouristUser.toLowerCase(),
+            'phone': phone,
+            'birthday':
+                birthday == null ? null : Timestamp.fromDate(birthday),
+            'role': AccountRole.tourist.value,
+            'avatarUrl': user.photoURL ?? '',
+            'exp': 0,
+            'level': 1,
+            'voucherCount': 0,
+            'reviewCount': 0,
+            'preferences': {
+              'tripNotifications': true,
+              'locationHistory': true,
+              'partnerOffers': true,
+            },
+            'googleLinked': true,
+            'googleEmail': email,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          doc = await profileRef.get();
+        }
+      }
+
+      final profile = AppUser.fromDoc(doc);
+      if (profile.role != expectedRole) {
+        await auth.signOut();
+        throw LocalQuestException(
+          'This account is registered as a ${profile.role.label}. Change the selected account type.',
+        );
+      }
+
+      BiometricAuthService.instance.markJustAuthenticated();
+      BiometricAuthService.instance.markSessionAuthenticated(profile.id);
+      await AccountIdentifierCache.cache(
+        username: profile.username,
+        email: profile.email,
+      );
+      if (profile.displayName.isNotEmpty) {
+        await AccountIdentifierCache.cache(
+          username: profile.displayName,
+          email: profile.email,
+        );
+      }
+      try {
+        await db.collection('users').doc(profile.id).set({
+          'lastLoginAt': FieldValue.serverTimestamp(),
+          'googleLinked': true,
+          'googleEmail': (user.email ?? profile.email).trim().toLowerCase(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+      return profile;
+    } on FirebaseAuthException catch (error) {
+      throw LocalQuestException(_authMessage(error));
+    } on LocalQuestException {
+      rethrow;
+    } catch (error) {
+      throw LocalQuestException(error.toString());
+    }
+  }
+
   Future<void> registerTourist({
     required String email,
     required String password,
@@ -336,6 +557,9 @@ class AuthService {
       );
       final user = result.user!;
       await user.updateDisplayName(displayName.trim());
+      try {
+        await user.sendEmailVerification();
+      } catch (_) {}
       final cleanTouristUser =
           username.trim().replaceFirst(RegExp(r'^@'), '');
       await AccountIdentifierCache.cache(
@@ -395,6 +619,9 @@ class AuthService {
       );
       final user = result.user!;
       await user.updateDisplayName(businessName.trim());
+      try {
+        await user.sendEmailVerification();
+      } catch (_) {}
       final rawMerchant =
           businessName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
       await AccountIdentifierCache.cache(
@@ -458,30 +685,203 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    final uid = auth.currentUser?.uid;
-    BiometricAuthService.instance.clearSessionAuthentication(uid);
-    await auth.signOut();
+    try {
+      final uid = auth.currentUser?.uid;
+      BiometricAuthService.instance.clearSessionAuthentication(uid);
+      try {
+        if (await googleSignIn.isSignedIn()) {
+          await googleSignIn.signOut();
+        }
+      } catch (_) {}
+      await auth.signOut();
+    } catch (_) {}
+  }
+
+  /// Checks whether the current user has a password authentication method.
+  Future<bool> hasPassword() async {
+    if (mockHasPassword != null) return mockHasPassword!();
+    try {
+      final u = auth.currentUser;
+      if (u == null) return true;
+      return u.providerData.any((p) => p.providerId == 'password');
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Checks whether the user has a Google account linked.
+  Future<bool> isGoogleLinked([String? userId]) async {
+    if (mockIsGoogleLinked != null) {
+      return mockIsGoogleLinked!(userId);
+    }
+    try {
+      final u = auth.currentUser;
+      if (u != null) {
+        return u.providerData.any((p) => p.providerId == 'google.com');
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Returns the email associated with the linked Google account, if available.
+  Future<String?> getLinkedGoogleEmail([String? userId]) async {
+    if (mockGetLinkedGoogleEmail != null) {
+      return mockGetLinkedGoogleEmail!(userId);
+    }
+    try {
+      final u = auth.currentUser;
+      if (u != null) {
+        for (final p in u.providerData) {
+          if (p.providerId == 'google.com' &&
+              p.email != null &&
+              p.email!.isNotEmpty) {
+            return p.email;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Checks whether the current user can safely unlink their Google account without being locked out.
+  Future<bool> canUnlinkGoogle() async {
+    if (mockCanUnlinkGoogle != null) {
+      return mockCanUnlinkGoogle!();
+    }
+    final u = auth.currentUser;
+    if (u == null) return false;
+    final providers = u.providerData.map((p) => p.providerId).toList();
+    return providers.contains('password') ||
+        providers.where((p) => p != 'google.com').isNotEmpty;
+  }
+
+  /// Links a Google account to the currently authenticated user.
+  Future<bool> linkGoogleAccount() async {
+    if (mockLinkGoogleAccount != null) {
+      return mockLinkGoogleAccount!();
+    }
+    final u = auth.currentUser;
+    if (u == null) {
+      throw const LocalQuestException(
+        'You must be signed in to link a Google account.',
+      );
+    }
+
+    final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+    if (googleUser == null) {
+      return false; // User cancelled picker
+    }
+
+    final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
+    final OAuthCredential credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    try {
+      await u.linkWithCredential(credential);
+      await u.reload();
+      await db.collection('users').doc(u.uid).set({
+        'googleLinked': true,
+        'googleEmail': googleUser.email,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'credential-already-in-use' ||
+          e.code == 'email-already-in-use') {
+        throw const LocalQuestException(
+          'This Google account is already linked to another LocalQuest account.',
+        );
+      } else if (e.code == 'provider-already-linked') {
+        throw const LocalQuestException(
+          'A Google account is already linked to this account.',
+        );
+      } else {
+        throw LocalQuestException(e.message ?? 'Failed to link Google account.');
+      }
+    } catch (e) {
+      if (e is LocalQuestException) rethrow;
+      throw LocalQuestException('Could not link Google account: $e');
+    }
+  }
+
+  /// Unlinks Google account from the currently authenticated user.
+  Future<void> unlinkGoogleAccount() async {
+    if (mockUnlinkGoogleAccount != null) {
+      await mockUnlinkGoogleAccount!();
+      return;
+    }
+    final u = auth.currentUser;
+    if (u == null) {
+      throw const LocalQuestException(
+        'You must be signed in to unlink a Google account.',
+      );
+    }
+
+    final providers = u.providerData.map((p) => p.providerId).toList();
+    final hasOtherProvider = providers.contains('password') ||
+        providers.where((p) => p != 'google.com').isNotEmpty;
+    if (!hasOtherProvider) {
+      throw const LocalQuestException(
+        'Cannot unlink Google account. You must set a password in Password & Security first so you can still log in.',
+      );
+    }
+
+    try {
+      await u.unlink('google.com');
+      await u.reload();
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
+      await db.collection('users').doc(u.uid).set({
+        'googleLinked': false,
+        'googleEmail': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseAuthException catch (e) {
+      throw LocalQuestException(e.message ?? 'Failed to unlink Google account.');
+    } catch (e) {
+      if (e is LocalQuestException) rethrow;
+      throw LocalQuestException('Could not unlink Google account: $e');
+    }
   }
 
   Future<void> updatePassword({
-    required String currentPassword,
+    String? currentPassword,
     required String newPassword,
   }) async {
     final passwordError = PasswordPolicy.validate(newPassword);
     if (passwordError != null) throw LocalQuestException(passwordError);
-    if (currentPassword == newPassword) {
+    if (currentPassword != null && currentPassword == newPassword) {
       throw const LocalQuestException(
         'Choose a different password from your current one.',
       );
     }
     final user = auth.currentUser!;
+    final hasExistingPassword =
+        user.providerData.any((p) => p.providerId == 'password');
     try {
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: currentPassword,
-      );
-      await user.reauthenticateWithCredential(credential);
-      await user.updatePassword(newPassword);
+      if (hasExistingPassword) {
+        if (currentPassword == null || currentPassword.isEmpty) {
+          throw const LocalQuestException('Enter your current password.');
+        }
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: currentPassword,
+        );
+        await user.reauthenticateWithCredential(credential);
+        await user.updatePassword(newPassword);
+      } else {
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: newPassword,
+        );
+        await user.linkWithCredential(credential);
+        await user.reload();
+      }
     } on FirebaseAuthException catch (error) {
       throw LocalQuestException(_authMessage(error));
     }

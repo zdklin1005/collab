@@ -621,12 +621,13 @@ class SettingsScreen extends StatelessWidget {
                   ],
           ),
           const SizedBox(height: 24),
-          if (user.role == AccountRole.tourist) ...[
-            _section('Connected Accounts', [
+          _section('Connected Accounts', [
+            _GoogleSettingTile(user: user),
+            if (user.role == AccountRole.tourist) ...[
               _SpotifySettingTile(userId: user.id),
-            ]),
-            const SizedBox(height: 24),
-          ],
+            ],
+          ]),
+          const SizedBox(height: 24),
           _section('Support', [
             _SettingTile(
               icon: Icons.explore_outlined,
@@ -681,6 +682,227 @@ class SettingsScreen extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _GoogleSettingTile extends StatefulWidget {
+  const _GoogleSettingTile({required this.user});
+  final AppUser user;
+
+  @override
+  State<_GoogleSettingTile> createState() => _GoogleSettingTileState();
+}
+
+class _GoogleSettingTileState extends State<_GoogleSettingTile> {
+  bool _isLinked = false;
+  String? _linkedEmail;
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    final linked = await AuthService.instance.isGoogleLinked(widget.user.id);
+    final email =
+        await AuthService.instance.getLinkedGoogleEmail(widget.user.id);
+    if (mounted) {
+      setState(() {
+        _isLinked = linked;
+        _linkedEmail = email;
+        _loading = false;
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: LqColors.line),
+        ),
+        alignment: Alignment.center,
+        child: const LqGoogleLogo(size: 22),
+      ),
+      title: const Text(
+        'Google Account',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        _loading
+            ? 'Checking connection...'
+            : _isLinked
+                ? (_linkedEmail != null && _linkedEmail!.isNotEmpty
+                    ? 'Connected · $_linkedEmail'
+                    : 'Connected to Google')
+                : 'Not connected',
+        style: TextStyle(
+          color: _isLinked ? const Color(0xFF15803D) : LqColors.muted,
+          fontSize: 12,
+          fontWeight: _isLinked ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: _busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : _loading
+              ? const SizedBox(width: 40, height: 28)
+              : _isLinked
+              ? OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: LqColors.danger,
+                    side: const BorderSide(color: LqColors.danger),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    final canUnlink =
+                        await AuthService.instance.canUnlinkGoogle();
+                    if (!context.mounted) return;
+
+                    if (!canUnlink) {
+                      await showDialog<void>(
+                        context: context,
+                        builder: (dCtx) => AlertDialog(
+                          title: const Text('Cannot Unlink Google'),
+                          content: const Text(
+                            'Google is your only sign-in method for this account. Please set a password in Password & Security first before unlinking your Google account.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dCtx),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                Navigator.pop(dCtx);
+                                if (context.mounted) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const PasswordSecurityScreen(),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Text('Set Password'),
+                            ),
+                          ],
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (!context.mounted) return;
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (dCtx) => AlertDialog(
+                        title: const Text('Unlink Google Account?'),
+                        content: Text(
+                          _linkedEmail != null && _linkedEmail!.isNotEmpty
+                              ? 'This will disconnect your Google account ($_linkedEmail) from LocalQuest. You can still sign in using your email and password.'
+                              : 'This will disconnect your Google account from LocalQuest. You can still sign in using your email and password.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dCtx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: LqColors.danger,
+                            ),
+                            onPressed: () => Navigator.pop(dCtx, true),
+                            child: const Text('Unlink'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true) {
+                      setState(() => _busy = true);
+                      try {
+                        await AuthService.instance.unlinkGoogleAccount();
+                        await _checkStatus();
+                        if (context.mounted) {
+                          showLqMessage(
+                            context,
+                            'Google account unlinked successfully.',
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showLqMessage(
+                            context,
+                            e.toString().replaceAll('Exception: ', ''),
+                            error: true,
+                          );
+                        }
+                      } finally {
+                        if (mounted) setState(() => _busy = false);
+                      }
+                    }
+                  },
+                  child: const Text(
+                    'Unlink',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                )
+              : OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: LqColors.primary,
+                    side: const BorderSide(color: LqColors.primary),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    setState(() => _busy = true);
+                    try {
+                      final success =
+                          await AuthService.instance.linkGoogleAccount();
+                      await _checkStatus();
+                      if (context.mounted && success) {
+                        showLqMessage(
+                          context,
+                          'Google account linked successfully!',
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        showLqMessage(
+                          context,
+                          e.toString().replaceAll('Exception: ', ''),
+                          error: true,
+                        );
+                      }
+                    } finally {
+                      if (mounted) setState(() => _busy = false);
+                    }
+                  },
+                  child: const Text(
+                    'Connect',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+    );
+  }
 }
 
 class _SpotifySettingTile extends StatefulWidget {
@@ -1302,6 +1524,20 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   final _next = TextEditingController();
   final _confirm = TextEditingController();
   bool _busy = false;
+  bool _hasPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPasswordStatus();
+  }
+
+  Future<void> _checkPasswordStatus() async {
+    final has = await AuthService.instance.hasPassword();
+    if (mounted) {
+      setState(() => _hasPassword = has);
+    }
+  }
 
   @override
   void dispose() {
@@ -1314,8 +1550,10 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   @override
   Widget build(BuildContext context) => _SimpleFormPage(
     eyebrow: 'Security',
-    title: 'Password & security',
-    subtitle: 'Keep your account protected with a strong password.',
+    title: _hasPassword ? 'Password & security' : 'Set account password',
+    subtitle: _hasPassword
+        ? 'Keep your account protected with a strong password.'
+        : 'Create a password for your account to sign in with email.',
     headerIcon: Icons.shield_outlined,
     children: [
       Form(
@@ -1323,15 +1561,17 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
         autovalidateMode: AutovalidateMode.disabled,
         child: Column(
           children: [
-            LqField(
-              key: const Key('change_password_current_field'),
-              controller: _current,
-              label: 'Current password',
-              obscureText: true,
-              validator: (v) =>
-                  v == null || v.isEmpty ? 'Enter your current password.' : null,
-            ),
-            const SizedBox(height: 16),
+            if (_hasPassword) ...[
+              LqField(
+                key: const Key('change_password_current_field'),
+                controller: _current,
+                label: 'Current password',
+                obscureText: true,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Enter your current password.' : null,
+              ),
+              const SizedBox(height: 16),
+            ],
             LqNewPasswordField(
               key: const Key('change_password_new_field'),
               controller: _next,
@@ -1371,7 +1611,7 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
       showLqMessage(context, policyError, error: true);
       return;
     }
-    if (_next.text == _current.text) {
+    if (_hasPassword && _next.text == _current.text) {
       showLqMessage(
         context,
         'Choose a different password from your current one.',
@@ -1380,16 +1620,21 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
       return;
     }
     setState(() => _busy = true);
+    final wasAlreadySet = _hasPassword;
     try {
       await AuthService.instance.updatePassword(
-        currentPassword: _current.text,
+        currentPassword: wasAlreadySet ? _current.text : null,
         newPassword: _next.text,
       );
       if (mounted) {
         _current.clear();
         _next.clear();
         _confirm.clear();
-        showLqMessage(context, 'Password updated.');
+        setState(() => _hasPassword = true);
+        showLqMessage(
+          context,
+          wasAlreadySet ? 'Password updated.' : 'Password set successfully.',
+        );
       }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);

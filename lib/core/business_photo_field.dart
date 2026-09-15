@@ -49,7 +49,7 @@ class _BusinessPhotoFieldState extends State<BusinessPhotoField> {
         sourcePath: image.path,
         aspectRatioX: 16.0,
         aspectRatioY: 9.0,
-        lockAspectRatio: false,
+        lockAspectRatio: true,
         title: 'Crop Business Banner',
       );
       if (croppedBytes == null || !mounted) return;

@@ -1159,17 +1159,19 @@ class _CampaignEditorState extends State<CampaignEditor> {
                   ),
                 )
               : poster == null
-              ? const Column(
+              ? Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.upload_file, color: LqColors.primary),
-                    SizedBox(height: 8),
+                    const Icon(Icons.upload_file, color: LqColors.primary),
+                    const SizedBox(height: 8),
                     Text(
-                      'Upload campaign poster',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      type == 'voucher'
+                          ? 'Upload voucher banner'
+                          : 'Upload campaign banner',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    Text(
-                      'JPG, PNG, WEBP · under 5 MB · 4:3',
+                    const Text(
+                      'JPG, PNG, WEBP · under 5 MB · 16:9',
                       style: TextStyle(color: LqColors.muted, fontSize: 11),
                     ),
                   ],
@@ -2249,10 +2251,10 @@ class _CampaignEditorState extends State<CampaignEditor> {
       final croppedBytes = await cropImageFile(
         context: context,
         sourcePath: file.path,
-        aspectRatioX: 4.0,
-        aspectRatioY: 3.0,
-        lockAspectRatio: false,
-        title: type == 'voucher' ? 'Crop Voucher Poster' : 'Crop Campaign Poster',
+        aspectRatioX: 16.0,
+        aspectRatioY: 9.0,
+        lockAspectRatio: true,
+        title: type == 'voucher' ? 'Crop Voucher Banner' : 'Crop Campaign Banner',
       );
       if (croppedBytes == null || !mounted) return;
       setState(() {
