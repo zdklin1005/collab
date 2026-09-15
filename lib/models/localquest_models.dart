@@ -214,22 +214,89 @@ class Campaign {
   bool get isPromotionalVoucher =>
       type == 'voucher' && voucherType == 'promotional' && !isSeasonalVoucher;
 
+  /// Resolves the effective status of a campaign based on its dates:
+  ///
+  /// - If [endDate] is before **today** (end-of-day), the campaign is `inactive`
+  ///   (expired) regardless of [rawStatus].
+  /// - If [startDate] is **after** today AND [rawStatus] is not `'inactive'`
+  ///   (i.e., not manually paused), the campaign is `scheduled`.
+  /// - If the campaign is within the active window ([startDate] ≤ today ≤ [endDate])
+  ///   and [rawStatus] was `'scheduled'`, it automatically becomes `active`.
+  /// - Otherwise, [rawStatus] is returned as-is.
+  static String resolveStatus({
+    required String rawStatus,
+    required DateTime startDate,
+    required DateTime endDate,
+    DateTime? referenceDate,
+  }) {
+    final now = referenceDate ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+
+    // Expired: end day has fully passed
+    if (endDay.isBefore(today)) return 'inactive';
+
+    // Future start: campaign hasn't started yet
+    if (startDay.isAfter(today)) {
+      // Respect manual pause, but active should become scheduled
+      return rawStatus == 'inactive' ? 'inactive' : 'scheduled';
+    }
+
+    // Active window: startDay <= today <= endDay
+    // Auto-upgrade 'scheduled' to 'active' once the start date arrives
+    if (rawStatus == 'scheduled') return 'active';
+
+    return rawStatus;
+  }
+
+  /// The effective (date-resolved) status of this campaign.
+  String get effectiveStatus => Campaign.resolveStatus(
+    rawStatus: status,
+    startDate: startDate,
+    endDate: endDate,
+  );
+
+  /// True when the campaign's end date has passed (expired).
+  bool get isExpired {
+    final today = DateTime.now();
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    return endDay.isBefore(DateTime(today.year, today.month, today.day));
+  }
+
+  /// True when the campaign is currently live.
+  bool get isActive => effectiveStatus == 'active';
+
+  /// True when the campaign is waiting for its start date to arrive.
+  bool get isScheduled => effectiveStatus == 'scheduled';
+
+  /// True when the campaign is paused/expired (inactive).
+  bool get isInactive => effectiveStatus == 'inactive';
+
   factory Campaign.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     final validHrs =
         data['validHours'] as String? ?? data['redemptionHours'] as String?;
+    final startDate =
+        (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final endDate =
+        (data['endDate'] as Timestamp?)?.toDate() ??
+        DateTime.now().add(const Duration(days: 30));
+    final rawStatus = data['status'] as String? ?? 'active';
     return Campaign(
       id: doc.id,
       ownerId: data['ownerId'] as String? ?? '',
       name: data['name'] as String? ?? 'Untitled campaign',
       description: data['description'] as String? ?? '',
       type: data['type'] as String? ?? 'ad',
-      startDate: (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      endDate:
-          (data['endDate'] as Timestamp?)?.toDate() ??
-          DateTime.now().add(const Duration(days: 30)),
+      startDate: startDate,
+      endDate: endDate,
       businessId: data['businessId'] as String? ?? '',
-      status: data['status'] as String? ?? 'active',
+      status: Campaign.resolveStatus(
+        rawStatus: rawStatus,
+        startDate: startDate,
+        endDate: endDate,
+      ),
       views: (data['views'] as num?)?.toInt() ?? 0,
       claims: (data['claims'] as num?)?.toInt() ?? 0,
       imageUrl: data['imageUrl'] as String?,
@@ -463,8 +530,7 @@ class ChatConversation {
       lastMessage: data['lastMessage'] as String? ?? '',
       lastMessageTime:
           (data['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      unreadCount:
-          (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
+      unreadCount: (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
       lastSenderId: data['lastSenderId'] as String? ?? '',
     );
   }
@@ -526,10 +592,7 @@ class LeaderboardEntry {
     );
   }
 
-  LeaderboardEntry copyWith({
-    int? rank,
-    bool? isCurrentUser,
-  }) {
+  LeaderboardEntry copyWith({int? rank, bool? isCurrentUser}) {
     return LeaderboardEntry(
       userId: userId,
       displayName: displayName,

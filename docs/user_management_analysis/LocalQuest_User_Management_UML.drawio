@@ -1,0 +1,901 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" pages="5" agent="LocalQuest user-management artefact">
+  <diagram name="UC-OVERVIEW" id="uc_overview">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="b" parent="1" value="" style="rounded=0;whiteSpace=wrap;html=1;movable=0;resizable=0;rotatable=0;deletable=0;editable=0;locked=1;connectable=0;" vertex="1">
+          <mxGeometry x="250" y="70" width="730" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="title" parent="1" value="LocalQuest — User Management Module Overview" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=16;" vertex="1">
+          <mxGeometry x="475" y="80" width="300" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="tourist" parent="1" value="Tourist" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1">
+          <mxGeometry x="120" y="280" width="40" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="merchant" parent="1" value="Merchant" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1">
+          <mxGeometry x="120" y="590" width="40" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="reg" parent="1" value="Register Account" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="360" y="145" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="login" parent="1" value="Sign In" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="360" y="245" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="reset" parent="1" value="Recover Password" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="360" y="345" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="tourist_profile" parent="1" value="Manage Tourist Profile" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="360" y="445" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="security" parent="1" value="Manage Security &amp;amp; Preferences" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="360" y="555" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="account" parent="1" value="Sign Out / Delete Account" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="360" y="665" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="merchant_profile" parent="1" value="Manage Merchant Profile" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="690" y="245" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="business" parent="1" value="Manage Business Workspace" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="690" y="360" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="offers" parent="1" value="Manage Campaigns &amp;amp; Vouchers" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="690" y="500" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t0" parent="1" source="tourist" target="reg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1" parent="1" source="tourist" target="login" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2" parent="1" source="tourist" target="reset" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3" parent="1" source="tourist" target="tourist_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4" parent="1" source="tourist" target="security" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5" parent="1" source="tourist" target="account" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" parent="1" source="merchant" target="reg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m1" parent="1" source="merchant" target="login" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m2" parent="1" source="merchant" target="reset" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m3" parent="1" source="merchant" target="security" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m4" parent="1" source="merchant" target="account" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m5" parent="1" source="merchant" target="merchant_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m6" parent="1" source="merchant" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m7" parent="1" source="merchant" target="offers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="UC-UM-DETAILED" id="uc_um_detailed">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="980" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="b" parent="1" value="" style="rounded=0;whiteSpace=wrap;html=1;movable=0;resizable=0;rotatable=0;deletable=0;editable=0;locked=1;connectable=0;" vertex="1">
+          <mxGeometry x="280" y="60" width="950" height="820" as="geometry"/>
+        </mxCell>
+        <mxCell id="title" parent="1" value="LocalQuest — Detailed User Management Use Cases" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=16;" vertex="1">
+          <mxGeometry x="590" y="70" width="330" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="tourist" parent="1" value="Tourist" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1">
+          <mxGeometry x="120" y="245" width="40" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="merchant" parent="1" value="Merchant" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1">
+          <mxGeometry x="120" y="610" width="40" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="firebase" parent="1" value="Firebase Authentication &amp;amp; Firestore" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1">
+          <mxGeometry x="1320" y="305" width="40" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cloudinary" parent="1" value="Cloudinary" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;" vertex="1">
+          <mxGeometry x="1320" y="630" width="40" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="register" parent="1" value="Register Account" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="385" y="125" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate_register" parent="1" value="Validate Registration Details" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="670" y="125" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="verify_email" parent="1" value="Send Email Verification" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="965" y="125" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="login" parent="1" value="Sign In" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="385" y="245" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="authenticate" parent="1" value="Authenticate Credentials" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="670" y="245" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="recover" parent="1" value="Recover Password" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="965" y="245" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="tourist_profile" parent="1" value="Manage Tourist Profile" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="385" y="385" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="profile_photo" parent="1" value="Update Profile Photo" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="670" y="385" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="security" parent="1" value="Manage Account Security &amp;amp; Preferences" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="965" y="385" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="merchant_profile" parent="1" value="Manage Merchant Profile" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="385" y="535" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="business" parent="1" value="Manage Business Workspace" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="670" y="535" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="pin" parent="1" value="Pin Business Address" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="965" y="535" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="ssm" parent="1" value="Verify SSM Certificate" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="670" y="670" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="offers" parent="1" value="Manage Campaigns &amp;amp; Vouchers" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="965" y="670" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate_offer" parent="1" value="Validate Offer Details" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="965" y="790" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="signout" parent="1" value="Sign Out / Delete Account" style="ellipse;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="385" y="790" width="205" height="62" as="geometry"/>
+        </mxCell>
+        <mxCell id="t0" parent="1" source="tourist" target="register" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1" parent="1" source="tourist" target="login" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2" parent="1" source="tourist" target="recover" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3" parent="1" source="tourist" target="tourist_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4" parent="1" source="tourist" target="security" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5" parent="1" source="tourist" target="profile_photo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6" parent="1" source="tourist" target="signout" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" parent="1" source="merchant" target="register" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m1" parent="1" source="merchant" target="login" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m2" parent="1" source="merchant" target="recover" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m3" parent="1" source="merchant" target="security" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m4" parent="1" source="merchant" target="profile_photo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m5" parent="1" source="merchant" target="merchant_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m6" parent="1" source="merchant" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m7" parent="1" source="merchant" target="offers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m8" parent="1" source="merchant" target="signout" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f0" parent="1" source="firebase" target="register" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f1" parent="1" source="firebase" target="login" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f2" parent="1" source="firebase" target="recover" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f3" parent="1" source="firebase" target="tourist_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f4" parent="1" source="firebase" target="security" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f5" parent="1" source="firebase" target="merchant_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f6" parent="1" source="firebase" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f7" parent="1" source="firebase" target="offers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="f8" parent="1" source="firebase" target="signout" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="c0" parent="1" source="cloudinary" target="profile_photo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="c1" parent="1" source="cloudinary" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2" parent="1" source="cloudinary" target="offers" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="i1" parent="1" source="register" target="validate_register" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="i1_label" parent="i1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i2" parent="1" source="register" target="verify_email" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="i2_label" parent="i2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i3" parent="1" source="login" target="authenticate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="i3_label" parent="i3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1" parent="1" source="profile_photo" target="tourist_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1_label" parent="e1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;extend&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" parent="1" source="profile_photo" target="merchant_profile" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2_label" parent="e2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;extend&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i4" parent="1" source="merchant_profile" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="i4_label" parent="i4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" parent="1" source="pin" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3_label" parent="e3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;extend&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" parent="1" source="ssm" target="business" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4_label" parent="e4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;extend&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="i5" parent="1" source="offers" target="validate_offer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=open;endFill=0;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="i5_label" parent="i5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="&amp;lt;&amp;lt;include&amp;gt;&amp;gt;" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="AD-UM-1 Account Registration, Sign-In and Recovery" id="ad_um_1_account_registration,_sign_in_and_recovery">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="lane0" parent="1" value="User" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="60" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="lane1" parent="1" value="LocalQuest" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="520" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="lane2" parent="1" value="Firebase Authentication / Firestore" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="980" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="title" parent="1" value="AD UM 1 Account Registration, Sign In and Recovery" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=16;" vertex="1">
+          <mxGeometry x="550" y="25" width="400" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="start" parent="1" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;" vertex="1">
+          <mxGeometry x="245" y="115" width="22" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="choose" parent="1" value="Choose account type and
+authentication action" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="170" y="165" width="170" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="choice" parent="1" value="" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.decision;whiteSpace=wrap;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="205" y="255" width="85" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="reg_data" parent="1" value="Enter registration
+details" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="365" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="login_data" parent="1" value="Enter email/username
+and password" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="505" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="forgot" parent="1" value="Request password reset" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="650" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate" parent="1" value="Validate required fields
+and password policy" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="600" y="365" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="create" parent="1" value="Create account and
+role profile" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="600" y="445" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="email" parent="1" value="Send verification email
+and open role home" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="600" y="525" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="throttle" parent="1" value="Check 10-minute
+login throttle" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="600" y="505" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="auth" parent="1" value="Authenticate credentials
+and load role profile" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="600" y="585" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="failure" parent="1" value="" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.decision;whiteSpace=wrap;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="665" y="670" width="85" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="lock" parent="1" value="Record failed attempt;
+lock after 5 failures" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="600" y="760" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="route" parent="1" value="Route to tourist or
+merchant interface" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1030" y="555" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="reset_send" parent="1" value="Send password-reset
+email" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1030" y="650" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="show_error" parent="1" value="Show validation or
+login error" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1030" y="760" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="end" parent="1" value="" style="ellipse;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1">
+          <mxGeometry x="1125" y="850" width="22" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="e0" parent="1" source="start" target="choose" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" parent="1" source="choose" target="choice" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" parent="1" source="choice" target="reg_data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2_label" parent="e2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Register]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" parent="1" source="choice" target="login_data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3_label" parent="e3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Sign in]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" parent="1" source="choice" target="forgot" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4_label" parent="e4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Forgot password]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" parent="1" source="reg_data" target="validate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" parent="1" source="validate" target="create" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6_label" parent="e6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Valid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" parent="1" source="validate" target="show_error" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7_label" parent="e7" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Invalid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" parent="1" source="create" target="email" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" parent="1" source="email" target="route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" parent="1" source="login_data" target="throttle" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" parent="1" source="throttle" target="auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11_label" parent="e11" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Not locked]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" parent="1" source="throttle" target="show_error" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12_label" parent="e12" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Locked]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" parent="1" source="auth" target="failure" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" parent="1" source="failure" target="route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14_label" parent="e14" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Valid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" parent="1" source="failure" target="lock" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15_label" parent="e15" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Invalid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" parent="1" source="lock" target="show_error" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" parent="1" source="forgot" target="reset_send" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" parent="1" source="reset_send" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e19" parent="1" source="route" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e20" parent="1" source="show_error" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="AD-UM-2 Tourist Account and Profile Management" id="ad_um_2_tourist_account_and_profile_management">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="lane0" parent="1" value="Tourist" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="60" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="lane1" parent="1" value="LocalQuest" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="520" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="lane2" parent="1" value="Cloudinary / Firebase" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="980" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="title" parent="1" value="AD UM 2 Tourist Account and Profile Management" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=16;" vertex="1">
+          <mxGeometry x="550" y="25" width="400" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="start" parent="1" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;" vertex="1">
+          <mxGeometry x="245" y="115" width="22" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="open" parent="1" value="Open Profile" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="170" y="165" width="170" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="choice" parent="1" value="" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.decision;whiteSpace=wrap;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="205" y="260" width="85" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="details" parent="1" value="Edit name, username,
+phone or birthday" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="365" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="prefs" parent="1" value="Change preferences,
+security or linked sign-in" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="515" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="photo" parent="1" value="Choose and crop
+profile photo" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="665" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="delete" parent="1" value="Confirm account deletion
+and enter current password" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="805" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate" parent="1" value="Validate input and
+current session" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="365" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="save" parent="1" value="Save profile or
+preference changes" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="445" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="reauth" parent="1" value="Re-authenticate before
+security/deletion action" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="585" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="imagecheck" parent="1" value="Validate photo file
+and upload request" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="705" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="remove" parent="1" value="Remove owned data
+and account record" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="805" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="cloud" parent="1" value="Store image and return
+secure image URL" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="705" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="persist" parent="1" value="Persist user/profile
+changes in Firestore" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="445" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="success" parent="1" value="Refresh profile and
+show confirmation" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="535" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="return" parent="1" value="Return to role selection" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="805" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="end" parent="1" value="" style="ellipse;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1">
+          <mxGeometry x="1125" y="895" width="22" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="e0" parent="1" source="start" target="open" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" parent="1" source="open" target="choice" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" parent="1" source="choice" target="details" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2_label" parent="e2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Edit details]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" parent="1" source="choice" target="prefs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3_label" parent="e3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Security/preferences]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" parent="1" source="choice" target="photo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4_label" parent="e4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Photo]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" parent="1" source="choice" target="delete" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_label" parent="e5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Delete account]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" parent="1" source="details" target="validate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" parent="1" source="validate" target="save" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7_label" parent="e7" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Valid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" parent="1" source="validate" target="success" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8_label" parent="e8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Invalid: show error]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" parent="1" source="save" target="persist" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" parent="1" source="persist" target="success" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" parent="1" source="prefs" target="reauth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" parent="1" source="reauth" target="persist" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12_label" parent="e12" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Authorised]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" parent="1" source="reauth" target="success" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13_label" parent="e13" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Rejected: show error]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" parent="1" source="photo" target="imagecheck" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" parent="1" source="imagecheck" target="cloud" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15_label" parent="e15" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Valid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" parent="1" source="imagecheck" target="success" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16_label" parent="e16" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Invalid: show error]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" parent="1" source="cloud" target="persist" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" parent="1" source="delete" target="reauth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e19" parent="1" source="reauth" target="remove" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="715" y="650"/>
+              <mxPoint x="715" y="830"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19_label" parent="e19" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Deletion confirmed]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e20" parent="1" source="remove" target="return" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e21" parent="1" source="success" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e22" parent="1" source="return" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="AD-UM-3 Merchant Business and Offer Management" id="ad_um_3_merchant_business_and_offer_management">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="lane0" parent="1" value="Merchant" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="60" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="lane1" parent="1" value="LocalQuest" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="520" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="lane2" parent="1" value="Cloudinary / Firebase / Address Service" style="swimlane;html=1;startSize=28;whiteSpace=wrap;fillColor=#f7f9fc;" vertex="1">
+          <mxGeometry x="980" y="70" width="460" height="860" as="geometry"/>
+        </mxCell>
+        <mxCell id="title" parent="1" value="AD UM 3 Merchant Business and Offer Management" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontStyle=1;fontSize=16;" vertex="1">
+          <mxGeometry x="550" y="25" width="400" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="start" parent="1" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;" vertex="1">
+          <mxGeometry x="245" y="115" width="22" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="open" parent="1" value="Open Merchant Profile
+or Campaign workspace" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="165" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="choice" parent="1" value="" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.decision;whiteSpace=wrap;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="205" y="260" width="85" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="business_form" parent="1" value="Create or edit business
+workspace details" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="365" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="pin" parent="1" value="Search, use current location
+or pin business address" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="445" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="cert" parent="1" value="Optional: scan/upload
+SSM certificate" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="535" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="offer_form" parent="1" value="Create/edit campaign
+or voucher details" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="700" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="review" parent="1" value="Review and submit" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="150" y="780" width="210" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate_b" parent="1" value="Validate business fields,
+category and dietary status" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="365" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="geocode" parent="1" value="Reverse-geocode selected
+pin into address fields" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="445" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="ocr" parent="1" value="Analyse SSM text, number,
+expiry and name match" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="535" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="validate_o" parent="1" value="Validate owner, active
+business, dates and limits" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="610" y="740" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="upload_b" parent="1" value="Optional: upload business
+photo/certificate" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="455" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="save_b" parent="1" value="Save workspace and
+verification status" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="565" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="upload_o" parent="1" value="Optional: upload
+campaign poster" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="700" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="save_o" parent="1" value="Save offer and resolve
+active/scheduled/inactive" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;" vertex="1">
+          <mxGeometry x="1035" y="790" width="220" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="end" parent="1" value="" style="ellipse;shape=endState;fillColor=#000000;strokeColor=#000000;" vertex="1">
+          <mxGeometry x="1135" y="890" width="22" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="e0" parent="1" source="start" target="open" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" parent="1" source="open" target="choice" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" parent="1" source="choice" target="business_form" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2_label" parent="e2" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Business workspace]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" parent="1" source="choice" target="offer_form" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3_label" parent="e3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Campaign/voucher]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" parent="1" source="business_form" target="validate_b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" parent="1" source="validate_b" target="pin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5_label" parent="e5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Valid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" parent="1" source="validate_b" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6_label" parent="e6" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Invalid: show error]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" parent="1" source="pin" target="geocode" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" parent="1" source="geocode" target="cert" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" parent="1" source="cert" target="ocr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" parent="1" source="ocr" target="upload_b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10_label" parent="e10" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Continue]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" parent="1" source="upload_b" target="save_b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" parent="1" source="save_b" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" parent="1" source="offer_form" target="review" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" parent="1" source="review" target="validate_o" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" parent="1" source="validate_o" target="upload_o" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15_label" parent="e15" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Valid]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" parent="1" source="validate_o" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16_label" parent="e16" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;" value="[Invalid: show error]" vertex="1" connectable="0">
+          <mxGeometry relative="1" as="geometry" x="0" y="-1">
+            <mxPoint as="offset"/>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" parent="1" source="upload_o" target="save_o" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" parent="1" source="save_o" target="end" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

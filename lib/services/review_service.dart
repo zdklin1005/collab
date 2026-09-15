@@ -8,6 +8,7 @@ class Review {
     required this.id,
     required this.userId,
     required this.businessId,
+    this.businessName = '',
     required this.rating,
     required this.text,
     required this.photoUrls,
@@ -17,6 +18,7 @@ class Review {
   final String id;
   final String userId;
   final String businessId;
+  final String businessName;
   final double rating;
   final String text;
   final List<String> photoUrls;
@@ -28,6 +30,7 @@ class Review {
       id: doc.id,
       userId: data['userId'] as String? ?? '',
       businessId: data['businessId'] as String? ?? '',
+      businessName: data['businessName'] as String? ?? '',
       rating: (data['rating'] as num?)?.toDouble() ?? 0,
       text: data['text'] as String? ?? '',
       photoUrls: List<String>.from(data['photoUrls'] as List? ?? const []),
@@ -39,6 +42,7 @@ class Review {
     return {
       'userId': userId,
       'businessId': businessId,
+      'businessName': businessName,
       'rating': rating,
       'text': text,
       'photoUrls': photoUrls,
@@ -123,6 +127,7 @@ class ReviewService {
   Future<ReviewSubmissionResult> submitReview({
     required String uid,
     required String businessId,
+    String businessName = '',
     required double rating,
     String text = '',
     List<String> photoUrls = const [],
@@ -148,6 +153,7 @@ class ReviewService {
       id: '',
       userId: uid,
       businessId: businessId,
+      businessName: businessName,
       rating: rating,
       text: text,
       photoUrls: photoUrls,
@@ -197,5 +203,20 @@ class ReviewService {
     final total = (data['ratingTotal'] as num?)?.toDouble() ?? 0;
     if (count == 0) return 0;
     return total / count;
+  }
+
+  /// Live stream of every review [uid] has posted, most recent first,
+  /// across all businesses.
+  Stream<List<Review>> watchReviewsForUser(String uid) {
+    try {
+      return db
+          .collectionGroup('reviews')
+          .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((snap) => snap.docs.map(Review.fromDoc).toList());
+    } catch (_) {
+      return const Stream.empty();
+    }
   }
 }

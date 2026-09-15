@@ -206,6 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _busy = false;
+  bool _googleBusy = false;
 
   @override
   void dispose() {
@@ -315,6 +316,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           icon: Icons.login,
                           onPressed: _submit,
                         ),
+                        const SizedBox(height: 16),
+                        const LqDashedDivider(color: LqColors.line),
+                        const SizedBox(height: 16),
+                        LqGoogleButton(
+                          key: const Key('login_google_btn'),
+                          label: 'Sign in with Google',
+                          busy: _googleBusy,
+                          onPressed: _signInWithGoogle,
+                        ),
                         const SizedBox(height: 12),
                         Wrap(
                           alignment: WrapAlignment.center,
@@ -328,13 +338,23 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             TextButton(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      SignupScreen(role: widget.role),
-                                ),
-                              ),
+                              onPressed: () async {
+                                final createdEmail =
+                                    await Navigator.push<String>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        SignupScreen(role: widget.role),
+                                  ),
+                                );
+                                if (createdEmail != null &&
+                                    createdEmail.isNotEmpty) {
+                                  setState(() {
+                                    _email.text = createdEmail;
+                                    _password.clear();
+                                  });
+                                }
+                              },
                               child: const Text('Create an account'),
                             ),
                           ],
@@ -408,6 +428,34 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _googleBusy = true);
+    try {
+      final profile = await AuthService.instance.signInWithGoogle(
+        expectedRole: widget.role,
+      );
+      if (profile == null) return;
+      BiometricAuthService.instance.markJustAuthenticated();
+      await BiometricAuthService.instance.saveLastUser(
+        email: profile.email,
+        role: widget.role.name,
+        username: profile.username,
+      );
+      await AccountIdentifierCache.cache(
+        username: profile.username,
+        email: profile.email,
+      );
+      if (mounted) {
+        showLqMessage(context, 'Welcome back to LocalQuest!');
+        Navigator.popUntil(context, (route) => route.isFirst);
+      }
+    } on LocalQuestException catch (error) {
+      if (mounted) showLqMessage(context, error.message, error: true);
+    } finally {
+      if (mounted) setState(() => _googleBusy = false);
+    }
+  }
 }
 
 class SignupScreen extends StatefulWidget {
@@ -434,6 +482,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirm = TextEditingController();
   int _step = 2;
   bool _busy = false;
+  bool _googleBusy = false;
   LqLocation? _businessLocation;
   String? _dietaryStatus;
 
@@ -755,6 +804,15 @@ class _SignupScreenState extends State<SignupScreen> {
       ),
       const SizedBox(height: 24),
       LqButton(label: 'Continue', onPressed: _next),
+      const SizedBox(height: 16),
+      const LqDashedDivider(color: LqColors.line),
+      const SizedBox(height: 16),
+      LqGoogleButton(
+        key: const Key('signup_google_btn_step2'),
+        label: 'Sign up with Google',
+        busy: _googleBusy,
+        onPressed: _signUpWithGoogle,
+      ),
     ],
   );
 
@@ -802,6 +860,15 @@ class _SignupScreenState extends State<SignupScreen> {
         busy: _busy,
         icon: Icons.person_add_alt_1,
         onPressed: _create,
+      ),
+      const SizedBox(height: 16),
+      const LqDashedDivider(color: LqColors.line),
+      const SizedBox(height: 16),
+      LqGoogleButton(
+        key: const Key('signup_google_btn_step3'),
+        label: 'Sign up with Google',
+        busy: _googleBusy,
+        onPressed: _signUpWithGoogle,
       ),
       const SizedBox(height: 8),
       TextButton(
@@ -865,14 +932,128 @@ class _SignupScreenState extends State<SignupScreen> {
           birthday: _parseDate(_birthday.text),
         );
       }
+      final registeredEmail = _email.text.trim();
+      await AuthService.instance.signOut();
       if (mounted) {
-        showLqMessage(context, 'Your LocalQuest account has been created.');
-        Navigator.popUntil(context, (route) => route.isFirst);
+        showLqMessage(
+          context,
+          'Account created! A verification link was sent to your email. Please sign in.',
+        );
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context, registeredEmail);
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LoginScreen(role: widget.role),
+            ),
+          );
+        }
       }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _signUpWithGoogle() async {
+    if (merchant) {
+      if (_name.text.trim().isEmpty ||
+          _category.text.trim().isEmpty ||
+          _address.text.trim().isEmpty ||
+          _phone.text.trim().isEmpty) {
+        if (_step == 3) {
+          setState(() => _step = 2);
+        }
+        _form.currentState?.validate();
+        showLqMessage(
+          context,
+          'Please fill in your business details first.',
+          error: true,
+        );
+        return;
+      }
+      if (lqIsDietaryCategory(_category.text) &&
+          (_dietaryStatus == null || _dietaryStatus!.trim().isEmpty)) {
+        if (_step == 3) {
+          setState(() => _step = 2);
+        }
+        _form.currentState?.validate();
+        showLqMessage(
+          context,
+          'Choose a Halal & dietary certification.',
+          error: true,
+        );
+        return;
+      }
+    }
+
+    setState(() => _googleBusy = true);
+    try {
+      final additionalData = <String, dynamic>{
+        if (merchant) ...{
+          'businessName': _name.text.trim(),
+          'category': _category.text.trim(),
+          'address': _address.text.trim(),
+          'area': _city.text.trim(),
+          'postcode': _postcode.text.trim(),
+          'state': _state.text.trim(),
+          'phone': _phone.text.trim(),
+          'latitude': _businessLocation?.latitude,
+          'longitude': _businessLocation?.longitude,
+          'dietaryStatus': lqIsDietaryCategory(_category.text)
+              ? _dietaryStatus
+              : null,
+        } else ...{
+          if (_name.text.trim().isNotEmpty) 'displayName': _name.text.trim(),
+          if (_username.text.trim().isNotEmpty) 'username': _username.text.trim(),
+          if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
+          if (_birthday.text.trim().isNotEmpty)
+            'birthday': _parseDate(_birthday.text),
+        },
+      };
+
+      final profile = await AuthService.instance.signInWithGoogle(
+        expectedRole: widget.role,
+        additionalData: additionalData,
+      );
+
+      if (profile == null) return;
+
+      BiometricAuthService.instance.markJustAuthenticated();
+      await BiometricAuthService.instance.saveLastUser(
+        email: profile.email,
+        role: widget.role.name,
+        username: profile.username,
+      );
+      await AccountIdentifierCache.cache(
+        username: profile.username,
+        email: profile.email,
+      );
+
+      final registeredEmail = profile.email;
+      await AuthService.instance.signOut();
+      if (mounted) {
+        showLqMessage(
+          context,
+          'Account created successfully! Please sign in.',
+        );
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context, registeredEmail);
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LoginScreen(role: widget.role),
+            ),
+          );
+        }
+      }
+    } on LocalQuestException catch (error) {
+      if (mounted) showLqMessage(context, error.message, error: true);
+    } finally {
+      if (mounted) setState(() => _googleBusy = false);
     }
   }
 

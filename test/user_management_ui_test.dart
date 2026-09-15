@@ -616,7 +616,9 @@ void main() {
       expect(find.text('RECENT ADS'), findsOneWidget);
       expect(find.text('Summer Drink Special'), findsWidgets);
       expect(find.text('LATEST VOUCHERS'), findsOneWidget);
-      expect(find.text('RM10 Welcome Voucher'), findsOneWidget);
+      // The expired ad means the voucher becomes the active campaign, so it
+      // appears in both the LIVE CAMPAIGN spotlight and the LATEST VOUCHERS list.
+      expect(find.text('RM10 Welcome Voucher'), findsWidgets);
       expect(find.text('42 claimed · ACTIVE'), findsOneWidget);
     },
   );
