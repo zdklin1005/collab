@@ -55,6 +55,7 @@ class MapExpClaimStore {
     required String uid,
     required RewardMarker reward,
     required bool simulationActive,
+    Future<void> Function(Transaction transaction)? validateBeforeAward,
   }) async {
     if (simulationActive) {
       return const MapExpClaimResult(MapExpClaimStatus.simulationBlocked);
@@ -118,6 +119,20 @@ class MapExpClaimStore {
       }
 
       // This reads the account and award log, then queues their writes.
+      if (validateBeforeAward != null) {
+        await validateBeforeAward(transaction);
+      }
+
+      // Source/device checks are asynchronous. The reward may have expired
+      // or crossed the daily boundary while those checks were running.
+      final validatedAt = _clock().toUtc();
+
+      if (!reward.canDisplayAt(validatedAt) ||
+          !DailyRewardGenerator.dayStartUtc(
+            validatedAt,
+          ).isAtSameMomentAs(batchStart)) {
+        return const MapExpClaimResult(MapExpClaimStatus.rewardUnavailable);
+      }
       // No transaction reads may follow this call.
       final receipt = await _rewards.awardMapExpInTransaction(
         transaction,
@@ -141,6 +156,7 @@ class MapExpClaimStore {
         'awardId': receipt.awardId,
         'batchStart': Timestamp.fromDate(batchStart),
         'collectedAt': FieldValue.serverTimestamp(),
+        'cooldownId': cooldownRef.id,
       });
 
       transaction.set(cooldownRef, {
@@ -148,7 +164,8 @@ class MapExpClaimStore {
         'batchStart': Timestamp.fromDate(batchStart),
         'lastSpawnId': reward.id,
         'lastCollectedAt': FieldValue.serverTimestamp(),
-        'nextEligibleAt': Timestamp.fromDate(now.add(cooldown)),
+        'nextEligibleAt': Timestamp.fromDate(_clock().toUtc().add(cooldown)),
+        'lastClaimId': claimId,
       });
 
       return MapExpClaimResult(MapExpClaimStatus.recorded, receipt: receipt);

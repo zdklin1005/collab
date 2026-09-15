@@ -14,13 +14,22 @@ import '../../services/map_repository.dart';
 import 'live_exp_collection_check.dart';
 import 'reward_collection_check.dart';
 import 'out_of_range_dialog.dart';
-import 'reward_preview_dialog.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../services/map_exp_history_repository.dart';
 
 import '../../services/map_exp_visibility.dart';
+
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../../services/live_map_exp_claim_service.dart';
+import '../../services/map_exp_claim_store.dart';
+import 'live_exp_claim_dialog.dart';
+import 'reward_success_screen.dart';
+import '../../services/live_map_voucher_claim_service.dart';
+import 'live_voucher_claim_dialog.dart';
+import '../../services/map_voucher_history_repository.dart';
 
 typedef LiveExpAvailabilityCheck =
     Future<LiveRewardCollectionCheck> Function(
@@ -55,6 +64,7 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     with WidgetsBindingObserver {
   Timer? _dayTimer;
   bool _dialogOpen = false;
+  final Set<String> _confirmedClaimIds = <String>{};
 
   @override
   void initState() {
@@ -70,6 +80,7 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.userId != widget.userId) {
+      _confirmedClaimIds.clear();
       _startHistoryWatch();
     }
   }
@@ -143,6 +154,7 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
 
   Future<void> _showPreview(RewardMarker reward) async {
     final now = DateTime.now();
+    final touristId = widget.userId;
 
     if (_dialogOpen ||
         !_historyReady ||
@@ -186,7 +198,7 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
       final distance = check.localCheck?.distanceMeters;
       var focusRequested = false;
 
-      final shouldFocus = await showDialog<bool>(
+      final shouldFocus = await showDialog<Object?>(
         context: context,
         useRootNavigator: false,
         barrierDismissible: false,
@@ -225,20 +237,143 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
             );
           }
 
-          return RewardPreviewDialog(
+          if (reward.type == RewardType.exp) {
+            return LiveExpClaimDialog(
+              reward: reward,
+              locationName: locationName,
+              onCollect: () => _collectLiveExp(reward, touristId),
+            );
+          }
+          return LiveVoucherClaimDialog(
             reward: reward,
             locationName: locationName,
-            isDemo: false,
-            noteOverride: reward.type == RewardType.exp
-                ? 'Your current location passed the local range checks.\n'
-                      'Collection is not enabled yet. No EXP has been awarded.'
-                : 'Your current location passed the local range checks.\n'
-                      'Voucher claiming is not enabled yet. No voucher has been issued.',
-            // Keep Collect disabled until real claims are connected.
-            onCollect: null,
+            onCollect: () => _collectLiveVoucher(reward, touristId),
           );
         },
       );
+
+      if (shouldFocus is MapExpClaimResult) {
+        if (!mounted ||
+            widget.userId != touristId ||
+            FirebaseAuth.instance.currentUser?.uid != touristId) {
+          return;
+        }
+
+        final result = shouldFocus;
+
+        if (result.status == MapExpClaimStatus.recorded ||
+            result.status == MapExpClaimStatus.alreadyClaimed) {
+          setState(() {
+            _confirmedClaimIds.add(reward.id);
+          });
+        }
+
+        if (ModalRoute.of(context)?.isCurrent != true ||
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed) {
+          return;
+        }
+
+        if (result.status == MapExpClaimStatus.recorded) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (successContext) => RewardSuccessScreen.liveExp(
+                reward: reward,
+                result: result,
+                onContinue: () => Navigator.of(successContext).pop(),
+              ),
+            ),
+          );
+        } else {
+          final message = switch (result.status) {
+            MapExpClaimStatus.alreadyClaimed =>
+              'You already collected this reward. No extra EXP was added.',
+            MapExpClaimStatus.checkpointOnCooldown =>
+              'This checkpoint is still on cooldown.',
+            MapExpClaimStatus.simulationBlocked =>
+              'Turn off movement testing before collecting real EXP.',
+            MapExpClaimStatus.rewardUnavailable =>
+              'This reward changed or expired. Choose a current marker.',
+            MapExpClaimStatus.recorded => '',
+          };
+
+          await showDialog<void>(
+            context: context,
+            useRootNavigator: false,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Collection unavailable'),
+              content: Text(message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Back to map'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return;
+      }
+
+      if (shouldFocus is LiveMapVoucherClaimResult) {
+        if (!mounted ||
+            widget.userId != touristId ||
+            FirebaseAuth.instance.currentUser?.uid != touristId) {
+          return;
+        }
+
+        final result = shouldFocus;
+
+        if (result.status == LiveMapVoucherClaimStatus.recorded ||
+            result.status == LiveMapVoucherClaimStatus.alreadyClaimed) {
+          setState(() {
+            _confirmedClaimIds.add(reward.id);
+          });
+        }
+
+        if (ModalRoute.of(context)?.isCurrent != true ||
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed) {
+          return;
+        }
+
+        if (result.status == LiveMapVoucherClaimStatus.recorded) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (successContext) => RewardSuccessScreen.liveVoucher(
+                reward: reward,
+                result: result,
+                onContinue: () => Navigator.of(successContext).pop(),
+              ),
+            ),
+          );
+        } else {
+          final message =
+              result.status == LiveMapVoucherClaimStatus.alreadyClaimed
+              ? 'You already claimed this voucher.'
+              : 'This voucher is no longer available.';
+
+          await showDialog<void>(
+            context: context,
+            useRootNavigator: false,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Voucher unavailable'),
+              content: Text(message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Back to map'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return;
+      }
 
       if (shouldFocus == true &&
           mounted &&
@@ -252,6 +387,10 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
   }
 
   StreamSubscription<List<Campaign>>? _voucherSubscription;
+  StreamSubscription<MapHistorySnapshot<Set<String>>>?
+  _claimedVoucherHistorySubscription;
+
+  MapHistorySnapshot<Set<String>>? _claimedVoucherHistory;
   List<Campaign> _campaigns = const [];
   bool _loadingVouchers = true;
   bool _voucherLoadFailed = false;
@@ -295,8 +434,12 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
   List<RewardMarker> _rewardsAt(DateTime instant) {
     final claims = _claimHistory;
     final cooldowns = _cooldownHistory;
+    final voucherClaims = _claimedVoucherHistory;
 
-    if (!_historyReady || claims == null || cooldowns == null) {
+    if (!_historyReady ||
+        claims == null ||
+        cooldowns == null ||
+        voucherClaims == null) {
       return const <RewardMarker>[];
     }
 
@@ -309,9 +452,16 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
       instant: instant,
     );
 
+    final unclaimedVouchers = generated.where((reward) {
+      if (reward.type != RewardType.voucher) return true;
+
+      final voucherId = reward.voucherId;
+      return voucherId != null && !voucherClaims.data.contains(voucherId);
+    });
+
     return filterMapExpHistory(
-      rewards: generated,
-      claimedRewardIds: claims.data,
+      rewards: unclaimedVouchers,
+      claimedRewardIds: {...claims.data, ..._confirmedClaimIds},
       cooldowns: cooldowns.data,
       now: instant,
     );
@@ -338,7 +488,9 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
                   width: 28,
                   height: 28,
                   child: Tooltip(
-                    message: '${reward.title} · Preview only',
+                    message: reward.type == RewardType.exp
+                        ? reward.title
+                        : '${reward.title} · Preview only',
                     child: Material(
                       color: reward.type == RewardType.voucher
                           ? const Color(0xFF3267D8)
@@ -427,12 +579,19 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
   bool get _historyReady =>
       !_historyFailed &&
       _claimHistory?.serverConfirmed == true &&
-      _cooldownHistory?.serverConfirmed == true;
+      _cooldownHistory?.serverConfirmed == true &&
+      _claimedVoucherHistory?.serverConfirmed == true;
 
   void _cancelHistoryWatch() {
     _historyTimeout?.cancel();
 
     final claims = _claimHistorySubscription;
+    final voucherClaims = _claimedVoucherHistorySubscription;
+    _claimedVoucherHistorySubscription = null;
+
+    if (voucherClaims != null) {
+      unawaited(voucherClaims.cancel());
+    }
     final cooldowns = _cooldownHistorySubscription;
 
     _claimHistorySubscription = null;
@@ -449,6 +608,7 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
   void _startHistoryWatch() {
     final requestId = ++_historyRequestId;
     _cancelHistoryWatch();
+    _claimedVoucherHistory = null;
 
     _claimHistory = null;
     _cooldownHistory = null;
@@ -457,8 +617,15 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     void fail(Object error, StackTrace stackTrace) {
       if (!mounted || requestId != _historyRequestId) return;
 
-      _historyTimeout?.cancel();
+      // Ignore further events from this failed pair until Retry starts
+      // a new pair of subscriptions.
+      _historyRequestId++;
+      _claimedVoucherHistory = null;
+      _cancelHistoryWatch();
+
       setState(() {
+        _claimHistory = null;
+        _cooldownHistory = null;
         _historyFailed = true;
       });
     }
@@ -466,7 +633,8 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     void receivedHistory() {
       // Only both server-confirmed streams can clear a previous failure.
       if (_claimHistory?.serverConfirmed == true &&
-          _cooldownHistory?.serverConfirmed == true) {
+          _cooldownHistory?.serverConfirmed == true &&
+          _claimedVoucherHistory?.serverConfirmed == true) {
         _historyFailed = false;
         _historyTimeout?.cancel();
       }
@@ -513,6 +681,100 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     } catch (error, stackTrace) {
       fail(error, stackTrace);
     }
+    final voucherRepository = MapVoucherHistoryRepository(
+      firestore: FirebaseFirestore.instance,
+    );
+
+    _claimedVoucherHistorySubscription = voucherRepository
+        .watchClaimedVoucherIds(widget.userId)
+        .listen((snapshot) {
+          if (!mounted || requestId != _historyRequestId) return;
+
+          setState(() {
+            _claimedVoucherHistory = snapshot;
+            receivedHistory();
+          });
+        }, onError: fail);
+  }
+
+  Future<LiveMapVoucherClaimResult> _collectLiveVoucher(
+    RewardMarker reward,
+    String touristId,
+  ) async {
+    final check = await widget.onCheckExpAvailability(
+      reward,
+      _rewardsAt,
+      () =>
+          mounted &&
+          widget.userId == touristId &&
+          _historyReady &&
+          !_loadingVouchers &&
+          !_voucherLoadFailed,
+    );
+
+    if (!mounted ||
+        widget.userId != touristId ||
+        FirebaseAuth.instance.currentUser?.uid != touristId ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      throw StateError(
+        'Return to Discover with the same account and try again.',
+      );
+    }
+
+    if (!check.canAttemptClaim) {
+      throw StateError(_expAvailabilityMessage(check));
+    }
+
+    return LiveMapVoucherClaimService().collect(uid: touristId, reward: reward);
+  }
+
+  Future<MapExpClaimResult> _collectLiveExp(
+    RewardMarker reward,
+    String touristId,
+  ) async {
+    Future<void> revalidate() async {
+      if (!mounted ||
+          widget.userId != touristId ||
+          FirebaseAuth.instance.currentUser?.uid != touristId ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        throw const MapExpClaimBlocked(
+          'Return to Discover with the same account and try again.',
+        );
+      }
+
+      final check = await widget.onCheckExpAvailability(
+        reward,
+        _rewardsAt,
+        () =>
+            mounted &&
+            widget.userId == touristId &&
+            _historyReady &&
+            !_loadingVouchers &&
+            !_voucherLoadFailed,
+      );
+
+      if (!mounted ||
+          widget.userId != touristId ||
+          FirebaseAuth.instance.currentUser?.uid != touristId) {
+        throw const MapExpClaimBlocked(
+          'Your account changed. Return to Discover and try again.',
+        );
+      }
+
+      if (!check.canAttemptClaim) {
+        throw MapExpClaimBlocked(_expAvailabilityMessage(check));
+      }
+    }
+
+    await revalidate();
+
+    return await LiveMapExpClaimService().collect(
+      uid: touristId,
+      reward: reward,
+      // The simulated position was validated by the Discover development UI.
+      simulationActive: false,
+      revalidateDeviceAndReward: revalidate,
+    );
   }
 
   @override

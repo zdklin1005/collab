@@ -9,6 +9,7 @@ import 'package:collab/models/reward_checkpoint.dart';
 import 'package:collab/services/reward_checkpoint_parser.dart';
 
 import 'package:collab/services/map_voucher_data_validation.dart';
+import 'package:collab/services/live_business_ad_availability.dart';
 
 bool isMappableBusiness(Business business) {
   final latitude = business.latitude;
@@ -163,5 +164,39 @@ class MapRepository {
           campaigns.sort((a, b) => a.id.compareTo(b.id));
           return List<Campaign>.unmodifiable(campaigns);
         });
+  }
+
+  Stream<List<Campaign>> watchActiveBusinessCampaigns() {
+    return _firestore.collection('campaigns').snapshots().map((snapshot) {
+      final campaigns = <Campaign>[];
+
+      for (final document in snapshot.docs) {
+        final data = document.data();
+        final type = data['type'];
+
+        final valid = switch (type) {
+          'voucher' => hasValidMapVoucherData(data),
+          'ad' => hasValidBusinessAdData(data),
+          _ => false,
+        };
+
+        if (!valid) {
+          continue;
+        }
+
+        try {
+          campaigns.add(Campaign.fromDoc(document));
+        } on TypeError {
+          debugPrint('Map: skipped malformed business campaign ${document.id}');
+        }
+      }
+
+      campaigns.sort((first, second) {
+        final expiryOrder = first.endDate.compareTo(second.endDate);
+        return expiryOrder != 0 ? expiryOrder : first.id.compareTo(second.id);
+      });
+
+      return List<Campaign>.unmodifiable(campaigns);
+    });
   }
 }

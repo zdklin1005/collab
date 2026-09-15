@@ -54,6 +54,11 @@ import 'map_test_movement_controls.dart';
 
 import 'live_exp_preview_layer.dart';
 import 'live_exp_collection_check.dart';
+import 'live_business_voucher_section.dart';
+import 'live_business_promotion_section.dart';
+import 'live_business_voucher_details_dialog.dart';
+import '../../services/live_business_voucher_claim_service.dart';
+import 'live_business_voucher_collection_check.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
@@ -111,6 +116,11 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     return LatLng(position.latitude, position.longitude);
   }
+
+  final LiveBusinessVoucherClaimService _liveBusinessVoucherClaimService =
+      LiveBusinessVoucherClaimService();
+
+  static const double _liveBusinessVoucherClaimRadiusMeters = 50;
 
   void _startTestLocation() {
     final start = MapMovementTestConfig.start;
@@ -216,6 +226,12 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _pendingStop = Future<void>.value();
   MapStyle _mapStyle = MapStyle.standard;
 
+  StreamSubscription<List<Campaign>>? _businessCampaignSubscription;
+  List<Campaign> _liveBusinessCampaigns = const [];
+  bool _loadingBusinessCampaigns = true;
+  bool _businessCampaignLoadFailed = false;
+  int _businessCampaignRequestId = 0;
+
   Position? _position;
   String? _selectedBusinessCategory;
   String? _selectedLandmarkCategory;
@@ -279,6 +295,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   String? _locationError;
   int _requestId = 0;
 
+  bool _liveBusinessVoucherDetailsOpen = false;
+
   // Temporary claim radius, separate from business discovery.
   static const double _demoBusinessVoucherClaimRadiusMeters = 50;
 
@@ -288,6 +306,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     if (!MapTestConfig.enabled) {
       _startLiveBusinesses();
       _startLiveLandmarks();
+      _startLiveBusinessCampaigns();
     }
     WidgetsBinding.instance.addObserver(this);
 
@@ -766,11 +785,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _showLocationDetails(MapLocation location) async {
     if (!mounted || _locationDetailsOpen || !location.canDisplay) return;
 
-    final matchingBusinesses =
-        MapTestConfig.enabled &&
-            location.type == MapLocationType.business &&
-            location.businessId != null
+    final businessSource = MapTestConfig.enabled
         ? MockMapData.businesses
+        : _liveBusinesses;
+
+    final matchingBusinesses =
+        location.type == MapLocationType.business && location.businessId != null
+        ? businessSource
               .where((business) => business.id == location.businessId)
               .toList()
         : <Business>[];
@@ -880,14 +901,32 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               onClose: () => Navigator.of(sheetContext).pop(),
               voucherSection: business == null
                   ? null
-                  : BusinessVoucherSection(
+                  : MapTestConfig.enabled
+                  ? BusinessVoucherSection(
                       business: business,
                       offers: offers,
                       checkedAt: checkedAt,
                       onSelected: (offer) {
                         unawaited(openVoucher(offer));
                       },
+                    )
+                  : _buildLiveBusinessVoucherSection(
+                      business,
+                      onSelected: (campaign) {
+                        unawaited(
+                          _showLiveBusinessVoucherDetails(
+                            business: business,
+                            campaign: campaign,
+                            onRecorded: () {
+                              Navigator.of(sheetContext).pop();
+                            },
+                          ),
+                        );
+                      },
                     ),
+              promotionSection: business == null || MapTestConfig.enabled
+                  ? null
+                  : _buildLiveBusinessPromotionSection(business),
             ),
           );
         },
@@ -1114,12 +1153,25 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     if (subscription != null) {
       unawaited(subscription.cancel());
     }
+    _businessCampaignRequestId++;
+
+    final businessCampaignSubscription = _businessCampaignSubscription;
+    if (businessCampaignSubscription != null) {
+      unawaited(businessCampaignSubscription.cancel());
+    }
 
     _landmarkRequestId++;
 
     final landmarkSubscription = _landmarkSubscription;
     if (landmarkSubscription != null) {
       unawaited(landmarkSubscription.cancel());
+    }
+
+    _businessCampaignRequestId++;
+
+    final voucherCampaignSubscription = _businessCampaignSubscription;
+    if (voucherCampaignSubscription != null) {
+      unawaited(voucherCampaignSubscription.cancel());
     }
     super.dispose();
   }
@@ -1872,10 +1924,19 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                       'away in a straight line when detected.',
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Live promotions and voucher claiming '
-                      'are not connected to this popup yet.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                    _buildLiveBusinessPromotionSection(business, compact: true),
+                    const SizedBox(height: 12),
+                    _buildLiveBusinessVoucherSection(
+                      business,
+                      onSelected: (campaign) {
+                        unawaited(
+                          _showLiveBusinessVoucherDetails(
+                            business: business,
+                            campaign: campaign,
+                            onRecorded: () => closeWith(false),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -2393,36 +2454,129 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
   static const double _liveExpCollectionRadiusMeters = 50;
 
+  void _startLiveBusinessCampaigns() {
+    final requestId = ++_businessCampaignRequestId;
+    final previous = _businessCampaignSubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _liveBusinessCampaigns = const [];
+    _loadingBusinessCampaigns = true;
+    _businessCampaignLoadFailed = false;
+
+    _businessCampaignSubscription = MapRepository()
+        .watchActiveBusinessCampaigns()
+        .listen(
+          (campaigns) {
+            if (!mounted || requestId != _businessCampaignRequestId) return;
+
+            setState(() {
+              _liveBusinessCampaigns = campaigns;
+              _loadingBusinessCampaigns = false;
+              _businessCampaignLoadFailed = false;
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!mounted || requestId != _businessCampaignRequestId) return;
+
+            setState(() {
+              _liveBusinessCampaigns = const [];
+              _loadingBusinessCampaigns = false;
+              _businessCampaignLoadFailed = true;
+            });
+
+            debugPrint('Map: business campaign loading failed: $error');
+          },
+        );
+  }
+
+  Widget _buildLiveBusinessVoucherSection(
+    Business business, {
+    ValueChanged<Campaign>? onSelected,
+  }) {
+    if (_loadingBusinessCampaigns) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('Loading available vouchers…'),
+          ],
+        ),
+      );
+    }
+
+    if (_businessCampaignLoadFailed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Available vouchers could not be loaded.'),
+          TextButton(
+            onPressed: () => setState(_startLiveBusinessCampaigns),
+            child: const Text('Retry vouchers'),
+          ),
+        ],
+      );
+    }
+
+    return LiveBusinessVoucherSection(
+      business: business,
+      campaigns: _liveBusinessCampaigns,
+      checkedAt: DateTime.now(),
+      onSelected: onSelected,
+    );
+  }
+
+  Widget _buildLiveBusinessPromotionSection(
+    Business business, {
+    bool compact = false,
+  }) {
+    if (_loadingBusinessCampaigns || _businessCampaignLoadFailed) {
+      return const SizedBox.shrink();
+    }
+
+    return LiveBusinessPromotionSection(
+      business: business,
+      campaigns: _liveBusinessCampaigns,
+      checkedAt: DateTime.now(),
+      compact: compact,
+    );
+  }
+
   Future<LiveRewardCollectionCheck> _checkLiveExpAvailability(
     RewardMarker selectedReward,
     List<RewardMarker> Function(DateTime instant) currentRewardsAt,
     bool Function() rewardSourceReady,
   ) async {
-    if (MapMovementTestConfig.enabled) {
-      return const LiveRewardCollectionCheck(
-        LiveRewardCollectionStatus.simulationBlocked,
-      );
-    }
-
     final touristId = widget.user.id;
     final requestId = _requestId;
+    final simulationActive = MapMovementTestConfig.enabled;
 
     bool deviceAccessAllowed;
 
-    try {
-      final servicesEnabled = await Geolocator.isLocationServiceEnabled();
-      final permission = await Geolocator.checkPermission();
+    if (simulationActive) {
+      deviceAccessAllowed = _displayPoint != null;
+    } else {
+      try {
+        final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+        final permission = await Geolocator.checkPermission();
 
-      deviceAccessAllowed =
-          servicesEnabled &&
-          (permission == LocationPermission.whileInUse ||
-              permission == LocationPermission.always);
-    } catch (_) {
-      deviceAccessAllowed = false;
+        deviceAccessAllowed =
+            servicesEnabled &&
+            (permission == LocationPermission.whileInUse ||
+                permission == LocationPermission.always);
+      } catch (_) {
+        deviceAccessAllowed = false;
+      }
     }
 
-    // Device access checks are asynchronous. Recheck the screen/session
-    // before reading the current position and generated rewards.
     if (!mounted || !_foreground || widget.user.id != touristId) {
       return const LiveRewardCollectionCheck(
         LiveRewardCollectionStatus.localCheckFailed,
@@ -2449,9 +2603,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         rewardSourceReady();
 
     final now = DateTime.now();
-
-    // Use the native GPS stream—not the displayed/simulated map point.
-    final position = _locationError == null ? _position : null;
+    final simulatedPoint = simulationActive ? _displayPoint : null;
+    final position = !simulationActive && _locationError == null
+        ? _position
+        : null;
 
     return checkLiveRewardCollection(
       selectedReward: selectedReward,
@@ -2459,15 +2614,134 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           ? currentRewardsAt(now)
           : const <RewardMarker>[],
       sourceReady: sourceReady,
-      simulationActive: MapMovementTestConfig.enabled,
+
+      // Simulation was intentionally enabled through the development UI.
+      simulationActive: false,
+
       now: now,
       appIsForeground: _foreground,
-      locationAllowed: _locationAllowed && deviceAccessAllowed,
+      locationAllowed: simulationActive
+          ? simulatedPoint != null
+          : _locationAllowed && deviceAccessAllowed,
       radiusMeters: _liveExpCollectionRadiusMeters,
-      userLatitude: position?.latitude,
-      userLongitude: position?.longitude,
-      accuracyMeters: position?.accuracy,
-      recordedAt: position?.timestamp,
+      userLatitude: simulatedPoint?.latitude ?? position?.latitude,
+      userLongitude: simulatedPoint?.longitude ?? position?.longitude,
+      accuracyMeters: simulationActive ? 1 : position?.accuracy,
+      recordedAt: simulationActive ? now : position?.timestamp,
+    );
+  }
+
+  Future<void> _showLiveBusinessVoucherDetails({
+    required Business business,
+    required Campaign campaign,
+    required VoidCallback onRecorded,
+  }) async {
+    if (!mounted || !_foreground || _liveBusinessVoucherDetailsOpen) {
+      return;
+    }
+
+    _liveBusinessVoucherDetailsOpen = true;
+
+    try {
+      final result = await showDialog<LiveBusinessVoucherClaimResult>(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) {
+          return LiveBusinessVoucherDetailsDialog(
+            campaign: campaign,
+            onCheck: () {
+              return _checkLiveBusinessVoucherClaim(
+                business: business,
+                campaign: campaign,
+              );
+            },
+            onClaim: () {
+              return _claimLiveBusinessVoucher(
+                business: business,
+                campaign: campaign,
+              );
+            },
+          );
+        },
+      );
+
+      if (!mounted ||
+          result == null ||
+          result.status != LiveBusinessVoucherClaimStatus.recorded) {
+        return;
+      }
+
+      // Close the nearby popup or business-details sheet underneath.
+      onRecorded();
+
+      // Let the previous modal finish closing before opening success.
+      await Future<void>.delayed(Duration.zero);
+
+      if (!mounted || !_foreground) return;
+
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (successContext) {
+            return RewardSuccessScreen.businessVoucher(
+              result: result,
+              onContinue: () {
+                Navigator.of(successContext).pop();
+              },
+            );
+          },
+        ),
+      );
+    } finally {
+      _liveBusinessVoucherDetailsOpen = false;
+    }
+  }
+
+  Future<LiveBusinessVoucherCollectionCheck> _checkLiveBusinessVoucherClaim({
+    required Business business,
+    required Campaign campaign,
+  }) async {
+    final now = DateTime.now();
+    final simulationActive = MapMovementTestConfig.enabled;
+    final simulatedPoint = simulationActive ? _displayPoint : null;
+    final position = simulationActive ? null : _position;
+
+    return checkLiveBusinessVoucherCollection(
+      touristId: widget.user.id,
+      business: business,
+      voucherId: campaign.id,
+      currentCampaigns: _liveBusinessCampaigns,
+      now: now,
+      appIsForeground: mounted && _foreground,
+      locationAllowed: _locationAllowed,
+      radiusMeters: _liveBusinessVoucherClaimRadiusMeters,
+      userLatitude: simulationActive
+          ? simulatedPoint?.latitude
+          : position?.latitude,
+      userLongitude: simulationActive
+          ? simulatedPoint?.longitude
+          : position?.longitude,
+      accuracyMeters: simulationActive
+          ? simulatedPoint == null
+                ? null
+                : 1
+          : position?.accuracy,
+      recordedAt: simulationActive
+          ? simulatedPoint == null
+                ? null
+                : now
+          : position?.timestamp,
+    );
+  }
+
+  Future<LiveBusinessVoucherClaimResult> _claimLiveBusinessVoucher({
+    required Business business,
+    required Campaign campaign,
+  }) {
+    return _liveBusinessVoucherClaimService.claim(
+      uid: widget.user.id,
+      businessId: business.id,
+      voucherId: campaign.id,
     );
   }
 

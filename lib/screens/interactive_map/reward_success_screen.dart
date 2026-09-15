@@ -5,6 +5,8 @@ import '../../services/demo_map_claim_store.dart';
 import '../../services/exp_award_service.dart';
 import '../../services/exp_progress.dart';
 import '../../services/map_exp_claim_store.dart';
+import '../../services/live_map_voucher_claim_service.dart';
+import '../../services/live_business_voucher_claim_service.dart';
 
 class RewardSuccessScreen extends StatelessWidget {
   const RewardSuccessScreen({
@@ -17,10 +19,14 @@ class RewardSuccessScreen extends StatelessWidget {
     this.demoExpBefore = 0,
     this.demoTargetExp = 3000,
   }) : _liveReward = null,
+       _liveVoucher = false,
+       _liveVoucherTitle = null,
        _liveReceipt = null;
 
   final DemoMapClaim? claim;
   final RewardMarker? _liveReward;
+  final bool _liveVoucher;
+  final String? _liveVoucherTitle;
   final ExpAwardReceipt? _liveReceipt;
   final VoidCallback onContinue;
 
@@ -39,6 +45,8 @@ class RewardSuccessScreen extends StatelessWidget {
     required this.onContinue,
   }) : claim = null,
        _liveReward = reward,
+       _liveVoucher = false,
+       _liveVoucherTitle = null,
        _liveReceipt = result.receipt,
        currentLevel = 1,
        demoExpBefore = 0,
@@ -59,12 +67,58 @@ class RewardSuccessScreen extends StatelessWidget {
     }
   }
 
+  RewardSuccessScreen.businessVoucher({
+    super.key,
+    required LiveBusinessVoucherClaimResult result,
+    required this.onContinue,
+  }) : claim = null,
+       _liveReward = null,
+       _liveReceipt = null,
+       _liveVoucher = true,
+       _liveVoucherTitle = result.campaign?.name,
+       currentLevel = 1,
+       demoExpBefore = 0,
+       demoTargetExp = 3000 {
+    if (result.status != LiveBusinessVoucherClaimStatus.recorded ||
+        result.campaign == null) {
+      throw ArgumentError(
+        'Business voucher success requires a newly recorded claim.',
+      );
+    }
+  }
+
+  RewardSuccessScreen.liveVoucher({
+    super.key,
+    required RewardMarker reward,
+    required LiveMapVoucherClaimResult result,
+    required this.onContinue,
+  }) : claim = null,
+       _liveReward = reward,
+       _liveReceipt = null,
+       _liveVoucher = true,
+       _liveVoucherTitle = result.campaign?.name,
+       currentLevel = 1,
+       demoExpBefore = 0,
+       demoTargetExp = 3000 {
+    if (result.status != LiveMapVoucherClaimStatus.recorded ||
+        result.campaign == null ||
+        reward.type != RewardType.voucher ||
+        reward.voucherId != result.campaign!.id) {
+      throw ArgumentError(
+        'Live voucher success requires a newly recorded matching claim.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final reward = _liveReward ?? claim!.reward;
+    final reward = _liveReward ?? claim?.reward;
     final receipt = _liveReceipt;
-    final isLive = receipt != null;
-    final isExp = reward.type == RewardType.exp;
+    final isLive = receipt != null || _liveVoucher;
+    final isExp = reward?.type == RewardType.exp;
+    final displayTitle = isExp
+        ? '${reward!.expAmount} EXP'
+        : _liveVoucherTitle ?? reward?.title ?? 'Voucher';
 
     return Scaffold(
       body: Container(
@@ -120,7 +174,9 @@ class RewardSuccessScreen extends StatelessWidget {
                                 ],
                               ),
                               child: Icon(
-                                isExp ? Icons.star_rounded : Icons.bolt_rounded,
+                                isExp
+                                    ? Icons.star_rounded
+                                    : Icons.confirmation_number_outlined,
                                 size: 82,
                                 color: isExp
                                     ? const Color(0xFFFFC914)
@@ -146,7 +202,7 @@ class RewardSuccessScreen extends StatelessWidget {
                             DemoExpProgressCard(
                               currentLevel: currentLevel,
                               expBefore: demoExpBefore,
-                              expGained: reward.expAmount,
+                              expGained: reward!.expAmount,
                               targetExp: demoTargetExp,
                             )
                           else
@@ -160,9 +216,7 @@ class RewardSuccessScreen extends StatelessWidget {
                               child: Column(
                                 children: [
                                   Text(
-                                    isExp
-                                        ? '${reward.expAmount} EXP'
-                                        : reward.title,
+                                    displayTitle,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       color: Color(0xFF17233E),
@@ -174,6 +228,8 @@ class RewardSuccessScreen extends StatelessWidget {
                                   Text(
                                     isExp
                                         ? 'Demo EXP collection recorded.'
+                                        : _liveVoucher
+                                        ? 'Voucher added to Rewards.'
                                         : 'Demo voucher collection recorded.',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
@@ -186,6 +242,8 @@ class RewardSuccessScreen extends StatelessWidget {
                                   Text(
                                     isExp
                                         ? 'Your real EXP total and level have not changed.'
+                                        : _liveVoucher
+                                        ? 'Your voucher claim was successfully saved.'
                                         : 'No real voucher has been added to Rewards.',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
@@ -200,7 +258,9 @@ class RewardSuccessScreen extends StatelessWidget {
                           const SizedBox(height: 24),
                           Text(
                             isLive
-                                ? 'Your map collection and EXP award were saved.'
+                                ? isExp
+                                      ? 'Your map collection and EXP award were saved.'
+                                      : 'Your voucher claim was saved to Rewards.'
                                 : 'This demo collection is saved on this device for your account. '
                                       'Its marker stays hidden after restarting the app. '
                                       'No real EXP or voucher was issued.',

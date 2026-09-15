@@ -54,15 +54,13 @@ service cloud.firestore {
 
       // Each tourist may read their own map collection history.
       // Claim writes remain disabled until the collection step is ready.
-      match /rewardClaims/{claimId} {
-        allow read: if owns(uid);
-        allow write: if false;
-      }
+match /rewardClaims/{claimId} {
+  allow read, write: if owns(uid);
+}
 
-      match /checkpointCooldowns/{checkpointId} {
-        allow read: if owns(uid);
-        allow write: if false;
-      }
+match /checkpointCooldowns/{checkpointId} {
+  allow read, write: if owns(uid);
+}
 
       // From main: vouchers claimed via the merchant/campaign side.
       match /claimedVouchers/{voucherId} {

@@ -7,12 +7,14 @@ class MapLocationDetails extends StatelessWidget {
     super.key,
     required this.location,
     required this.onClose,
+    this.promotionSection,
     this.voucherSection,
     this.isDemo = false,
   });
 
   final MapLocation location;
   final VoidCallback onClose;
+  final Widget? promotionSection;
   final Widget? voucherSection;
   final bool isDemo;
 
@@ -312,10 +314,11 @@ class MapLocationDetails extends StatelessWidget {
                         'Website / social link',
                         location.website.trim(),
                       ),
-                    _section(
-                      'Promotions',
-                      'Merchant campaign information is not connected yet.',
-                    ),
+                    promotionSection ??
+                        _section(
+                          'Promotions',
+                          'No current promotions are available.',
+                        ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 20),
                       child:
