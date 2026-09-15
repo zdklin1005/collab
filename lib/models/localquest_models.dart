@@ -250,3 +250,295 @@ class Campaign {
     );
   }
 }
+
+class Friend {
+  const Friend({
+    required this.id,
+    required this.friendUserId,
+    required this.displayName,
+    required this.username,
+    this.photoUrl,
+    this.level = 1,
+    this.note,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String friendUserId;
+  final String displayName;
+  final String username;
+  final String? photoUrl;
+  final int level;
+  final String? note;
+  final DateTime createdAt;
+
+  factory Friend.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return Friend(
+      id: doc.id,
+      friendUserId: data['friendUserId'] as String? ?? doc.id,
+      displayName: data['displayName'] as String? ?? 'Tourist Explorer',
+      username: data['username'] as String? ?? '@explorer',
+      photoUrl: data['photoUrl'] as String?,
+      level: (data['level'] as num?)?.toInt() ?? 1,
+      note: data['note'] as String?,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
+}
+
+class FriendRequest {
+  const FriendRequest({
+    required this.id,
+    required this.fromUserId,
+    required this.toUserId,
+    required this.fromDisplayName,
+    required this.fromUsername,
+    this.fromPhotoUrl,
+    this.fromLevel = 1,
+    this.status = 'pending',
+    required this.createdAt,
+  });
+
+  final String id;
+  final String fromUserId;
+  final String toUserId;
+  final String fromDisplayName;
+  final String fromUsername;
+  final String? fromPhotoUrl;
+  final int fromLevel;
+  final String status;
+  final DateTime createdAt;
+
+  factory FriendRequest.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return FriendRequest(
+      id: doc.id,
+      fromUserId: data['fromUserId'] as String? ?? '',
+      toUserId: data['toUserId'] as String? ?? '',
+      fromDisplayName: data['fromDisplayName'] as String? ?? 'Explorer',
+      fromUsername: data['fromUsername'] as String? ?? '@explorer',
+      fromPhotoUrl: data['fromPhotoUrl'] as String?,
+      fromLevel: (data['fromLevel'] as num?)?.toInt() ?? 1,
+      status: data['status'] as String? ?? 'pending',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
+}
+
+class UserNote {
+  const UserNote({
+    required this.userId,
+    required this.text,
+    required this.createdAt,
+    this.songTitle,
+    this.songArtist,
+    this.albumArtUrl,
+    this.spotifyUrl,
+  });
+
+  final String userId;
+  final String text;
+  final DateTime createdAt;
+  final String? songTitle;
+  final String? songArtist;
+  final String? albumArtUrl;
+  final String? spotifyUrl;
+
+  bool get hasMusic => songTitle != null && songTitle!.trim().isNotEmpty;
+
+  factory UserNote.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return UserNote(
+      userId: doc.id,
+      text: data['text'] as String? ?? '',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      songTitle: data['songTitle'] as String?,
+      songArtist: data['songArtist'] as String?,
+      albumArtUrl: data['albumArtUrl'] as String?,
+      spotifyUrl: data['spotifyUrl'] as String?,
+    );
+  }
+}
+
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.chatId,
+    required this.senderId,
+    required this.text,
+    required this.createdAt,
+    this.isRead = false,
+    this.type = 'text',
+    this.imageUrl,
+    this.latitude,
+    this.longitude,
+    this.locationName,
+  });
+
+  final String id;
+  final String chatId;
+  final String senderId;
+  final String text;
+  final DateTime createdAt;
+  final bool isRead;
+  final String type;
+  final String? imageUrl;
+  final double? latitude;
+  final double? longitude;
+  final String? locationName;
+
+  bool get isImage => type == 'image';
+  bool get isLocation => type == 'location';
+  bool get isText => type == 'text';
+
+  factory ChatMessage.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return ChatMessage(
+      id: doc.id,
+      chatId: data['chatId'] as String? ?? '',
+      senderId: data['senderId'] as String? ?? '',
+      text: data['text'] as String? ?? '',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      isRead: data['isRead'] as bool? ?? false,
+      type: data['type'] as String? ?? 'text',
+      imageUrl: data['imageUrl'] as String?,
+      latitude: (data['latitude'] as num?)?.toDouble(),
+      longitude: (data['longitude'] as num?)?.toDouble(),
+      locationName: data['locationName'] as String?,
+    );
+  }
+}
+
+class ChatConversation {
+  const ChatConversation({
+    required this.id,
+    required this.participants,
+    required this.otherUserId,
+    required this.otherDisplayName,
+    required this.otherUsername,
+    this.otherPhotoUrl,
+    this.lastMessage = '',
+    required this.lastMessageTime,
+    this.unreadCount = 0,
+    this.lastSenderId = '',
+  });
+
+  final String id;
+  final List<String> participants;
+  final String otherUserId;
+  final String otherDisplayName;
+  final String otherUsername;
+  final String? otherPhotoUrl;
+  final String lastMessage;
+  final DateTime lastMessageTime;
+  final int unreadCount;
+  final String lastSenderId;
+
+  factory ChatConversation.fromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+    String currentUserId,
+  ) {
+    final data = doc.data() ?? {};
+    final participants = List<String>.from(data['participants'] as List? ?? []);
+    final otherUserId = participants.firstWhere(
+      (p) => p != currentUserId,
+      orElse: () => '',
+    );
+
+    final userSummaries = Map<String, dynamic>.from(
+      data['userSummaries'] as Map? ?? {},
+    );
+    final otherSummary = Map<String, dynamic>.from(
+      userSummaries[otherUserId] as Map? ?? {},
+    );
+
+    return ChatConversation(
+      id: doc.id,
+      participants: participants,
+      otherUserId: otherUserId,
+      otherDisplayName: otherSummary['displayName'] as String? ?? 'Friend',
+      otherUsername: otherSummary['username'] as String? ?? '@friend',
+      otherPhotoUrl: otherSummary['photoUrl'] as String?,
+      lastMessage: data['lastMessage'] as String? ?? '',
+      lastMessageTime:
+          (data['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      unreadCount:
+          (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
+      lastSenderId: data['lastSenderId'] as String? ?? '',
+    );
+  }
+}
+
+class LeaderboardEntry {
+  const LeaderboardEntry({
+    required this.userId,
+    required this.displayName,
+    required this.username,
+    this.photoUrl,
+    required this.level,
+    required this.exp,
+    required this.rank,
+    this.isCurrentUser = false,
+  });
+
+  final String userId;
+  final String displayName;
+  final String username;
+  final String? photoUrl;
+  final int level;
+  final int exp;
+  final int rank;
+  final bool isCurrentUser;
+
+  factory LeaderboardEntry.fromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    int rank = 1,
+    String? currentUserId,
+  }) {
+    final data = doc.data() ?? {};
+    return LeaderboardEntry(
+      userId: doc.id,
+      displayName: data['displayName'] as String? ?? 'Penang Explorer',
+      username: data['username'] as String? ?? '@explorer',
+      photoUrl: data['photoUrl'] as String?,
+      level: (data['level'] as num?)?.toInt() ?? 1,
+      exp: (data['exp'] as num?)?.toInt() ?? 0,
+      rank: rank,
+      isCurrentUser: currentUserId != null && currentUserId == doc.id,
+    );
+  }
+
+  factory LeaderboardEntry.fromAppUser(
+    AppUser user, {
+    int rank = 1,
+    String? currentUserId,
+  }) {
+    return LeaderboardEntry(
+      userId: user.id,
+      displayName: user.displayName,
+      username: user.username,
+      photoUrl: user.photoUrl,
+      level: user.level,
+      exp: user.exp,
+      rank: rank,
+      isCurrentUser: currentUserId != null && currentUserId == user.id,
+    );
+  }
+
+  LeaderboardEntry copyWith({
+    int? rank,
+    bool? isCurrentUser,
+  }) {
+    return LeaderboardEntry(
+      userId: userId,
+      displayName: displayName,
+      username: username,
+      photoUrl: photoUrl,
+      level: level,
+      exp: exp,
+      rank: rank ?? this.rank,
+      isCurrentUser: isCurrentUser ?? this.isCurrentUser,
+    );
+  }
+}

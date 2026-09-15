@@ -14,6 +14,18 @@ import '../services/localquest_services.dart';
 import '../services/biometric_auth_service.dart';
 
 import 'interactive_map/interactive_map_screen.dart';
+import 'ai_assistant_sheet.dart';
+import 'friends_screen.dart';
+import 'leaderboard_screen.dart';
+import 'direct_chat_screen.dart';
+import '../services/direct_chat_service.dart';
+import '../services/social_service.dart';
+import '../services/spotify_service.dart';
+import '../services/location_service.dart';
+import 'rewards_tab.dart';
+import 'mission_list_screen.dart';
+import 'write_review_screen.dart';
+import '../services/mission_service.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({
@@ -32,53 +44,122 @@ class _TouristHomeState extends State<TouristHome> {
   late int _index = widget.initialIndex;
 
   @override
+  void initState() {
+    super.initState();
+    final historyEnabled = widget.user.preferences['locationHistory'] as bool? ?? true;
+    LocationTrackerService.instance.setLocationHistoryEnabled(historyEnabled);
+    if (historyEnabled) {
+      LocationTrackerService.instance.startTracking(userId: widget.user.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    LocationTrackerService.instance.stopTracking();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final profile = TouristProfileScreen(user: widget.user);
+    final profile = TouristProfileScreen(
+      user: widget.user,
+      onNavigateToRewards: () => setState(() => _index = 1),
+    );
     final pages = [
       InteractiveMapScreen(user: widget.user),
-      const _ModulePlaceholder(
-        title: 'Rewards',
-        subtitle: 'Rewards and missions belong to the Reward & Review module.',
-      ),
+      RewardsTab(user: widget.user),
       profile,
     ];
-    return LqPage(
-      bottomNavigationBar: LqFloatingNavBar(
-        selectedIndex: _index,
-        onSelected: (value) => setState(() => _index = value),
-        items: const [
-          (Icons.explore_outlined, 'Discover'),
-          (Icons.confirmation_num_outlined, 'Rewards'),
-          (Icons.person_outline, 'Profile'),
-        ],
-        profileInitials: initialsFor(widget.user.displayName),
-        profilePhotoUrl: widget.user.photoUrl,
+    return Scaffold(
+      body: LqPage(
+        bottomNavigationBar: LqFloatingNavBar(
+          selectedIndex: _index,
+          onSelected: (value) => setState(() => _index = value),
+          items: const [
+            (Icons.explore_outlined, 'Discover'),
+            (Icons.confirmation_num_outlined, 'Rewards'),
+            (Icons.person_outline, 'Profile'),
+          ],
+          profileInitials: initialsFor(widget.user.displayName),
+          profilePhotoUrl: widget.user.photoUrl,
+        ),
+        child: pages[_index],
       ),
-      child: pages[_index],
+      floatingActionButtonLocation: const _AboveNavBarFabLocation(),
+      floatingActionButton: _FloatingAiGuideButton(user: widget.user),
     );
   }
 }
 
-class _ModulePlaceholder extends StatelessWidget {
-  const _ModulePlaceholder({required this.title, required this.subtitle});
-  final String title;
-  final String subtitle;
+class _AboveNavBarFabLocation extends StandardFabLocation
+    with FabEndOffsetX, FabFloatOffsetY {
+  const _AboveNavBarFabLocation();
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(24),
-    child: Center(
-      child: LqTitleBlock(
-        eyebrow: 'LocalQuest',
-        title: title,
-        subtitle: subtitle,
+  double getOffsetY(ScaffoldPrelayoutGeometry scaffoldGeometry, double adjustment) {
+    return super.getOffsetY(scaffoldGeometry, adjustment) - 76.0;
+  }
+}
+
+class _FloatingAiGuideButton extends StatelessWidget {
+  const _FloatingAiGuideButton({required this.user});
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      elevation: 6,
+      shadowColor: LqColors.primary.withValues(alpha: 0.4),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () {
+          final lastPos = LocationTrackerService.instance.lastPosition;
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => AiAssistantSheet(
+              user: user,
+              currentLat: lastPos?.latitude ?? 5.4141,
+              currentLng: lastPos?.longitude ?? 100.3288,
+            ),
+          );
+        },
+        child: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF3267D4), Color(0xFF6C5CE7)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: 26,
+            ),
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class TouristProfileScreen extends StatelessWidget {
-  const TouristProfileScreen({super.key, required this.user});
+  const TouristProfileScreen({
+    super.key,
+    required this.user,
+    this.onNavigateToRewards,
+  });
   final AppUser user;
+  final VoidCallback? onNavigateToRewards;
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
@@ -90,28 +171,74 @@ class TouristProfileScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
+            const Expanded(
+              child: LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
+            ),
+            const SizedBox(width: 8),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton.filledTonal(
-                  tooltip: 'Notifications',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Direct Chat',
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => NotificationsScreen(user: user),
+                      builder: (_) => FriendsScreen(
+                        currentUser: user,
+                        initialTabIndex: 1,
+                      ),
                     ),
                   ),
-                  icon: const Icon(Icons.notifications_none),
+                  icon: const Icon(Icons.chat_bubble_outline, size: 20),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                StreamBuilder<List<ChatConversation>>(
+                  stream: DirectChatService.instance.streamConversations(user.id),
+                  builder: (context, chatSnap) {
+                    final hasUnreadChat = (chatSnap.data ?? []).any((c) => c.unreadCount > 0);
+                    return StreamBuilder<List<FriendRequest>>(
+                      stream: SocialService.instance.streamFriendRequests(user.id),
+                      builder: (context, reqSnap) {
+                        final hasPendingReq = (reqSnap.data ?? []).isNotEmpty;
+                        final hasNotif = hasUnreadChat || hasPendingReq;
+                        return Badge(
+                          isLabelVisible: hasNotif,
+                          smallSize: 8,
+                          backgroundColor: LqColors.primary,
+                          child: IconButton.filledTonal(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            tooltip: 'Notifications',
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => NotificationsScreen(user: user),
+                              ),
+                            ),
+                            icon: const Icon(Icons.notifications_none, size: 20),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(width: 4),
                 IconButton.filledTonal(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Settings',
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => SettingsScreen(user: user),
                     ),
                   ),
-                  icon: const Icon(Icons.settings_outlined),
+                  icon: const Icon(Icons.settings_outlined, size: 20),
                 ),
               ],
             ),
@@ -238,53 +365,44 @@ class TouristProfileScreen extends StatelessWidget {
                 icon: Icons.confirmation_num_outlined,
                 title: 'My vouchers',
                 subtitle: '${user.voucherCount} ready to use',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'My vouchers',
-                  eyebrow: 'Rewards',
-                  icon: Icons.confirmation_num_outlined,
-                  message:
-                      'You currently have ${user.voucherCount} voucher${user.voucherCount == 1 ? '' : 's'} ready in your passport. Present active voucher barcodes in-store to participating local merchants.',
-                ),
+                onTap: () {},
               ),
               _JourneyItem(
                 icon: Icons.star_outline,
                 title: 'Reviews & ratings',
                 subtitle: '${user.reviewCount} posted',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Reviews & ratings',
-                  eyebrow: 'Storyteller',
-                  icon: Icons.star_outline,
-                  message:
-                      'You have contributed ${user.reviewCount} verified review${user.reviewCount == 1 ? '' : 's'}. Reviews can only be posted after visiting physical merchant checkpoints to safeguard authentic feedback.',
-                ),
+                onTap: () {},
               ),
-              _JourneyItem(
-                icon: Icons.auto_awesome_outlined,
-                title: 'Missions',
-                subtitle: '2 in progress',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Dynamic Missions',
-                  eyebrow: 'Side quests',
-                  icon: Icons.auto_awesome_outlined,
-                  message:
-                      '2 location missions currently in progress! Complete heritage photo check-ins and merchant explorations to earn bonus experience points.',
-                ),
+              StreamBuilder<List<Mission>>(
+                stream: MissionService.instance.watchMissions(user.id),
+                initialData: const <Mission>[],
+                builder: (context, snapshot) {
+                  final missions = snapshot.data ?? const <Mission>[];
+                  final activeCount = missions
+                      .where((m) => m.status == MissionStatus.active)
+                      .length;
+                  return _JourneyItem(
+                    icon: Icons.auto_awesome_outlined,
+                    title: 'Missions',
+                    subtitle: '$activeCount in progress',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MissionListScreen(
+                          uid: user.id,
+                          currentLat: LocationTrackerService.instance.lastPosition?.latitude ?? 5.4141,
+                          currentLng: LocationTrackerService.instance.lastPosition?.longitude ?? 100.3288,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
               _JourneyItem(
                 icon: Icons.calendar_month_outlined,
                 title: 'Daily check-in',
                 subtitle: 'Keep your streak',
-                onTap: () => _showJourneySheet(
-                  context,
-                  title: 'Daily check-in streak',
-                  eyebrow: 'Activity',
-                  icon: Icons.calendar_month_outlined,
-                  message:
-                      'Daily check-ins reward +100 EXP every day. Log in each day during your Visit Malaysia exploration to maintain your multiplier streak!',
-                ),
+                onTap: () {},
               ),
               _JourneyItem(
                 icon: Icons.history,
@@ -293,7 +411,29 @@ class TouristProfileScreen extends StatelessWidget {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => VisitedPlacesScreen(userId: user.id),
+                    builder: (_) => VisitedPlacesScreen(userId: user.id, user: user),
+                  ),
+                ),
+              ),
+              _JourneyItem(
+                icon: Icons.people_outline,
+                title: 'My Friends',
+                subtitle: 'Connect & share vibes with friends',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FriendsScreen(currentUser: user),
+                  ),
+                ),
+              ),
+              _JourneyItem(
+                icon: Icons.emoji_events_outlined,
+                title: 'Leaderboard',
+                subtitle: 'Global & Friends rankings',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LeaderboardScreen(currentUser: user),
                   ),
                 ),
               ),
@@ -323,100 +463,44 @@ class _Stat extends StatelessWidget {
   final String? badgeText;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(18),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label.toUpperCase(), style: monoLabel),
-            Icon(icon, color: LqColors.primary),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-        ),
-        if (badgeText != null && badgeText!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            badgeText!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: LqColors.muted,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label.toUpperCase(), style: monoLabel),
+              Icon(icon, color: LqColors.primary),
+            ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+          ),
+          if (badgeText != null && badgeText!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              badgeText!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: LqColors.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
-void _showJourneySheet(
-  BuildContext context, {
-  required String title,
-  required String eyebrow,
-  required IconData icon,
-  required String message,
-}) {
-  showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      decoration: const BoxDecoration(
-        color: LqColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: const Color(0xFFCBD5E1),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-          LqTitleBlock(eyebrow: eyebrow, title: title),
-          const SizedBox(height: 16),
-          LqCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  backgroundColor: LqColors.primarySoft,
-                  foregroundColor: LqColors.primary,
-                  child: Icon(icon),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(
-                      color: LqColors.muted,
-                      height: 1.5,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+
 
 class _JourneyItem extends StatelessWidget {
   const _JourneyItem({
@@ -537,6 +621,12 @@ class SettingsScreen extends StatelessWidget {
                   ],
           ),
           const SizedBox(height: 24),
+          if (user.role == AccountRole.tourist) ...[
+            _section('Connected Accounts', [
+              _SpotifySettingTile(userId: user.id),
+            ]),
+            const SizedBox(height: 24),
+          ],
           _section('Support', [
             _SettingTile(
               icon: Icons.explore_outlined,
@@ -591,6 +681,131 @@ class SettingsScreen extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _SpotifySettingTile extends StatefulWidget {
+  const _SpotifySettingTile({required this.userId});
+  final String userId;
+
+  @override
+  State<_SpotifySettingTile> createState() => _SpotifySettingTileState();
+}
+
+class _SpotifySettingTileState extends State<_SpotifySettingTile> {
+  bool _isLinked = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    final linked = await SpotifyService.instance.isSpotifyLinked();
+    if (mounted) {
+      setState(() {
+        _isLinked = linked;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.headphones,
+          color: Color(0xFF1DB954),
+          size: 24,
+        ),
+      ),
+      title: const Text(
+        'Spotify Music',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        _loading
+            ? 'Checking connection...'
+            : _isLinked
+                ? 'Connected · Live sharing active'
+                : 'Not connected',
+        style: TextStyle(
+          color: _isLinked ? const Color(0xFF1DB954) : LqColors.muted,
+          fontSize: 12,
+          fontWeight: _isLinked ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: _loading
+          ? const SizedBox(width: 40, height: 28)
+          : _isLinked
+              ? OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: LqColors.danger,
+                    side: const BorderSide(color: LqColors.danger),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (dCtx) => AlertDialog(
+                        title: const Text('Unlink Spotify?'),
+                        content: const Text(
+                          'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dCtx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
+                            onPressed: () => Navigator.pop(dCtx, true),
+                            child: const Text('Unlink'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await SpotifyService.instance.disconnectUser(widget.userId);
+                      _checkStatus();
+                      if (context.mounted) {
+                        showLqMessage(context, 'Spotify unlinked successfully.');
+                      }
+                    }
+                  },
+                  child: const Text('Unlink', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                )
+              : OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1DB954),
+                    side: const BorderSide(color: Color(0xFF1DB954)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    final success = await SpotifyService.instance.authenticateWithSpotify();
+                    _checkStatus();
+                    if (context.mounted && success) {
+                      showLqMessage(context, 'Spotify connected!');
+                    }
+                  },
+                  child: const Text('Connect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
+    );
+  }
 }
 
 class _BiometricSettingTile extends StatefulWidget {
@@ -757,14 +972,39 @@ class _PreferenceTileState extends State<_PreferenceTile> {
       onChanged: (next) async {
         setState(() => value = next);
         try {
+          widget.user.preferences[widget.keyName] = next;
+        } catch (_) {}
+        if (widget.keyName == 'locationHistory') {
+          LocationTrackerService.instance.setLocationHistoryEnabled(next);
+          if (next) {
+            await LocationTrackerService.instance.startTracking(userId: widget.user.id);
+          } else {
+            await LocationTrackerService.instance.stopTracking();
+          }
+        }
+        try {
           await UserRepository.instance.updatePreference(
             widget.user.id,
             widget.keyName,
             next,
           );
+          if (context.mounted && widget.keyName == 'locationHistory') {
+            showLqMessage(
+              context,
+              next
+                  ? 'Location history enabled: automatic visit logging active.'
+                  : 'Location history paused: automatic visit logging turned off.',
+            );
+          }
         } catch (_) {
           if (context.mounted) {
             setState(() => value = !next);
+            try {
+              widget.user.preferences[widget.keyName] = !next;
+            } catch (_) {}
+            if (widget.keyName == 'locationHistory') {
+              LocationTrackerService.instance.setLocationHistoryEnabled(!next);
+            }
             showLqMessage(
               context,
               'Could not update this preference. Please try again.',
@@ -788,51 +1028,137 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   late final _name = TextEditingController(text: widget.user.displayName);
   late final _username = TextEditingController(text: widget.user.username);
   late final _phone = TextEditingController(text: widget.user.phone);
+  late DateTime? _selectedBirthday = widget.user.birthday;
   late final _birthday = TextEditingController(
     text: widget.user.birthday == null
         ? ''
-        : DateFormat('dd/MM/yyyy').format(widget.user.birthday!),
+        : DateFormat('d MMMM yyyy').format(widget.user.birthday!),
   );
   bool _busy = false;
+
   @override
-  Widget build(BuildContext context) => _SimpleFormPage(
-    eyebrow: 'Identity',
-    title: 'Account details',
-    subtitle: 'Your personal details and how we reach you.',
-    headerIcon: Icons.person_outline,
-    children: [
-      ProfilePhotoEditor(user: widget.user),
-      const SizedBox(height: 20),
-      LqField(controller: _name, label: 'Display name'),
-      const SizedBox(height: 16),
-      LqField(controller: _username, label: 'Username'),
-      const SizedBox(height: 16),
-      LqField(controller: _phone, label: 'Phone number'),
-      const SizedBox(height: 16),
-      LqField(
-        controller: _birthday,
-        label: 'Birthday',
-        hint: 'Choose date',
-        readOnly: true,
-        suffixIcon: Icons.calendar_month_outlined,
-        onTap: _pickBirthday,
+  void dispose() {
+    _name.dispose();
+    _username.dispose();
+    _phone.dispose();
+    _birthday.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LqPage(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const LqBackButton(label: 'Profile'),
+          const SizedBox(height: 14),
+          const LqTitleBlock(
+            eyebrow: 'Identity',
+            title: 'Account details',
+          ),
+          const SizedBox(height: 20),
+          // Top profile card matching Photo 2 design
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F0FE),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                ProfilePhotoEditor(user: widget.user, showInfoText: false),
+                const SizedBox(height: 12),
+                Text(
+                  _name.text.trim().isNotEmpty
+                      ? _name.text.trim()
+                      : (widget.user.displayName.isNotEmpty
+                          ? widget.user.displayName
+                          : 'Explorer'),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: LqColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_username.text.trim().isNotEmpty ? _username.text.trim() : widget.user.username} · ${widget.user.email}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: LqColors.muted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Form card with dashed border matching Photo 2
+          LqCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LqField(
+                  controller: _name,
+                  label: 'Display name',
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                LqField(
+                  controller: _username,
+                  label: 'Username',
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                LqField(
+                  controller: _phone,
+                  label: 'Phone number',
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                LqField(
+                  controller: _birthday,
+                  label: 'Birthday',
+                  hint: 'Choose date',
+                  readOnly: true,
+                  suffixIcon: Icons.calendar_month_outlined,
+                  onTap: _pickBirthday,
+                ),
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: LqButton.pill(
+                    label: 'Save changes',
+                    busy: _busy,
+                    onPressed: _save,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      const SizedBox(height: 24),
-      LqButton(
-        label: 'Save changes',
-        busy: _busy,
-        icon: Icons.save_outlined,
-        onPressed: _save,
-      ),
-    ],
+    ),
   );
 
   Future<void> _save() async {
     setState(() => _busy = true);
-    final parts = _birthday.text.split('/');
-    final birthday = parts.length == 3
-        ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
-        : null;
+    DateTime? birthday = _selectedBirthday;
+    if (birthday == null && _birthday.text.isNotEmpty) {
+      try {
+        birthday = DateFormat('d MMMM yyyy').parse(_birthday.text);
+      } catch (_) {
+        final parts = _birthday.text.split('/');
+        if (parts.length == 3) {
+          birthday = DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}');
+        } else {
+          birthday = DateTime.tryParse(_birthday.text);
+        }
+      }
+    }
     try {
       await UserRepository.instance.updateProfile(
         uid: widget.user.id,
@@ -856,19 +1182,18 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   }
 
   Future<void> _pickBirthday() async {
-    final parts = _birthday.text.split('/');
-    final current = parts.length == 3
-        ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
-        : null;
     final chosen = await showLqDatePicker(
       context,
-      initialDate: current ?? DateTime(2000, 1, 1),
+      initialDate: _selectedBirthday ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       title: 'Select birthday',
     );
     if (chosen != null) {
-      setState(() => _birthday.text = DateFormat('dd/MM/yyyy').format(chosen));
+      setState(() {
+        _selectedBirthday = chosen;
+        _birthday.text = DateFormat('d MMMM yyyy').format(chosen);
+      });
     }
   }
 }
@@ -934,7 +1259,14 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
               style: TextStyle(color: LqColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 24),
-            LqButton(label: 'Send verification', busy: _busy, onPressed: _save),
+            Align(
+              alignment: Alignment.centerRight,
+              child: LqButton.pill(
+                label: 'Save changes',
+                busy: _busy,
+                onPressed: _save,
+              ),
+            ),
           ],
         ),
       ),
@@ -1018,11 +1350,13 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
               },
             ),
             const SizedBox(height: 24),
-            LqButton(
-              label: 'Save changes',
-              busy: _busy,
-              icon: Icons.lock_outline,
-              onPressed: _save,
+            Align(
+              alignment: Alignment.centerRight,
+              child: LqButton.pill(
+                label: 'Save changes',
+                busy: _busy,
+                onPressed: _save,
+              ),
             ),
           ],
         ),
@@ -1102,9 +1436,26 @@ class _SimpleFormPage extends StatelessWidget {
   );
 }
 
-class VisitedPlacesScreen extends StatelessWidget {
-  const VisitedPlacesScreen({super.key, required this.userId});
+class VisitedPlacesScreen extends StatefulWidget {
+  const VisitedPlacesScreen({
+    super.key,
+    required this.userId,
+    this.user,
+  });
   final String userId;
+  final AppUser? user;
+
+  @override
+  State<VisitedPlacesScreen> createState() => _VisitedPlacesScreenState();
+}
+
+class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Auto-clean any existing duplicate records in the database
+    UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
+  }
 
   static const _pastelBgs = [
     Color(0xFFF5D9CE), // warm peach / terracotta (#FEF4EF in figma)
@@ -1151,68 +1502,24 @@ class VisitedPlacesScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const LqBackButton(label: 'Profile'),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Visited places',
-                    style: TextStyle(
-                      fontSize: 32,
-                      height: 1.12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1.2,
-                      color: LqColors.ink,
+            children: const [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LqBackButton(label: 'Profile'),
+                    SizedBox(height: 8),
+                    Text(
+                      'Visited places',
+                      style: TextStyle(
+                        fontSize: 32,
+                        height: 1.12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -1.2,
+                        color: LqColors.ink,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              Tooltip(
-                message: 'Simulate check-in',
-                child: InkWell(
-                  key: const Key('visited_places_demo_checkin_btn'),
-                  onTap: () async {
-                    final recorded = await UserRepository.instance.recordVisit(
-                      userId: userId,
-                      name: 'LocalQuest Heritage Hub',
-                      area: 'Bukit Bintang, Kuala Lumpur',
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            recorded
-                                ? 'Demo visit recorded! Location history updated.'
-                                : 'Could not record: Location history is disabled in Settings.',
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0x1A000000),
-                          blurRadius: 3,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.add_location_alt_outlined,
-                      size: 20,
-                      color: LqColors.primary,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ],
@@ -1229,26 +1536,46 @@ class VisitedPlacesScreen extends StatelessWidget {
           const SizedBox(height: 14),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: UserRepository.instance.visitedPlaces(userId),
+              stream: UserRepository.instance.visitedPlaces(widget.userId),
               builder: (context, snapshot) {
-                final docs = snapshot.data?.docs ?? [];
+                final rawDocs = snapshot.data?.docs ?? [];
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
+                // Deduplicate display: if multiple records share the same business/name
+                // with timestamps within 3 minutes of each other, show only one clean card!
+                final docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                final seenKeys = <String>{};
+                for (final doc in rawDocs) {
+                  final data = doc.data();
+                  final name = (data['name'] as String? ?? '').trim().toLowerCase();
+                  final bizId = (data['businessId'] as String? ?? '').trim();
+                  final date = (data['visitedAt'] as Timestamp?)?.toDate();
+                  final timeKey = date != null
+                      ? '${date.year}-${date.month}-${date.day}_${date.hour}:${date.minute}'
+                      : doc.id;
+                  final dedupeKey = '${bizId.isNotEmpty ? bizId : name}_$timeKey';
+
+                  if (!seenKeys.contains(dedupeKey)) {
+                    seenKeys.add(dedupeKey);
+                    docs.add(doc);
+                  }
+                }
                 if (docs.isEmpty) {
-                  return Center(
+                  return const Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(
-                            Icons.location_off_outlined,
+                          Icon(
+                            Icons.storefront_outlined,
                             size: 48,
                             color: LqColors.muted,
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
+                          SizedBox(height: 12),
+                          Text(
                             'No visited locations found.',
                             style: TextStyle(
                               color: LqColors.muted,
@@ -1256,35 +1583,14 @@ class VisitedPlacesScreen extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'When you visit partnered merchants or local spots, they will be automatically recorded here.',
+                          SizedBox(height: 8),
+                          Text(
+                            'When you visit registered local businesses, they will be automatically recorded here.',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: LqColors.muted, fontSize: 13),
-                          ),
-                          const SizedBox(height: 20),
-                          OutlinedButton.icon(
-                            key: const Key('visited_places_empty_simulate_btn'),
-                            onPressed: () async {
-                              final recorded = await UserRepository.instance.recordVisit(
-                                userId: userId,
-                                name: 'LocalQuest Heritage Hub',
-                                area: 'Bukit Bintang, Kuala Lumpur',
-                              );
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      recorded
-                                          ? 'Demo visit recorded! Location history updated.'
-                                          : 'Could not record: Location history is disabled in Settings.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.add_location_alt_outlined),
-                            label: const Text('Simulate visit check-in (Demo)'),
+                            style: TextStyle(
+                              color: LqColors.muted,
+                              fontSize: 13,
+                            ),
                           ),
                         ],
                       ),
@@ -1297,6 +1603,7 @@ class VisitedPlacesScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final data = docs[index].data();
                     final date = (data['visitedAt'] as Timestamp?)?.toDate();
+                    final businessId = data['businessId'] as String? ?? '';
                     final pastelBg = _pastelBgs[index % _pastelBgs.length];
                     final iconColor = _iconColors[index % _iconColors.length];
 
@@ -1360,13 +1667,74 @@ class VisitedPlacesScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 10),
-                            Text(
-                              _formatVisitedDate(date),
-                              style: const TextStyle(
-                                fontFamily: 'DM Mono',
-                                fontSize: 10,
-                                color: LqColors.muted,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _formatVisitedDate(date),
+                                  style: const TextStyle(
+                                    fontFamily: 'DM Mono',
+                                    fontSize: 10,
+                                    color: LqColors.muted,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (businessId.isNotEmpty) ...[
+                                      InkWell(
+                                        key: Key('visited_place_review_${docs[index].id}'),
+                                        borderRadius: BorderRadius.circular(12),
+                                        onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => WriteReviewScreen(
+                                              userId: widget.userId,
+                                              businessId: businessId,
+                                              businessName: data['name'] as String? ?? 'this business',
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4),
+                                          child: Icon(
+                                            Icons.rate_review_outlined,
+                                            size: 18,
+                                            color: LqColors.primary,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    InkWell(
+                                      key: Key('visited_place_delete_${docs[index].id}'),
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () async {
+                                        final placeName = data['name'] as String? ?? 'Visited place';
+                                        await docs[index].reference.delete();
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Removed $placeName from history'),
+                                              behavior: SnackBarBehavior.floating,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.delete_outline,
+                                          size: 18,
+                                          color: Color(0xFFB0B7C3),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -1534,59 +1902,341 @@ class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key, required this.user});
   final AppUser user;
 
+  String _timeAgo(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return DateFormat('dd MMM').format(time);
+  }
+
   @override
   Widget build(BuildContext context) => LqPage(
     child: SizedBox(
       width: double.infinity,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const LqBackButton(label: 'Profile'),
-            const SizedBox(height: 14),
-            const LqTitleBlock(
-              eyebrow: 'Activity',
-              title: 'Notifications',
-              subtitle: 'Account updates and LocalQuest alerts in one place.',
-              icon: Icons.notifications_none_outlined,
-            ),
-            const SizedBox(height: 24),
-            LqCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: LqColors.primarySoft,
-                    foregroundColor: LqColors.primary,
-                    child: Icon(Icons.notifications_active_outlined),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'You’re all caught up',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    user.role == AccountRole.merchant
-                        ? 'Campaign and voucher activity will appear here.'
-                        : 'Trip, reward and voucher activity will appear here.',
-                    style: const TextStyle(color: LqColors.muted, height: 1.45),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            LqButton(
-              label: 'Notification preferences',
-              icon: Icons.tune,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
-              ),
-            ),
-          ],
-        ),
+      child: StreamBuilder<List<ChatConversation>>(
+        stream: DirectChatService.instance.streamConversations(user.id),
+        builder: (context, chatSnap) {
+          final conversations = (chatSnap.data ?? [])
+              .where((c) => c.lastMessage.isNotEmpty)
+              .toList()
+            ..sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+
+          return StreamBuilder<List<FriendRequest>>(
+            stream: SocialService.instance.streamFriendRequests(user.id),
+            builder: (context, reqSnap) {
+              final requests = reqSnap.data ?? [];
+              final bool hasItems = conversations.isNotEmpty || requests.isNotEmpty;
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const LqBackButton(label: 'Profile'),
+                    const SizedBox(height: 14),
+                    const LqTitleBlock(
+                      eyebrow: 'Activity',
+                      title: 'Notifications',
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Friend requests section
+                    if (requests.isNotEmpty) ...[
+                      const Text(
+                        'FRIEND REQUESTS',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: LqColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...requests.map((req) {
+                        final rawUser = req.fromUsername;
+                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
+                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: LqColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: LqColors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              LqAvatar(
+                                initials: initialsFor(req.fromDisplayName),
+                                photoUrl: null,
+                                radius: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      userLabel.isNotEmpty
+                                          ? '${req.fromDisplayName} ($userLabel)'
+                                          : req.fromDisplayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                        color: LqColors.ink,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    const Text(
+                                      'Sent you a friend request',
+                                      style: TextStyle(fontSize: 12, color: LqColors.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: LqColors.primary,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () async {
+                                      await SocialService.instance.acceptFriendRequest(
+                                        currentUser: user,
+                                        request: req,
+                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Connected with ${req.fromDisplayName}!')),
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Accept', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: LqColors.muted,
+                                      side: const BorderSide(color: LqColors.line),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: () async {
+                                      await SocialService.instance.rejectFriendRequest(
+                                        currentUserId: user.id,
+                                        requestId: req.id,
+                                      );
+                                    },
+                                    child: const Text('Decline', style: TextStyle(fontSize: 12)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Messages / Chat Notifications section
+                    if (conversations.isNotEmpty) ...[
+                      const Text(
+                        'DIRECT MESSAGES',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: LqColors.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...conversations.map((conv) {
+                        final rawUser = conv.otherUsername;
+                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
+                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        final hasUnread = conv.unreadCount > 0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: hasUnread ? LqColors.primarySoft.withValues(alpha: 0.3) : LqColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: hasUnread ? LqColors.primary.withValues(alpha: 0.4) : LqColors.line,
+                            ),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              DirectChatService.instance.markChatAsRead(
+                                chatId: conv.id,
+                                currentUserId: user.id,
+                              );
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DirectChatScreen(
+                                    currentUser: user,
+                                    targetUserId: conv.otherUserId,
+                                    targetDisplayName: conv.otherDisplayName,
+                                    targetUsername: conv.otherUsername,
+                                    targetPhotoUrl: conv.otherPhotoUrl,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  Stack(
+                                    children: [
+                                      LqAvatar(
+                                        initials: initialsFor(conv.otherDisplayName),
+                                        photoUrl: conv.otherPhotoUrl,
+                                        radius: 22,
+                                      ),
+                                      if (hasUnread)
+                                        Positioned(
+                                          right: 0,
+                                          top: 0,
+                                          child: Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: const BoxDecoration(
+                                              color: LqColors.primary,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                userLabel.isNotEmpty
+                                                    ? '${conv.otherDisplayName} ($userLabel)'
+                                                    : conv.otherDisplayName,
+                                                style: TextStyle(
+                                                  fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w700,
+                                                  fontSize: 14,
+                                                  color: LqColors.ink,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            Text(
+                                              _timeAgo(conv.lastMessageTime),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w500,
+                                                color: hasUnread ? LqColors.primary : LqColors.muted,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                conv.lastMessage,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: hasUnread ? LqColors.ink : LqColors.muted,
+                                                  fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (hasUnread)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: LqColors.primary,
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                child: Text(
+                                                  '${conv.unreadCount}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // If no messages or requests, show "You're all caught up"
+                    if (!hasItems)
+                      LqCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: LqColors.primarySoft,
+                              foregroundColor: LqColors.primary,
+                              child: Icon(Icons.notifications_active_outlined),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'You’re all caught up',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              user.role == AccountRole.merchant
+                                  ? 'Campaign and voucher activity will appear here.'
+                                  : 'Friend messages, requests and activity will appear here.',
+                              style: const TextStyle(color: LqColors.muted, height: 1.45),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    const SizedBox(height: 18),
+                    LqButton(
+                      label: 'Notification preferences',
+                      icon: Icons.tune,
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     ),
   );

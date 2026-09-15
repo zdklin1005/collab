@@ -284,6 +284,11 @@ class MapLocationDetails extends StatelessWidget {
                     'Category',
                     _valueOr(location.category, 'Not specified.'),
                   ),
+                  if (location.dietaryStatus.trim().isNotEmpty)
+                    _section(
+                      'Halal & dietary certification',
+                      location.dietaryStatus.trim(),
+                    ),
                   _section(
                     'Address',
                     _valueOr(location.address, 'Address not provided.'),
@@ -306,11 +311,6 @@ class MapLocationDetails extends StatelessWidget {
                       _section(
                         'Website / social link',
                         location.website.trim(),
-                      ),
-                    if (location.dietaryStatus.trim().isNotEmpty)
-                      _section(
-                        'Dietary information provided by the business',
-                        location.dietaryStatus.trim(),
                       ),
                     _section(
                       'Promotions',

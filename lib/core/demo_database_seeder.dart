@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/localquest_models.dart';
 
 class SeedBusinessData {
   const SeedBusinessData({
@@ -36,6 +37,27 @@ class SeedBusinessData {
   final String? dietaryStatus;
   final String? website;
   final String? description;
+
+  Business toBusiness({String ownerId = 'demo_merchant_penang'}) => Business(
+        id: id,
+        ownerId: ownerId,
+        name: name,
+        category: category,
+        address: address,
+        phone: phone,
+        area: area,
+        postcode: postcode,
+        state: state,
+        registrationNumber: registrationNumber,
+        verificationStatus: 'verified',
+        active: true,
+        latitude: latitude,
+        longitude: longitude,
+        operatingHours: operatingHours,
+        dietaryStatus: dietaryStatus,
+        website: website,
+        description: description,
+      );
 }
 
 class SeedVoucherData {
@@ -78,6 +100,36 @@ class SeedVoucherData {
   final String terms;
 
   String? get effectiveHours => validHours ?? redemptionHours;
+
+  Campaign toCampaign({
+    String ownerId = 'demo_merchant_penang',
+    String businessId = '',
+  }) =>
+      Campaign(
+        id: id,
+        ownerId: ownerId,
+        businessId: businessId,
+        name: name,
+        description: description,
+        type: 'voucher',
+        startDate: DateTime.now(),
+        endDate: DateTime.now().add(const Duration(days: 30)),
+        status: 'active',
+        voucherType: voucherType,
+        collectionMethod: collectionMethod,
+        discountType: discountType,
+        discountValue: discountValue,
+        minimumSpend: minimumSpend,
+        quantity: quantity,
+        perCustomerLimit: perCustomerLimit,
+        seasonName: seasonName,
+        linkedAdId: linkedAdId,
+        validDays: validDays,
+        validHours: validHours,
+        redemptionHours: redemptionHours,
+        dailyQuota: dailyQuota,
+        terms: terms,
+      );
 }
 
 class DemoDatabaseSeeder {
@@ -475,5 +527,90 @@ class DemoDatabaseSeeder {
 
     await batch.commit();
     return count;
+  }
+
+  /// Seeds sample friends, 24-hr vibe notes, and a pending request for immediate testing.
+  static Future<void> seedTouristSocial(String touristUid) async {
+    if (touristUid.isEmpty) return;
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+
+    // Friend 1: Sarah Tan
+    final friend1Ref = db
+        .collection('users')
+        .doc(touristUid)
+        .collection('friends')
+        .doc('demo_tourist_sarah');
+    batch.set(friend1Ref, {
+      'friendUserId': 'demo_tourist_sarah',
+      'displayName': 'Sarah Tan',
+      'username': '@sarahexplores',
+      'level': 3,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Sarah's 24-hr note with Spotify music
+    final sarahNoteRef = db
+        .collection('users')
+        .doc('demo_tourist_sarah')
+        .collection('notes')
+        .doc('status');
+    batch.set(sarahNoteRef, {
+      'text': 'Eating Cendol at Penang Road! 🍧',
+      'songTitle': 'Golden Hour',
+      'songArtist': 'JVKE',
+      'albumArtUrl':
+          'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/bf/16/be/bf16be0c-54be-9cfc-084e-397394c8e718/196925184852_Cover.jpg/300x300bb.jpg',
+      'spotifyUrl': 'https://open.spotify.com/search/JVKE%20Golden%20Hour',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Friend 2: Marcus Wong
+    final friend2Ref = db
+        .collection('users')
+        .doc(touristUid)
+        .collection('friends')
+        .doc('demo_tourist_marcus');
+    batch.set(friend2Ref, {
+      'friendUserId': 'demo_tourist_marcus',
+      'displayName': 'Marcus Wong',
+      'username': '@marcus_penang',
+      'level': 2,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Marcus's 24-hr note with Spotify music
+    final marcusNoteRef = db
+        .collection('users')
+        .doc('demo_tourist_marcus')
+        .collection('notes')
+        .doc('status');
+    batch.set(marcusNoteRef, {
+      'text': 'Hunting street art at Armenian St 🎨',
+      'songTitle': 'Sunflower',
+      'songArtist': 'Post Malone & Swae Lee',
+      'albumArtUrl':
+          'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/05/85/74/0585743c-6238-d621-396a-a8c6fb20e980/18UMGIM72688.rgb.jpg/300x300bb.jpg',
+      'spotifyUrl': 'https://open.spotify.com/search/Post%20Malone%20Sunflower',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // Pending friend request from Aiman
+    final reqRef = db
+        .collection('users')
+        .doc(touristUid)
+        .collection('friendRequests')
+        .doc('demo_tourist_aiman');
+    batch.set(reqRef, {
+      'fromUserId': 'demo_tourist_aiman',
+      'toUserId': touristUid,
+      'fromDisplayName': 'Aiman Hakim',
+      'fromUsername': '@aiman_travels',
+      'fromLevel': 4,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
   }
 }

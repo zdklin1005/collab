@@ -143,7 +143,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final newEmailField = find.byKey(const Key('change_email_new_field'));
-      final sendBtn = find.widgetWithText(LqButton, 'Send verification');
+      final sendBtn = find.widgetWithText(LqButton, 'Save changes');
 
       await tester.enterText(newEmailField, 'malformed@com');
       await tester.tap(sendBtn);
@@ -257,6 +257,8 @@ void main() {
       expect(find.text('Missions'), findsOneWidget);
       expect(find.text('Reviews & ratings'), findsOneWidget);
       expect(find.text('Daily check-in'), findsOneWidget);
+      expect(find.text('My Friends'), findsOneWidget);
+      expect(find.text('Leaderboard'), findsOneWidget);
 
       // Settings action
       expect(find.byIcon(Icons.settings_outlined), findsOneWidget);

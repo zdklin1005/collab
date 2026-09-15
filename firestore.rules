@@ -97,13 +97,9 @@ function validRewardPlacement(data) {
 }
 
 function rewardPlacementUnchanged() {
-  let changed = request.resource.data.diff(resource.data).affectedKeys();
-
-  return !changed.hasAny(['rewardPlacementApproved'])
-    && (
-      resource.data.get('rewardPlacementApproved', false) != true
-      || !changed.hasAny(['latitude', 'longitude'])
-    );
+  return !request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasAny(['rewardPlacementApproved']);
 }
       allow read: if signedIn();
       allow create: if willBeMerchant()
@@ -156,6 +152,11 @@ function rewardPlacementUnchanged() {
         && request.resource.data.ownerId == request.auth.uid;
       allow delete: if isMerchantNow()
         && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Supports collection-group review queries.
+    match /{path=**}/reviews/{reviewId} {
+      allow read: if signedIn();
     }
   }
 }

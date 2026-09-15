@@ -45,22 +45,36 @@ class LqLogo extends StatelessWidget {
     height: size,
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: LqColors.primary,
-      borderRadius: BorderRadius.circular(size * .36),
+      borderRadius: BorderRadius.circular(size * .24),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x3D3267D4),
+          color: Color(0x3D136AD4),
           blurRadius: 14,
           offset: Offset(0, 8),
         ),
       ],
     ),
-    child: Text(
-      'L',
-      style: TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w800,
-        fontSize: size * .42,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(size * .24),
+      child: Image.asset(
+        'assets/logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: size,
+          height: size,
+          color: LqColors.primary,
+          alignment: Alignment.center,
+          child: Text(
+            'LQ',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: size * .38,
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -330,32 +344,40 @@ class _DashedLinePainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.vertical != vertical;
 }
 
-class _DashedRoundedBorderPainter extends CustomPainter {
-  const _DashedRoundedBorderPainter({
+class LqDashedBorderPainter extends CustomPainter {
+  const LqDashedBorderPainter({
     required this.color,
-    required this.radius,
-    required this.strokeWidth,
+    this.radius = 16,
+    this.borderRadius,
+    this.strokeWidth = 1.35,
+    this.dashLength = 3.8,
+    this.gapLength = 3.2,
   });
+
   final Color color;
   final double radius;
+  final BorderRadius? borderRadius;
   final double strokeWidth;
+  final double dashLength;
+  final double gapLength;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)),
-      );
+    final rrect = borderRadius != null
+        ? borderRadius!.toRRect(Offset.zero & size)
+        : RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius));
+    final path = Path()..addRRect(rrect);
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth;
+    final step = dashLength + gapLength;
     for (final metric in path.computeMetrics()) {
-      for (double distance = 0; distance < metric.length; distance += 7) {
+      for (double distance = 0; distance < metric.length; distance += step) {
         canvas.drawPath(
           metric.extractPath(
             distance,
-            (distance + 3.8).clamp(0, metric.length).toDouble(),
+            (distance + dashLength).clamp(0, metric.length).toDouble(),
           ),
           paint,
         );
@@ -364,11 +386,16 @@ class _DashedRoundedBorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DashedRoundedBorderPainter oldDelegate) =>
+  bool shouldRepaint(covariant LqDashedBorderPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.radius != radius ||
-      oldDelegate.strokeWidth != strokeWidth;
+      oldDelegate.borderRadius != borderRadius ||
+      oldDelegate.strokeWidth != strokeWidth ||
+      oldDelegate.dashLength != dashLength ||
+      oldDelegate.gapLength != gapLength;
 }
+
+typedef _DashedRoundedBorderPainter = LqDashedBorderPainter;
 
 class LqButton extends StatelessWidget {
   const LqButton({
@@ -378,38 +405,81 @@ class LqButton extends StatelessWidget {
     this.busy = false,
     this.icon,
     this.destructive = false,
+    this.pill = false,
   });
+
+  const LqButton.pill({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.busy = false,
+    this.destructive = false,
+  }) : icon = null, pill = true;
 
   final String label;
   final VoidCallback? onPressed;
   final bool busy;
   final IconData? icon;
   final bool destructive;
+  final bool pill;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 50,
-    child: FilledButton.icon(
-      onPressed: busy ? null : onPressed,
-      icon: busy
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon ?? Icons.arrow_forward_rounded, size: 18),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      style: FilledButton.styleFrom(
-        backgroundColor: destructive ? LqColors.danger : LqColors.primary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        elevation: 5,
-        shadowColor: destructive
-            ? LqColors.danger.withValues(alpha: .25)
-            : LqColors.primary.withValues(alpha: .3),
+  Widget build(BuildContext context) {
+    if (pill) {
+      return FilledButton(
+        onPressed: busy ? null : onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFFE8EEFA),
+          foregroundColor: const Color(0xFF2563EB),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          minimumSize: const Size(0, 42),
+        ),
+        child: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF2563EB),
+                ),
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: FilledButton.icon(
+        onPressed: busy ? null : onPressed,
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon ?? Icons.arrow_forward_rounded, size: 18),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        style: FilledButton.styleFrom(
+          backgroundColor: destructive ? LqColors.danger : LqColors.primary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          elevation: 5,
+          shadowColor: destructive
+              ? LqColors.danger.withValues(alpha: .25)
+              : LqColors.primary.withValues(alpha: .3),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class LqBackButton extends StatelessWidget {
@@ -518,6 +588,7 @@ class _LqFieldState extends State<LqField> {
 const lqBusinessCategories = <String>[
   'Cafe',
   'Restaurant',
+  'Food & Beverage',
   'Accommodation',
   'Attraction',
   'Retail',
@@ -525,6 +596,33 @@ const lqBusinessCategories = <String>[
   'Tour & activity',
   'Other',
 ];
+
+/// Business categories that require Halal & dietary certification declarations.
+const lqDietaryCategories = <String>[
+  'Cafe',
+  'Restaurant',
+  'Food & Beverage',
+];
+
+/// Returns whether the provided category represents a food & beverage or dining
+/// business that requires Halal & dietary certification.
+bool lqIsDietaryCategory(String? category) {
+  if (category == null || category.trim().isEmpty) return false;
+  final cat = category.trim().toLowerCase();
+  return cat == 'cafe' ||
+      cat == 'restaurant' ||
+      cat == 'food & beverage' ||
+      cat.contains('food') ||
+      cat.contains('dining') ||
+      cat.contains('beverage') ||
+      cat.contains('cafe') ||
+      cat.contains('coffee') ||
+      cat.contains('restaurant') ||
+      cat.contains('bakery') ||
+      cat.contains('dessert') ||
+      cat.contains('eatery') ||
+      cat.contains('bistro');
+}
 
 const lqDietaryStatuses = <String>[
   'Halal Certified',
