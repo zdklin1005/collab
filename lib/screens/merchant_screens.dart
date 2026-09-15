@@ -106,7 +106,7 @@ class MerchantOverview extends StatelessWidget {
     builder: (context, snapshot) {
       final campaigns = snapshot.data ?? [];
       final active = campaigns
-          .where((item) => item.status == 'active')
+          .where((item) => item.isActive)
           .toList();
       final views = campaigns.fold<int>(0, (sum, item) => sum + item.views);
       final claims = campaigns.fold<int>(0, (sum, item) => sum + item.claims);
@@ -261,9 +261,11 @@ class MerchantOverview extends StatelessWidget {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    item.status == 'scheduled'
+                                    item.isScheduled
                                         ? 'Scheduled · Starts ${DateFormat('d MMM').format(item.startDate)}'
-                                        : '${item.status.toUpperCase()} · ${item.views} views',
+                                        : item.isExpired
+                                            ? 'Inactive · Ended ${DateFormat('d MMM').format(item.endDate)}'
+                                            : '${item.effectiveStatus.toUpperCase()} · ${item.views} views',
                                     style: const TextStyle(
                                       color: LqColors.muted,
                                       fontSize: 12,
@@ -320,7 +322,7 @@ class MerchantOverview extends StatelessWidget {
                                     ),
                                   ),
                                   subtitle: Text(
-                                    '${item.claims} claimed · ${item.status.toUpperCase()}',
+                                    '${item.claims} claimed · ${item.effectiveStatus.toUpperCase()}',
                                     style: const TextStyle(
                                       color: LqColors.muted,
                                       fontSize: 12,
@@ -723,7 +725,18 @@ class _CampaignCreativeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${campaign.status[0].toUpperCase()}${campaign.status.substring(1)} · Ends ${DateFormat('d MMM').format(campaign.endDate)}',
+                      () {
+                        final s = campaign.effectiveStatus;
+                        final label =
+                            '${s[0].toUpperCase()}${s.substring(1)}';
+                        if (campaign.isExpired) {
+                          return '$label · Ended ${DateFormat('d MMM').format(campaign.endDate)}';
+                        }
+                        if (campaign.isScheduled) {
+                          return '$label · Starts ${DateFormat('d MMM').format(campaign.startDate)}';
+                        }
+                        return '$label · Ends ${DateFormat('d MMM').format(campaign.endDate)}';
+                      }(),
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
@@ -967,6 +980,63 @@ class _ReviewMetricChip extends StatelessWidget {
   }
 }
 
+/// A small hint row shown below the Status dropdown in the campaign form.
+/// Explains the effective status rule based on the selected date range.
+class _StatusHintText extends StatelessWidget {
+  const _StatusHintText({
+    required this.status,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  final String status;
+  final DateTime startDate;
+  final DateTime endDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+
+    String message;
+    IconData icon;
+    Color color;
+
+    if (endDay.isBefore(today)) {
+      message = 'This campaign has expired — extend the end date to make it active again.';
+      icon = Icons.info_outline;
+      color = LqColors.danger;
+    } else if (startDay.isAfter(today)) {
+      message = 'Campaign is scheduled and will automatically go live on ${DateFormat('d MMM yyyy').format(startDate)}.';
+      icon = Icons.schedule;
+      color = const Color(0xFFD97706);
+    } else if (status == 'active') {
+      message = 'Campaign is live. You can pause it by switching to Inactive.';
+      icon = Icons.check_circle_outline;
+      color = const Color(0xFF15803D);
+    } else {
+      message = 'Campaign is paused. Switch to Active to make it live again.';
+      icon = Icons.pause_circle_outline;
+      color = LqColors.muted;
+    }
+
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(fontSize: 11, color: color, height: 1.4),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class CampaignEditor extends StatefulWidget {
   const CampaignEditor({
     super.key,
@@ -1025,10 +1095,14 @@ class _CampaignEditorState extends State<CampaignEditor> {
     text: widget.campaign?.description ?? '',
   );
   late String type = widget.campaign?.type ?? widget.initialType;
-  late String status = widget.campaign?.status ?? 'active';
   late DateTime startDate = widget.campaign?.startDate ?? DateTime.now();
   late DateTime endDate =
       widget.campaign?.endDate ?? DateTime.now().add(const Duration(days: 30));
+  late String status = Campaign.resolveStatus(
+    rawStatus: widget.campaign?.status ?? 'active',
+    startDate: startDate,
+    endDate: endDate,
+  );
   Uint8List? poster;
   String? extension;
   bool busy = false;
@@ -1497,10 +1571,16 @@ class _CampaignEditorState extends State<CampaignEditor> {
       LqDropdownField(
         label: 'Status',
         value: status,
-        items: const ['active', 'scheduled', 'inactive'],
+        items: _availableStatuses,
         onChanged: (value) {
           if (value != null) setState(() => status = value);
         },
+      ),
+      const SizedBox(height: 6),
+      _StatusHintText(
+        status: status,
+        startDate: startDate,
+        endDate: endDate,
       ),
     ];
   }
@@ -1547,10 +1627,16 @@ class _CampaignEditorState extends State<CampaignEditor> {
       LqDropdownField(
         label: 'Status',
         value: status,
-        items: const ['active', 'scheduled', 'inactive'],
+        items: _availableStatuses,
         onChanged: (value) {
           if (value != null) setState(() => status = value);
         },
+      ),
+      const SizedBox(height: 6),
+      _StatusHintText(
+        status: status,
+        startDate: startDate,
+        endDate: endDate,
       ),
       const SizedBox(height: 20),
       const Divider(color: LqColors.line),
@@ -2282,8 +2368,42 @@ class _CampaignEditorState extends State<CampaignEditor> {
       title: start ? 'Campaign start date' : 'Campaign end date',
     );
     if (value != null) {
-      setState(() => start ? startDate = value : endDate = value);
+      setState(() {
+        if (start) {
+          startDate = value;
+        } else {
+          endDate = value;
+        }
+        _autoAdjustStatus();
+      });
     }
+  }
+
+  /// Automatically adjusts [status] to match the currently selected
+  /// [startDate] and [endDate]. Called whenever either date is changed.
+  void _autoAdjustStatus() {
+    status = Campaign.resolveStatus(
+      rawStatus: status,
+      startDate: startDate,
+      endDate: endDate,
+    );
+  }
+
+  /// Returns the list of statuses available to the merchant given the
+  /// currently selected date range.
+  ///
+  /// - Expired (endDate in the past): only `inactive`.
+  /// - Future start (startDate after today): `scheduled` or `inactive`.
+  /// - Active window: `active` or `inactive`.
+  List<String> get _availableStatuses {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+
+    if (endDay.isBefore(today)) return const ['inactive'];
+    if (startDay.isAfter(today)) return const ['scheduled', 'inactive'];
+    return const ['active', 'inactive'];
   }
 
   bool _validateStep0() {
@@ -2364,29 +2484,26 @@ class _CampaignEditorState extends State<CampaignEditor> {
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (endDate.isBefore(startDate) || !endDate.isAfter(today)) {
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+    // End date must be on or after start date, and must not have already passed
+    if (endDay.isBefore(startDay) || endDay.isBefore(today)) {
       showLqMessage(
         context,
-        'The end date must be after today and on or after the start date.',
+        'The end date must be today or later and on or after the start date.',
         error: true,
       );
       return false;
     }
-    if (status == 'scheduled' && !startDate.isAfter(today)) {
-      showLqMessage(
-        context,
-        'Scheduled offers need a future start date.',
-        error: true,
-      );
-      return false;
-    }
-    if (status == 'active' && startDate.isAfter(now)) {
-      showLqMessage(
-        context,
-        'Choose scheduled status for a future start date.',
-        error: true,
-      );
-      return false;
+    // The resolved status should not contradict the date range.
+    // _autoAdjustStatus() is called on every date change so this is defensive.
+    final resolved = Campaign.resolveStatus(
+      rawStatus: status,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    if (resolved != status) {
+      setState(() => status = resolved);
     }
     return true;
   }
@@ -2402,29 +2519,25 @@ class _CampaignEditorState extends State<CampaignEditor> {
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (endDate.isBefore(startDate) || !endDate.isAfter(today)) {
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+    // End date must be on or after start date, and must not have already passed
+    if (endDay.isBefore(startDay) || endDay.isBefore(today)) {
       showLqMessage(
         context,
-        'The end date must be after today and on or after the start date.',
+        'The end date must be today or later and on or after the start date.',
         error: true,
       );
       return false;
     }
-    if (status == 'scheduled' && !startDate.isAfter(today)) {
-      showLqMessage(
-        context,
-        'Scheduled offers need a future start date.',
-        error: true,
-      );
-      return false;
-    }
-    if (status == 'active' && startDate.isAfter(now)) {
-      showLqMessage(
-        context,
-        'Choose scheduled status for a future start date.',
-        error: true,
-      );
-      return false;
+    // The resolved status should not contradict the date range.
+    final resolved = Campaign.resolveStatus(
+      rawStatus: status,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    if (resolved != status) {
+      setState(() => status = resolved);
     }
     return true;
   }

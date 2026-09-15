@@ -1366,9 +1366,26 @@ class MerchantRepository {
   Future<void> deleteBusiness(String id) =>
       db.collection('businesses').doc(id).delete();
 
+  /// Updates a campaign's status in Firestore.
+  ///
+  /// Guards against invalid transitions:
+  /// - An expired campaign (end date in the past) cannot be reactivated.
+  /// - A campaign whose start date is still in the future will be stored as
+  ///   `'scheduled'` even when [active] is true.
   Future<void> setCampaignStatus(String id, bool active) async {
+    // Fetch the campaign so we can resolve the correct effective status.
+    final doc = await db.collection('campaigns').doc(id).get();
+    final data = doc.data() ?? {};
+    final startDate = (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final endDate = (data['endDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+    final resolved = Campaign.resolveStatus(
+      rawStatus: active ? 'active' : 'inactive',
+      startDate: startDate,
+      endDate: endDate,
+    );
     await db.collection('campaigns').doc(id).update({
-      'status': active ? 'active' : 'inactive',
+      'status': resolved,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -1444,7 +1461,11 @@ class MerchantRepository {
         'type': value.type,
         'startDate': Timestamp.fromDate(value.startDate),
         'endDate': Timestamp.fromDate(value.endDate),
-        'status': value.status,
+        'status': Campaign.resolveStatus(
+          rawStatus: value.status,
+          startDate: value.startDate,
+          endDate: value.endDate,
+        ),
         if (value.id.isEmpty) 'views': value.views,
         if (value.id.isEmpty) 'claims': value.claims,
         'imageUrl': imageUrl,
