@@ -150,4 +150,25 @@ class RewardService {
     });
     await batch.commit();
   }
+
+  /// Live list of achievement vouchers (from level-ups / voucher-type
+  /// missions) awarded to [uid].
+  Stream<List<Map<String, dynamic>>> watchAchievementVouchers(String uid) {
+    try {
+      return db
+          .collection('users').doc(uid).collection('vouchers')
+          .orderBy('awardedAt', descending: true)
+          .snapshots()
+          .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
+  /// Marks an achievement voucher as used.
+  Future<void> markVoucherRedeemed(String uid, String voucherId) {
+    return db
+        .collection('users').doc(uid).collection('vouchers').doc(voucherId)
+        .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
+  }
 }

@@ -1590,10 +1590,25 @@ class MerchantRepository {
     return true;
   }
 
-  Stream<List<Map<String, dynamic>>> touristClaimedVouchers(String userId) => db
-      .collection('users')
-      .doc(userId)
-      .collection('claimedVouchers')
-      .snapshots()
-      .map((snapshot) => snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+  Future<void> markClaimedVoucherRedeemed(String userId, String voucherId) {
+    return db
+        .collection('users')
+        .doc(userId)
+        .collection('claimedVouchers')
+        .doc(voucherId)
+        .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
+  }
+
+  Stream<List<Map<String, dynamic>>> touristClaimedVouchers(String userId) {
+    try {
+      return db
+          .collection('users')
+          .doc(userId)
+          .collection('claimedVouchers')
+          .snapshots()
+          .map((snapshot) => snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
 }

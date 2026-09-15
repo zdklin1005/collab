@@ -22,10 +22,14 @@ import '../services/direct_chat_service.dart';
 import '../services/social_service.dart';
 import '../services/spotify_service.dart';
 import '../services/location_service.dart';
-import 'rewards_tab.dart';
+import 'my_rewards_screen.dart';
+import 'my_reviews_screen.dart';
+import 'daily_check_in_screen.dart';
 import 'mission_list_screen.dart';
 import 'write_review_screen.dart';
 import '../services/mission_service.dart';
+import '../services/reward_service.dart';
+import '../services/review_service.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({
@@ -67,7 +71,7 @@ class _TouristHomeState extends State<TouristHome> {
     );
     final pages = [
       InteractiveMapScreen(user: widget.user),
-      RewardsTab(user: widget.user),
+      MyRewardsScreen(userId: widget.user.id, showBackButton: false),
       profile,
     ];
     return Scaffold(
@@ -161,292 +165,369 @@ class TouristProfileScreen extends StatelessWidget {
   final AppUser user;
   final VoidCallback? onNavigateToRewards;
 
+  Stream<DocumentSnapshot<Map<String, dynamic>>?> _userDocStream(String uid) {
+    try {
+      return FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(16, 42, 16, 116),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const Expanded(
-              child: LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
-            ),
-            const SizedBox(width: 8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton.filledTonal(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  tooltip: 'Direct Chat',
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FriendsScreen(
-                        currentUser: user,
-                        initialTabIndex: 1,
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(Icons.chat_bubble_outline, size: 20),
-                ),
-                const SizedBox(width: 4),
-                StreamBuilder<List<ChatConversation>>(
-                  stream: DirectChatService.instance.streamConversations(user.id),
-                  builder: (context, chatSnap) {
-                    final hasUnreadChat = (chatSnap.data ?? []).any((c) => c.unreadCount > 0);
-                    return StreamBuilder<List<FriendRequest>>(
-                      stream: SocialService.instance.streamFriendRequests(user.id),
-                      builder: (context, reqSnap) {
-                        final hasPendingReq = (reqSnap.data ?? []).isNotEmpty;
-                        final hasNotif = hasUnreadChat || hasPendingReq;
-                        return Badge(
-                          isLabelVisible: hasNotif,
-                          smallSize: 8,
-                          backgroundColor: LqColors.primary,
-                          child: IconButton.filledTonal(
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                            tooltip: 'Notifications',
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => NotificationsScreen(user: user),
-                              ),
-                            ),
-                            icon: const Icon(Icons.notifications_none, size: 20),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(width: 4),
-                IconButton.filledTonal(
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  tooltip: 'Settings',
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SettingsScreen(user: user),
-                    ),
-                  ),
-                  icon: const Icon(Icons.settings_outlined, size: 20),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 28),
-        InkWell(
-          borderRadius: BorderRadius.circular(25),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
-          ),
-          child: LqCard(
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                Container(
-                  color: LqColors.primarySoft,
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      LqAvatar(
-                        radius: 36,
-                        initials: initialsFor(user.displayName),
-                        photoUrl: user.photoUrl,
-                        shape: LqAvatarShape.roundedSquare,
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => StreamBuilder<List<Map<String, dynamic>>>(
+    stream: MerchantRepository.instance.touristClaimedVouchers(user.id),
+    builder: (context, claimedSnap) {
+      return StreamBuilder<List<Map<String, dynamic>>>(
+        stream: RewardService.instance.watchAchievementVouchers(user.id),
+        builder: (context, achSnap) {
+          return StreamBuilder<List<Review>>(
+            stream: ReviewService.instance.watchReviewsForUser(user.id),
+            builder: (context, reviewSnap) {
+              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+                stream: _userDocStream(user.id),
+                builder: (context, userDocSnap) {
+                  final claimed = claimedSnap.data ?? const <Map<String, dynamic>>[];
+                  final ach = achSnap.data ?? const <Map<String, dynamic>>[];
+                  final unredeemedClaimed = claimed.where((v) => v['redeemed'] != true).length;
+                  final unredeemedAch = ach.where((v) => v['redeemed'] != true).length;
+                  final activeVoucherCount = (claimedSnap.hasData || achSnap.hasData)
+                      ? (unredeemedClaimed + unredeemedAch)
+                      : user.voucherCount;
+
+                  final reviews = reviewSnap.data;
+                  final activeReviewCount = reviewSnap.hasData
+                      ? reviews!.length
+                      : user.reviewCount;
+
+                  final userData = userDocSnap.data?.data() ?? const <String, dynamic>{};
+                  final streakCount = (userData['streakCount'] as num?)?.toInt() ?? 0;
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 42, 16, 116),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(
-                              user.displayName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
+                            const Expanded(
+                              child: LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
                             ),
-                            Text(
-                              user.username,
-                              style: const TextStyle(color: LqColors.muted),
-                            ),
-                            const SizedBox(height: 10),
+                            const SizedBox(width: 8),
                             Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Flexible(
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: LqTierBadge(level: user.level),
+                                IconButton.filledTonal(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                  tooltip: 'Direct Chat',
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => FriendsScreen(
+                                        currentUser: user,
+                                        initialTabIndex: 1,
+                                      ),
+                                    ),
                                   ),
+                                  icon: const Icon(Icons.chat_bubble_outline, size: 20),
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${user.exp}/3,000XP',
-                                  style: monoLabel.copyWith(
-                                    color: const Color(0xFF466294),
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 9,
-                                    letterSpacing: 0,
+                                const SizedBox(width: 4),
+                                StreamBuilder<List<ChatConversation>>(
+                                  stream: DirectChatService.instance.streamConversations(user.id),
+                                  builder: (context, chatSnap) {
+                                    final hasUnreadChat = (chatSnap.data ?? []).any((c) => c.unreadCount > 0);
+                                    return StreamBuilder<List<FriendRequest>>(
+                                      stream: SocialService.instance.streamFriendRequests(user.id),
+                                      builder: (context, reqSnap) {
+                                        final hasPendingReq = (reqSnap.data ?? []).isNotEmpty;
+                                        final hasNotif = hasUnreadChat || hasPendingReq;
+                                        return Badge(
+                                          isLabelVisible: hasNotif,
+                                          smallSize: 8,
+                                          backgroundColor: LqColors.primary,
+                                          child: IconButton.filledTonal(
+                                            visualDensity: VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                            tooltip: 'Notifications',
+                                            onPressed: () => Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => NotificationsScreen(user: user),
+                                              ),
+                                            ),
+                                            icon: const Icon(Icons.notifications_none, size: 20),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                IconButton.filledTonal(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                  tooltip: 'Settings',
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => SettingsScreen(user: user),
+                                    ),
                                   ),
+                                  icon: const Icon(Icons.settings_outlined, size: 20),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            LinearProgressIndicator(
-                              value: ((user.exp % 3000) / 3000).clamp(0, 1),
-                              minHeight: 7,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.chevron_right,
-                        color: LqColors.primary,
-                        size: 24,
-                      ),
-                    ],
-                  ),
-                ),
-                const LqDashedDivider(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _Stat(
-                        label: 'Vouchers',
-                        value: '${user.voucherCount}',
-                        badgeText: user.voucherCount > 0
-                            ? '${user.voucherCount > 3 ? 3 : user.voucherCount} expiring soon'
-                            : '0 expiring soon',
-                        icon: Icons.confirmation_num_outlined,
-                      ),
-                    ),
-                    const SizedBox(
-                      height: 104,
-                      child: LqDashedDivider(vertical: true),
-                    ),
-                    Expanded(
-                      child: _Stat(
-                        label: 'Reviews',
-                        value: '${user.reviewCount}',
-                        badgeText: user.reviewCount > 0
-                            ? 'Top 8% storyteller'
-                            : 'Top storyteller',
-                        icon: Icons.star_border,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 28),
-        Text('YOUR JOURNEY', style: monoLabel),
-        const SizedBox(height: 12),
-        LqCard(
-          child: Column(
-            children: [
-              _JourneyItem(
-                icon: Icons.confirmation_num_outlined,
-                title: 'My vouchers',
-                subtitle: '${user.voucherCount} ready to use',
-                onTap: () {},
-              ),
-              _JourneyItem(
-                icon: Icons.star_outline,
-                title: 'Reviews & ratings',
-                subtitle: '${user.reviewCount} posted',
-                onTap: () {},
-              ),
-              StreamBuilder<List<Mission>>(
-                stream: MissionService.instance.watchMissions(user.id),
-                initialData: const <Mission>[],
-                builder: (context, snapshot) {
-                  final missions = snapshot.data ?? const <Mission>[];
-                  final activeCount = missions
-                      .where((m) => m.status == MissionStatus.active)
-                      .length;
-                  return _JourneyItem(
-                    icon: Icons.auto_awesome_outlined,
-                    title: 'Missions',
-                    subtitle: '$activeCount in progress',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MissionListScreen(
-                          uid: user.id,
-                          currentLat: LocationTrackerService.instance.lastPosition?.latitude ?? 5.4141,
-                          currentLng: LocationTrackerService.instance.lastPosition?.longitude ?? 100.3288,
+                        const SizedBox(height: 28),
+                        LqCard(
+                          padding: EdgeInsets.zero,
+                          child: Column(
+                            children: [
+                              Material(
+                                color: Colors.transparent,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                child: InkWell(
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
+                                  ),
+                                  child: Container(
+                                    color: LqColors.primarySoft,
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      children: [
+                                        LqAvatar(
+                                          radius: 36,
+                                          initials: initialsFor(user.displayName),
+                                          photoUrl: user.photoUrl,
+                                          shape: LqAvatarShape.roundedSquare,
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                user.displayName,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 20,
+                                                ),
+                                              ),
+                                              Text(
+                                                user.username,
+                                                style: const TextStyle(color: LqColors.muted),
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Row(
+                                                children: [
+                                                  Flexible(
+                                                    child: FittedBox(
+                                                      fit: BoxFit.scaleDown,
+                                                      alignment: Alignment.centerLeft,
+                                                      child: LqTierBadge(level: user.level),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    '${user.exp}/3,000XP',
+                                                    style: monoLabel.copyWith(
+                                                      color: const Color(0xFF466294),
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 9,
+                                                      letterSpacing: 0,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              LinearProgressIndicator(
+                                                value: ((user.exp % 3000) / 3000).clamp(0, 1),
+                                                minHeight: 7,
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Icon(
+                                          Icons.chevron_right,
+                                          color: LqColors.primary,
+                                          size: 24,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const LqDashedDivider(),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _Stat(
+                                      label: 'Vouchers',
+                                      value: '$activeVoucherCount',
+                                      badgeText: activeVoucherCount > 0
+                                          ? '${activeVoucherCount > 3 ? 3 : activeVoucherCount} expiring soon'
+                                          : '0 expiring soon',
+                                      icon: Icons.confirmation_num_outlined,
+                                      onTap: () => onNavigateToRewards != null
+                                          ? onNavigateToRewards!()
+                                          : Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => MyRewardsScreen(userId: user.id),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(
+                                    height: 104,
+                                    child: LqDashedDivider(vertical: true),
+                                  ),
+                                  Expanded(
+                                    child: _Stat(
+                                      label: 'Reviews',
+                                      value: '$activeReviewCount',
+                                      badgeText: activeReviewCount > 0
+                                          ? 'Top 8% storyteller'
+                                          : 'Top storyteller',
+                                      icon: Icons.star_border,
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => MyReviewsScreen(userId: user.id),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 28),
+                        Text('YOUR JOURNEY', style: monoLabel),
+                        const SizedBox(height: 12),
+                        LqCard(
+                          child: Column(
+                            children: [
+                              _JourneyItem(
+                                icon: Icons.confirmation_num_outlined,
+                                title: 'My vouchers',
+                                subtitle: '$activeVoucherCount ready to use',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MyRewardsScreen(userId: user.id),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.star_outline,
+                                title: 'Reviews & ratings',
+                                subtitle: '$activeReviewCount posted',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MyReviewsScreen(userId: user.id),
+                                  ),
+                                ),
+                              ),
+                              StreamBuilder<List<Mission>>(
+                                stream: MissionService.instance.watchMissions(user.id),
+                                initialData: const <Mission>[],
+                                builder: (context, snapshot) {
+                                  final missions = snapshot.data ?? const <Mission>[];
+                                  final activeCount = missions
+                                      .where((m) => m.status == MissionStatus.active)
+                                      .length;
+                                  return _JourneyItem(
+                                    icon: Icons.auto_awesome_outlined,
+                                    title: 'Missions',
+                                    subtitle: '$activeCount in progress',
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => MissionListScreen(
+                                          uid: user.id,
+                                          currentLat: LocationTrackerService.instance.lastPosition?.latitude ?? 5.4141,
+                                          currentLng: LocationTrackerService.instance.lastPosition?.longitude ?? 100.3288,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _JourneyItem(
+                                icon: Icons.calendar_month_outlined,
+                                title: 'Daily check-in',
+                                subtitle: streakCount > 0 ? '$streakCount-day streak' : 'Keep your streak',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => DailyCheckInScreen(userId: user.id),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.history,
+                                title: 'Visited places',
+                                subtitle: 'Your automatic location history',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => VisitedPlacesScreen(userId: user.id, user: user),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.people_outline,
+                                title: 'My Friends',
+                                subtitle: 'Connect & share vibes with friends',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FriendsScreen(currentUser: user),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.emoji_events_outlined,
+                                title: 'Leaderboard',
+                                subtitle: 'Global & Friends rankings',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => LeaderboardScreen(currentUser: user),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        LqLogoutButton(
+                          onPressed: () =>
+                              confirmLqSignOut(context, AuthService.instance.signOut),
+                        ),
+                      ],
                     ),
                   );
                 },
-              ),
-              _JourneyItem(
-                icon: Icons.calendar_month_outlined,
-                title: 'Daily check-in',
-                subtitle: 'Keep your streak',
-                onTap: () {},
-              ),
-              _JourneyItem(
-                icon: Icons.history,
-                title: 'Visited places',
-                subtitle: 'Your automatic location history',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => VisitedPlacesScreen(userId: user.id, user: user),
-                  ),
-                ),
-              ),
-              _JourneyItem(
-                icon: Icons.people_outline,
-                title: 'My Friends',
-                subtitle: 'Connect & share vibes with friends',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => FriendsScreen(currentUser: user),
-                  ),
-                ),
-              ),
-              _JourneyItem(
-                icon: Icons.emoji_events_outlined,
-                title: 'Leaderboard',
-                subtitle: 'Global & Friends rankings',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => LeaderboardScreen(currentUser: user),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        LqLogoutButton(
-          onPressed: () =>
-              confirmLqSignOut(context, AuthService.instance.signOut),
-        ),
-      ],
-    ),
+              );
+            },
+          );
+        },
+      );
+    },
   );
 }
 
@@ -456,45 +537,53 @@ class _Stat extends StatelessWidget {
     required this.value,
     required this.icon,
     this.badgeText,
+    this.onTap,
   });
   final String label;
   final String value;
   final IconData icon;
   final String? badgeText;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label.toUpperCase(), style: monoLabel),
-              Icon(icon, color: LqColors.primary),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(label.toUpperCase(), style: monoLabel),
+                  Icon(icon, color: LqColors.primary),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+              ),
+              if (badgeText != null && badgeText!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  badgeText!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: LqColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-          ),
-          if (badgeText != null && badgeText!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              badgeText!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: LqColors.muted,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
