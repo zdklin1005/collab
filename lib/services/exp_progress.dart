@@ -19,7 +19,7 @@ class ExpProgress {
 
   double get fraction => expIntoLevel / expRequiredThisLevel;
 
-  // Matches RewardService on origin/temp.
+  // Shared cumulative EXP curve for map progress and RewardService.
   static int expRequiredForLevel(int level) {
     if (level < 1) {
       throw ArgumentError.value(level, 'level', 'must be at least 1');

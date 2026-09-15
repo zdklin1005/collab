@@ -111,10 +111,8 @@ void main() {
       final result = check(selected: unavailable, current: [unavailable]);
 
       expect(result.canAttemptClaim, isFalse);
-      expect(
-        result.localCheck?.status,
-        RewardCollectionCheckStatus.rewardUnavailable,
-      );
+      expect(result.status, LiveRewardCollectionStatus.rewardChanged);
+      expect(result.localCheck, isNull);
     }
   });
 

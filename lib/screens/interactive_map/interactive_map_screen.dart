@@ -2545,6 +2545,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                 onCheckExpAvailability: _checkLiveExpAvailability,
                 collectionRadiusMeters: _liveExpCollectionRadiusMeters,
                 onFocusReward: _focusOnReward,
+                userId: widget.user.id,
               ),
 
             if (MapTestConfig.enabled &&

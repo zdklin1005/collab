@@ -147,4 +147,40 @@ void main() {
 
     expect(claims.docs, isEmpty);
   });
+
+  test(
+    'map level-up returns receipt without issuing a level-up voucher',
+    () async {
+      final userRef = db.collection('users').doc('tourist-1');
+
+      await userRef.update({'exp': 150, 'level': 1, 'voucherCount': 0});
+
+      final marker = reward();
+      final result = await collect(marker);
+
+      expect(result.status, MapExpClaimStatus.recorded);
+
+      final receipt = result.receipt!;
+      expect(receipt.previousExp, 150);
+      expect(receipt.newExp, 250);
+      expect(receipt.previousLevel, 1);
+      expect(receipt.newLevel, 2);
+      expect(receipt.leveledUp, isTrue);
+      expect(receipt.alreadyAwarded, isFalse);
+
+      final user = (await userRef.get()).data()!;
+      expect(user['exp'], 250);
+      expect(user['level'], 2);
+      expect(user['voucherCount'], 0);
+
+      expect((await userRef.collection('vouchers').get()).docs, isEmpty);
+      expect((await userRef.collection('claimedVouchers').get()).docs, isEmpty);
+
+      // Retrying the same map reward must not add EXP again.
+      final repeated = await collect(marker);
+      expect(repeated.status, MapExpClaimStatus.alreadyClaimed);
+      expect(await balance(), 250);
+      expect((await userRef.collection('expLog').get()).docs, hasLength(1));
+    },
+  );
 }

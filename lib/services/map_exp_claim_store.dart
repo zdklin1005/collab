@@ -5,7 +5,9 @@ import 'package:crypto/crypto.dart';
 
 import '../models/reward_marker.dart';
 import 'daily_reward_generator.dart';
-import 'exp_award_service.dart';
+
+import 'exp_award_service.dart' show ExpAwardReceipt;
+import 'reward_service.dart';
 
 enum MapExpClaimStatus {
   recorded,
@@ -32,17 +34,17 @@ class MapExpClaimStore {
     required FirebaseFirestore firestore,
     DateTime Function()? clock,
   }) : _firestore = firestore,
-       _awards = ExpAwardService(firestore: firestore),
+       _rewards = RewardService.withFirestore(firestore),
        _clock = clock ?? DateTime.now;
 
   final FirebaseFirestore _firestore;
-  final ExpAwardService _awards;
+  final RewardService _rewards;
   final DateTime Function() _clock;
 
   static const cooldown = Duration(hours: 24);
 
   static String claimIdFor(String rewardId) {
-    return ExpAwardService.awardIdFor(source: 'map_exp', sourceId: rewardId);
+    return RewardService.mapExpAwardIdFor(rewardId);
   }
 
   static String cooldownIdFor(String checkpointId) {
@@ -117,11 +119,10 @@ class MapExpClaimStore {
 
       // This reads the account and award log, then queues their writes.
       // No transaction reads may follow this call.
-      final receipt = await _awards.awardInTransaction(
+      final receipt = await _rewards.awardMapExpInTransaction(
         transaction,
         uid: uid,
-        source: 'map_exp',
-        sourceId: reward.id,
+        rewardId: reward.id,
         amount: reward.expAmount,
       );
 

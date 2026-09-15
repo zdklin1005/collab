@@ -16,6 +16,12 @@ import 'reward_collection_check.dart';
 import 'out_of_range_dialog.dart';
 import 'reward_preview_dialog.dart';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../services/map_exp_history_repository.dart';
+
+import '../../services/map_exp_visibility.dart';
+
 typedef LiveExpAvailabilityCheck =
     Future<LiveRewardCollectionCheck> Function(
       RewardMarker selectedReward,
@@ -31,6 +37,7 @@ class LiveExpPreviewLayer extends StatefulWidget {
     required this.onCheckExpAvailability,
     required this.collectionRadiusMeters,
     required this.onFocusReward,
+    required this.userId,
   });
 
   final List<MapLocation> places;
@@ -38,6 +45,7 @@ class LiveExpPreviewLayer extends StatefulWidget {
   final LiveExpAvailabilityCheck onCheckExpAvailability;
   final double collectionRadiusMeters;
   final ValueChanged<RewardMarker> onFocusReward;
+  final String userId;
 
   @override
   State<LiveExpPreviewLayer> createState() => _LiveExpPreviewLayerState();
@@ -54,6 +62,16 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     WidgetsBinding.instance.addObserver(this);
     _scheduleDayRefresh();
     _startVoucherWatch();
+    _startHistoryWatch();
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveExpPreviewLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.userId != widget.userId) {
+      _startHistoryWatch();
+    }
   }
 
   void _scheduleDayRefresh() {
@@ -71,6 +89,18 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
 
     for (final campaign in _campaigns) {
       for (final boundary in [campaign.startDate, campaign.endDate]) {
+        if (boundary.isAfter(now) && boundary.isBefore(nextRefresh)) {
+          nextRefresh = boundary;
+        }
+      }
+    }
+
+    final cooldowns = _cooldownHistory?.data;
+
+    if (cooldowns != null) {
+      for (final cooldown in cooldowns.values) {
+        final boundary = cooldown.nextEligibleAt;
+
         if (boundary.isAfter(now) && boundary.isBefore(nextRefresh)) {
           nextRefresh = boundary;
         }
@@ -99,6 +129,8 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
 
   @override
   void dispose() {
+    _historyRequestId++;
+    _cancelHistoryWatch();
     _voucherRequestId++;
     final subscription = _voucherSubscription;
     if (subscription != null) {
@@ -113,6 +145,7 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     final now = DateTime.now();
 
     if (_dialogOpen ||
+        !_historyReady ||
         ModalRoute.of(context)?.isCurrent != true ||
         !reward.canDisplayAt(now) ||
         !_rewardsAt(now).any((current) => current.id == reward.id)) {
@@ -125,7 +158,11 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
       final check = await widget.onCheckExpAvailability(
         reward,
         _rewardsAt,
-        () => mounted && !_loadingVouchers && !_voucherLoadFailed,
+        () =>
+            mounted &&
+            _historyReady &&
+            !_loadingVouchers &&
+            !_voucherLoadFailed,
       );
 
       if (!mounted ||
@@ -256,13 +293,27 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
   }
 
   List<RewardMarker> _rewardsAt(DateTime instant) {
-    return generateLiveRewardPreviews(
+    final claims = _claimHistory;
+    final cooldowns = _cooldownHistory;
+
+    if (!_historyReady || claims == null || cooldowns == null) {
+      return const <RewardMarker>[];
+    }
+
+    final generated = generateLiveRewardPreviews(
       places: widget.places,
       businesses: widget.businesses,
       campaigns: _loadingVouchers || _voucherLoadFailed
           ? const <Campaign>[]
           : _campaigns,
       instant: instant,
+    );
+
+    return filterMapExpHistory(
+      rewards: generated,
+      claimedRewardIds: claims.data,
+      cooldowns: cooldowns.data,
+      now: instant,
     );
   }
 
@@ -360,8 +411,115 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
     }
   }
 
+  StreamSubscription<MapHistorySnapshot<Set<String>>>?
+  _claimHistorySubscription;
+
+  StreamSubscription<MapHistorySnapshot<Map<String, MapCheckpointCooldown>>>?
+  _cooldownHistorySubscription;
+
+  MapHistorySnapshot<Set<String>>? _claimHistory;
+  MapHistorySnapshot<Map<String, MapCheckpointCooldown>>? _cooldownHistory;
+
+  Timer? _historyTimeout;
+  int _historyRequestId = 0;
+  bool _historyFailed = false;
+
+  bool get _historyReady =>
+      !_historyFailed &&
+      _claimHistory?.serverConfirmed == true &&
+      _cooldownHistory?.serverConfirmed == true;
+
+  void _cancelHistoryWatch() {
+    _historyTimeout?.cancel();
+
+    final claims = _claimHistorySubscription;
+    final cooldowns = _cooldownHistorySubscription;
+
+    _claimHistorySubscription = null;
+    _cooldownHistorySubscription = null;
+
+    if (claims != null) {
+      unawaited(claims.cancel());
+    }
+    if (cooldowns != null) {
+      unawaited(cooldowns.cancel());
+    }
+  }
+
+  void _startHistoryWatch() {
+    final requestId = ++_historyRequestId;
+    _cancelHistoryWatch();
+
+    _claimHistory = null;
+    _cooldownHistory = null;
+    _historyFailed = false;
+
+    void fail(Object error, StackTrace stackTrace) {
+      if (!mounted || requestId != _historyRequestId) return;
+
+      _historyTimeout?.cancel();
+      setState(() {
+        _historyFailed = true;
+      });
+    }
+
+    void receivedHistory() {
+      // Only both server-confirmed streams can clear a previous failure.
+      if (_claimHistory?.serverConfirmed == true &&
+          _cooldownHistory?.serverConfirmed == true) {
+        _historyFailed = false;
+        _historyTimeout?.cancel();
+      }
+
+      _scheduleDayRefresh();
+    }
+
+    _historyTimeout = Timer(const Duration(seconds: 20), () {
+      if (!mounted || requestId != _historyRequestId || _historyReady) {
+        return;
+      }
+
+      setState(() {
+        _historyFailed = true;
+      });
+    });
+
+    try {
+      final repository = MapExpHistoryRepository(
+        firestore: FirebaseFirestore.instance,
+      );
+
+      _claimHistorySubscription = repository
+          .watchClaimedRewardIds(widget.userId)
+          .listen((snapshot) {
+            if (!mounted || requestId != _historyRequestId) return;
+
+            setState(() {
+              _claimHistory = snapshot;
+              receivedHistory();
+            });
+          }, onError: fail);
+
+      _cooldownHistorySubscription = repository
+          .watchCheckpointCooldowns(widget.userId)
+          .listen((snapshot) {
+            if (!mounted || requestId != _historyRequestId) return;
+
+            setState(() {
+              _cooldownHistory = snapshot;
+              receivedHistory();
+            });
+          }, onError: fail);
+    } catch (error, stackTrace) {
+      fail(error, stackTrace);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_historyReady) {
+      return _buildHistoryStatus();
+    }
     return Stack(
       children: [
         _buildRewardMarkers(context),
@@ -392,6 +550,43 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildHistoryStatus() {
+    return Stack(
+      children: [
+        Positioned(
+          left: 16,
+          right: 84,
+          bottom: 210,
+          child: Material(
+            color: Colors.white,
+            elevation: 2,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _historyFailed
+                        ? 'Could not confirm your reward history. '
+                              'Check your connection and retry.'
+                        : 'Checking your reward history…',
+                  ),
+                  if (_historyFailed)
+                    TextButton(
+                      onPressed: () => setState(_startHistoryWatch),
+                      child: const Text('Retry'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

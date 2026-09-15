@@ -1,6 +1,8 @@
 import '../../models/reward_marker.dart';
 import 'reward_collection_check.dart';
 
+import '../../services/current_reward_validation.dart';
+
 enum LiveRewardCollectionStatus {
   ready,
   simulationBlocked,
@@ -45,19 +47,20 @@ LiveRewardCollectionCheck checkLiveRewardCollection({
     );
   }
 
-  final matches = currentRewards
-      .where((reward) => reward.id == selectedReward.id)
-      .toList();
+  final current = findMatchingCurrentReward(
+    selected: selectedReward,
+    currentRewards: currentRewards,
+    now: now,
+  );
 
-  // Reject missing or ambiguous IDs as well as changed reward data.
-  if (matches.length != 1 || !_sameReward(selectedReward, matches.single)) {
+  if (current == null) {
     return const LiveRewardCollectionCheck(
       LiveRewardCollectionStatus.rewardChanged,
     );
   }
 
   final localCheck = checkRewardCollection(
-    reward: matches.single,
+    reward: current,
     now: now,
     appIsForeground: appIsForeground,
     locationAllowed: locationAllowed,
@@ -77,21 +80,4 @@ LiveRewardCollectionCheck checkLiveRewardCollection({
         : LiveRewardCollectionStatus.localCheckFailed,
     localCheck: localCheck,
   );
-}
-
-bool _sameReward(RewardMarker selected, RewardMarker current) {
-  return selected.id == current.id &&
-      selected.checkpointId == current.checkpointId &&
-      selected.locationType == current.locationType &&
-      selected.locationId == current.locationId &&
-      selected.type == current.type &&
-      selected.title == current.title &&
-      selected.description == current.description &&
-      selected.latitude == current.latitude &&
-      selected.longitude == current.longitude &&
-      selected.expAmount == current.expAmount &&
-      selected.voucherId == current.voucherId &&
-      selected.active == current.active &&
-      selected.availableFrom.isAtSameMomentAs(current.availableFrom) &&
-      selected.expiresAt.isAtSameMomentAs(current.expiresAt);
 }
