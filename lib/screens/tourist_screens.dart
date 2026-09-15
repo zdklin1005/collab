@@ -27,6 +27,8 @@ import 'mission_list_screen.dart';
 import 'write_review_screen.dart';
 import '../services/mission_service.dart';
 import '../services/check_in_service.dart';
+import 'my_reviews_screen.dart';
+import 'my_rewards_screen.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({
@@ -368,13 +370,23 @@ class TouristProfileScreen extends StatelessWidget {
                 icon: Icons.confirmation_num_outlined,
                 title: 'My vouchers',
                 subtitle: '${user.voucherCount} ready to use',
-                onTap: () {},
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MyRewardsScreen(userId: user.id),
+                  ),
+                ),
               ),
               _JourneyItem(
                 icon: Icons.star_outline,
                 title: 'Reviews & ratings',
                 subtitle: '${user.reviewCount} posted',
-                onTap: () {},
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MyReviewsScreen(userId: user.id),
+                    ),
+                ),
               ),
               StreamBuilder<List<Mission>>(
                 stream: MissionService.instance.watchMissions(user.id),

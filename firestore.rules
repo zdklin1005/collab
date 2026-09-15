@@ -125,5 +125,14 @@ service cloud.firestore {
       allow delete: if isMerchantNow()
         && resource.data.ownerId == request.auth.uid;
     }
+
+        // Collection-group read access for "My reviews" — a fixed-depth
+        // rule under /businesses/{id}/reviews isn't reliably honored for
+        // collectionGroup() queries; this recursive-wildcard rule is.
+        // Create/update/delete for reviews still goes through the rule
+        // nested inside /businesses/{businessId}/reviews below.
+        match /{path=**}/reviews/{reviewId} {
+          allow read: if signedIn();
+        }
   }
 }

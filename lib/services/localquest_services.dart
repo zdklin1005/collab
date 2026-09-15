@@ -1115,6 +1115,12 @@ class MerchantRepository {
     await batch.commit();
   }
 
+  Future<void> markClaimedVoucherRedeemed(String userId, String voucherId) {
+    return db
+        .collection('users').doc(userId).collection('claimedVouchers').doc(voucherId)
+        .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
+  }
+
   Future<bool> claimVoucher({
     required String userId,
     required String voucherId,

@@ -91,6 +91,7 @@ class _WriteReviewScreenState extends State<WriteReviewScreen> {
       final result = await ReviewService.instance.submitReview(
         uid: widget.userId,
         businessId: widget.businessId,
+        businessName: widget.businessName,
         rating: _rating.toDouble(),
         text: _textController.text.trim(),
         photoUrls: photoUrls,

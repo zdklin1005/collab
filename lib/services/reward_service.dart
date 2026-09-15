@@ -150,4 +150,23 @@ class RewardService {
     });
     await batch.commit();
   }
+
+  /// Live list of achievement vouchers (from level-ups / voucher-type
+  /// missions) awarded to [uid]. Raw maps, not a dedicated model — see
+  /// the class doc on awardVoucher() for why these are placeholders.
+  Stream<List<Map<String, dynamic>>> watchAchievementVouchers(String uid) {
+    return db
+        .collection('users').doc(uid).collection('vouchers')
+        .orderBy('awardedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+  }
+
+  /// Marks an achievement voucher as used. Self-reported by the tourist —
+  /// see RedeemVoucherScreen's class doc for the trust-model caveat.
+  Future<void> markVoucherRedeemed(String uid, String voucherId) {
+    return db
+        .collection('users').doc(uid).collection('vouchers').doc(voucherId)
+        .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
+  }
 }
