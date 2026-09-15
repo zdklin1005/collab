@@ -29,7 +29,7 @@ Future<Uint8List?> cropImageFile({
       } else {
         ratio = 16.0 / 9.0;
       }
-      return showLqImageCropper(
+      return await showLqImageCropper(
         context: context,
         imageBytes: bytes,
         aspectRatio: ratio,
@@ -43,7 +43,6 @@ Future<Uint8List?> cropImageFile({
   }
   return null;
 }
-
 
 /// Launches the interactive LocalQuest Image Cropper.
 ///
@@ -158,7 +157,8 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
   }
 
   Future<void> _cropAndFinish() async {
-    if (_decodedImage == null || _isProcessing || _currentCropRect.isEmpty) return;
+    if (_decodedImage == null || _isProcessing || _currentCropRect.isEmpty)
+      return;
     setState(() => _isProcessing = true);
 
     try {
@@ -166,10 +166,14 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
       final rotatedImage = await _rotateImage(_decodedImage!, _quarterTurns);
 
       // 2. Compute the exact position of the rendered image relative to the crop window
-      final double maxPanX =
-          math.max(0.0, (_currentRenderW - _currentCropRect.width) / 2.0);
-      final double maxPanY =
-          math.max(0.0, (_currentRenderH - _currentCropRect.height) / 2.0);
+      final double maxPanX = math.max(
+        0.0,
+        (_currentRenderW - _currentCropRect.width) / 2.0,
+      );
+      final double maxPanY = math.max(
+        0.0,
+        (_currentRenderH - _currentCropRect.height) / 2.0,
+      );
       final Offset clampedPan = Offset(
         _panOffset.dx.clamp(-maxPanX, maxPanX),
         _panOffset.dy.clamp(-maxPanY, maxPanY),
@@ -187,14 +191,22 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
       // 4. Map from screen render coordinates to high-res source rotated image coordinates
       final double scaleFactor = rotatedImage.width / _currentRenderW;
 
-      final double srcX =
-          (relCropX * scaleFactor).clamp(0.0, rotatedImage.width.toDouble());
-      final double srcY =
-          (relCropY * scaleFactor).clamp(0.0, rotatedImage.height.toDouble());
-      final double srcW =
-          (_currentCropRect.width * scaleFactor).clamp(1.0, rotatedImage.width - srcX);
-      final double srcH =
-          (_currentCropRect.height * scaleFactor).clamp(1.0, rotatedImage.height - srcY);
+      final double srcX = (relCropX * scaleFactor).clamp(
+        0.0,
+        rotatedImage.width.toDouble(),
+      );
+      final double srcY = (relCropY * scaleFactor).clamp(
+        0.0,
+        rotatedImage.height.toDouble(),
+      );
+      final double srcW = (_currentCropRect.width * scaleFactor).clamp(
+        1.0,
+        rotatedImage.width - srcX,
+      );
+      final double srcH = (_currentCropRect.height * scaleFactor).clamp(
+        1.0,
+        rotatedImage.height - srcY,
+      );
       final Rect srcRect = Rect.fromLTWH(srcX, srcY, srcW, srcH);
 
       // 5. Compute crisp output dimensions preserving aspect ratio
@@ -207,8 +219,12 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
 
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      final dstRect =
-          Rect.fromLTWH(0, 0, outWidth.toDouble(), outHeight.toDouble());
+      final dstRect = Rect.fromLTWH(
+        0,
+        0,
+        outWidth.toDouble(),
+        outHeight.toDouble(),
+      );
 
       canvas.drawImageRect(
         rotatedImage,
@@ -219,8 +235,9 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
 
       final picture = recorder.endRecording();
       final croppedUiImage = await picture.toImage(outWidth, outHeight);
-      final byteData =
-          await croppedUiImage.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await croppedUiImage.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
 
       if (byteData == null) {
         throw Exception('Could not encode cropped image');
@@ -245,9 +262,7 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
     if (_decodedImage == null) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
+        body: Center(child: CircularProgressIndicator(color: Colors.white)),
       );
     }
 
@@ -317,8 +332,14 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
           _currentRenderH = currentH;
 
           // Compute strict pan clamping bounds (image CANNOT be dragged inside the crop window)
-          final double maxPanX = math.max(0.0, (currentW - cropRect.width) / 2.0);
-          final double maxPanY = math.max(0.0, (currentH - cropRect.height) / 2.0);
+          final double maxPanX = math.max(
+            0.0,
+            (currentW - cropRect.width) / 2.0,
+          );
+          final double maxPanY = math.max(
+            0.0,
+            (currentH - cropRect.height) / 2.0,
+          );
           final Offset clampedPan = Offset(
             _panOffset.dx.clamp(-maxPanX, maxPanX),
             _panOffset.dy.clamp(-maxPanY, maxPanY),
@@ -383,10 +404,14 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
                     _scale = (_baseScale * details.scale).clamp(1.0, 5.0);
                     final double curW = baseRenderW * _scale;
                     final double curH = baseRenderH * _scale;
-                    final double mX =
-                        math.max(0.0, (curW - cropRect.width) / 2.0);
-                    final double mY =
-                        math.max(0.0, (curH - cropRect.height) / 2.0);
+                    final double mX = math.max(
+                      0.0,
+                      (curW - cropRect.width) / 2.0,
+                    );
+                    final double mY = math.max(
+                      0.0,
+                      (curH - cropRect.height) / 2.0,
+                    );
                     final Offset delta = details.focalPoint - _startFocalPoint;
                     final Offset proposed = _basePanOffset + delta;
                     _panOffset = Offset(
@@ -474,8 +499,9 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
                 children: [
                   // Cancel
                   TextButton(
-                    onPressed:
-                        _isProcessing ? null : () => Navigator.pop(context),
+                    onPressed: _isProcessing
+                        ? null
+                        : () => Navigator.pop(context),
                     child: const Text(
                       'Cancel',
                       style: TextStyle(
@@ -552,15 +578,10 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
   }
 }
 
-
-
 /// Custom painter for the cropping overlay with scrim, rule-of-thirds grid,
 /// corner brackets, and optional circular mask guide.
 class _CropOverlayPainter extends CustomPainter {
-  _CropOverlayPainter({
-    required this.cropRect,
-    required this.circularMask,
-  });
+  _CropOverlayPainter({required this.cropRect, required this.circularMask});
 
   final Rect cropRect;
   final bool circularMask;

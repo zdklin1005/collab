@@ -8,11 +8,15 @@ class RewardPreviewDialog extends StatelessWidget {
     required this.reward,
     required this.locationName,
     this.onCollect,
+    this.isDemo = true,
+    this.noteOverride,
   });
 
   final RewardMarker reward;
   final String locationName;
   final VoidCallback? onCollect;
+  final bool isDemo;
+  final String? noteOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +24,11 @@ class RewardPreviewDialog extends StatelessWidget {
 
     return RewardDialogCard(
       heading: isExp ? 'Reward Nearby!' : 'Voucher Nearby!',
-      icon: isExp ? Icons.star_rounded : Icons.bolt_rounded,
+      icon: isExp
+          ? Icons.star_rounded
+          : isDemo
+          ? Icons.bolt_rounded
+          : Icons.confirmation_number_outlined,
       colors: isExp
           ? const [Color(0xFFFFD83D), Color(0xFFFFAA00)]
           : const [Color(0xFF4A82F4), Color(0xFF3267D8)],
@@ -28,7 +36,11 @@ class RewardPreviewDialog extends StatelessWidget {
       description: Text.rich(
         TextSpan(
           children: [
-            const TextSpan(text: 'You found a demo reward near '),
+            TextSpan(
+              text: isDemo
+                  ? 'You found a demo reward near '
+                  : 'Explore this reward near ',
+            ),
             TextSpan(
               text: locationName,
               style: const TextStyle(
@@ -46,13 +58,17 @@ class RewardPreviewDialog extends StatelessWidget {
           height: 1.5,
         ),
       ),
-      note: onCollect == null
-          ? 'Preview only. Collection is not enabled yet.'
-          : 'Demo collection only. No real EXP or voucher is issued.\n'
-            'Your location and reward availability will be checked again.',
-      buttonLabel: onCollect == null
-          ? 'COLLECT REWARD'
-          : 'COLLECT DEMO REWARD',
+      note:
+          noteOverride ??
+          (onCollect == null
+              ? 'Preview only. Collection is not enabled yet.'
+              : isDemo
+              ? 'Demo collection only. No real EXP or voucher is issued.\n'
+                    'Your location and reward availability will be checked again.'
+              : 'Your location and reward availability will be checked again.'),
+      buttonLabel: isDemo && onCollect != null
+          ? 'COLLECT DEMO REWARD'
+          : 'COLLECT REWARD',
       buttonColor: const Color(0xFF3267D8),
       onPressed: onCollect,
     );
@@ -91,13 +107,8 @@ class RewardDialogCard extends StatelessWidget {
     return Dialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 24,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(30),
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -192,8 +203,9 @@ class RewardDialogCard extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: buttonColor,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        buttonColor.withValues(alpha: 0.45),
+                    disabledBackgroundColor: buttonColor.withValues(
+                      alpha: 0.45,
+                    ),
                     disabledForegroundColor: Colors.white,
                     elevation: onPressed == null ? 0 : 5,
                     padding: const EdgeInsets.symmetric(

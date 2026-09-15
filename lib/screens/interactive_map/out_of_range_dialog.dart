@@ -8,11 +8,13 @@ class OutOfRangeDialog extends StatelessWidget {
     required this.distanceMeters,
     required this.radiusMeters,
     required this.onGetCloser,
+    this.isDemo = true,
   });
 
   final double distanceMeters;
   final double radiusMeters;
   final VoidCallback onGetCloser;
+  final bool isDemo;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +35,7 @@ class OutOfRangeDialog extends StatelessWidget {
               text:
                   'You are approximately $distanceLabel away '
                   'in a straight line.\n\n'
-                  'The current demo collection radius is ',
+                  'The current ${isDemo ? 'demo ' : ''}collection radius is ',
             ),
             TextSpan(
               text: '${radiusMeters.toStringAsFixed(0)} metres',

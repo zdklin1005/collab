@@ -6,13 +6,14 @@ import '../../services/map_location_search.dart';
 class MapSearchDelegate extends SearchDelegate<MapLocation?> {
   MapSearchDelegate({
     required List<MapLocation> locations,
-  })  : _locations = List.unmodifiable(locations),
-        super(
-          searchFieldLabel: 'Search places',
-          autocorrect: false,
-        );
+    this.informationText =
+        'Demo places only. Business category filters also apply here. '
+        'Select a result to show it on the map.',
+  }) : _locations = List.unmodifiable(locations),
+       super(searchFieldLabel: 'Search places', autocorrect: false);
 
   final List<MapLocation> _locations;
+  final String informationText;
 
   @override
   Widget buildLeading(BuildContext context) {
@@ -58,10 +59,9 @@ class MapSearchDelegate extends SearchDelegate<MapLocation?> {
             width: double.infinity,
             color: const Color(0xFFEAF0FF),
             padding: const EdgeInsets.all(12),
-            child: const Text(
-              'Demo places only. Business category filters also apply here. ' 
-              'Select a result to show it on the map.',
-              style: TextStyle(color: Color(0xFF334466)),
+            child: Text(
+              informationText,
+              style: const TextStyle(color: Color(0xFF334466)),
             ),
           ),
           Expanded(

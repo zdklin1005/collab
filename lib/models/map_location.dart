@@ -1,9 +1,6 @@
 import 'localquest_models.dart';
 
-enum MapLocationType {
-  business,
-  landmark,
-}
+enum MapLocationType { business, landmark }
 
 class MapLocation {
   const MapLocation({
@@ -15,9 +12,15 @@ class MapLocation {
     this.description = '',
     this.address = '',
     this.category = '',
-    this.dietaryStatus,
     this.businessId,
+    this.operatingHours = '',
+    this.phone = '',
+    this.website = '',
+    this.dietaryStatus = '',
+    this.photoUrl,
     this.active = true,
+    this.sourceDocumentId,
+    this.rewardPlacementApproved = false,
   });
 
   // Map-specific identifier, separate from a Firestore document ID.
@@ -29,12 +32,22 @@ class MapLocation {
   final String description;
   final String address;
   final String category;
-  final String? dietaryStatus;
+  final String operatingHours;
+  final String phone;
+  final String website;
+  final String dietaryStatus;
+  final String? photoUrl;
 
   // Links a business marker back to the existing Business record.
   // Landmarks do not need a businessId.
   final String? businessId;
   final bool active;
+
+  // Original Firestore document ID, without the map's type prefix.
+  final String? sourceDocumentId;
+
+  // Missing approval must never enable reward spawning.
+  final bool rewardPlacementApproved;
 
   bool get hasValidCoordinates {
     return latitude.isFinite &&
@@ -65,9 +78,16 @@ class MapLocation {
       longitude: longitude,
       address: business.address,
       category: business.category,
-      dietaryStatus: business.dietaryStatus,
       businessId: business.id,
+      description: business.description?.trim() ?? '',
+      operatingHours: business.operatingHours?.trim() ?? '',
+      phone: business.phone.trim(),
+      website: business.website?.trim() ?? '',
+      dietaryStatus: business.dietaryStatus?.trim() ?? '',
+      photoUrl: business.photoUrl?.trim(),
       active: business.active,
+      sourceDocumentId: business.id,
+      rewardPlacementApproved: business.rewardPlacementApproved,
     );
 
     return location.hasValidCoordinates ? location : null;

@@ -103,29 +103,7 @@ class MockMapData {
 
   //Uses a generator exisitng prototype settings with 80% spawn chance, and 10% voucher chance.
   static List<RewardMarker> createDailyRewards(DateTime instant) {
-    final start = DailyRewardGenerator.dayStartUtc(instant);
-    final end = start.add(const Duration(days: 1));
-
-    // Fictional offers recreated for each demo day.
-    // Real merchant offers must retain their actual validity dates and stock.
-    final demoOffers = [
-      MapVoucherOffer(
-        id: 'mock-voucher-cafe-1',
-        businessId: 'mock-business-cafe',
-        title: 'Demo café voucher',
-        validFrom: start,
-        expiresAt: end,
-        remainingStock: 100,
-      ),
-      MapVoucherOffer(
-        id: 'mock-voucher-artisan-1',
-        businessId: 'mock-business-crafts',
-        title: 'Demo artisan voucher',
-        validFrom: start,
-        expiresAt: end,
-        remainingStock: 100,
-      ),
-    ];
+    final demoOffers = createDemoVoucherOffers(instant);
 
     final forceVouchers = MapTestConfig.forceVoucherRewards;
 
@@ -212,6 +190,95 @@ class MockMapData {
         title: 'Inactive EXP sample',
         expAmount: 50,
         active: false,
+      ),
+    ];
+  }
+
+  // One fixture per app run. Reopening Discover does not renew it.
+  static RewardMarker? _expiryTestReward;
+
+  static RewardMarker createExpiryTestReward(DateTime instant) {
+    if (!MapTestConfig.expiryRewardEnabled) {
+      throw StateError('Expiry test mode is not enabled.');
+    }
+
+    return _expiryTestReward ??= _buildExpiryTestReward(instant);
+  }
+
+  static RewardMarker _buildExpiryTestReward(DateTime instant) {
+    final start = instant.toUtc();
+    final isVoucher = MapTestConfig.expiryRewardType == 'voucher';
+
+    return RewardMarker(
+      id: 'debug-expiry-${start.microsecondsSinceEpoch}',
+      checkpointId: 'debug-expiry-checkpoint',
+      locationType: MapLocationType.business,
+      locationId: 'mock-business-cafe',
+      type: isVoucher ? RewardType.voucher : RewardType.exp,
+      title: isVoucher ? 'Expiry test voucher' : 'Expiry test EXP',
+      description: 'Debug fixture only. Expires after 90 seconds.',
+      latitude: _baseLat - 0.0006,
+      longitude: _baseLng + 0.0006,
+      expAmount: isVoucher ? 0 : 1,
+      voucherId: isVoucher ? 'debug-expiry-offer' : null,
+      availableFrom: start,
+      expiresAt: start.add(const Duration(seconds: 20)),
+    );
+  }
+
+  static RewardMarker? _cooldownTestReward;
+
+  static RewardMarker createCooldownTestReward(DateTime instant) {
+    if (!MapTestConfig.cooldownTestEnabled) {
+      throw StateError('Cooldown test mode is not enabled.');
+    }
+
+    return _cooldownTestReward ??= _buildCooldownTestReward(instant);
+  }
+
+  static RewardMarker _buildCooldownTestReward(DateTime instant) {
+    final start = instant.toUtc();
+
+    return RewardMarker(
+      // New spawn on each full app run.
+      id: 'debug-cooldown-${start.microsecondsSinceEpoch}',
+
+      // Same checkpoint across runs: the cooldown belongs here.
+      checkpointId: 'debug-cooldown-checkpoint',
+      locationType: MapLocationType.business,
+      locationId: 'mock-business-cafe',
+      type: RewardType.exp,
+      title: 'Cooldown test EXP',
+      description: 'Debug fixture for restart cooldown verification.',
+      latitude: _baseLat + 0.0006,
+      longitude: _baseLng - 0.0006,
+      expAmount: 1,
+      availableFrom: start,
+      expiresAt: start.add(const Duration(days: 2)),
+    );
+  }
+
+  static List<MapVoucherOffer> createDemoVoucherOffers(DateTime instant) {
+    final start = DailyRewardGenerator.dayStartUtc(instant);
+    final end = start.add(const Duration(days: 1));
+
+    // Fictional daily fixtures, not persistent merchant stock.
+    return [
+      MapVoucherOffer(
+        id: 'mock-voucher-cafe-1',
+        businessId: 'mock-business-cafe',
+        title: 'Demo café voucher',
+        validFrom: start,
+        expiresAt: end,
+        remainingStock: 100,
+      ),
+      MapVoucherOffer(
+        id: 'mock-voucher-artisan-1',
+        businessId: 'mock-business-crafts',
+        title: 'Demo artisan voucher',
+        validFrom: start,
+        expiresAt: end,
+        remainingStock: 100,
       ),
     ];
   }

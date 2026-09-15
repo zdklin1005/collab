@@ -92,4 +92,46 @@ void main() {
 
     expect(closed, isTrue);
   });
+
+  testWidgets('business details display the supplied voucher section', (
+  tester,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: MapLocationDetails(
+          location: business,
+          onClose: () {},
+          voucherSection: const Text('Injected voucher section'),
+        ),
+      ),
+    ),
+  );
+
+  expect(find.text('Injected voucher section'), findsOneWidget);
+  expect(
+    find.text('Voucher availability is not connected for this business.'),
+    findsNothing,
+  );
+  expect(tester.takeException(), isNull);
+});
+
+testWidgets('landmarks do not display a supplied business voucher section', (
+  tester,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: MapLocationDetails(
+          location: landmark,
+          onClose: () {},
+          voucherSection: const Text('Injected voucher section'),
+        ),
+      ),
+    ),
+  );
+
+  expect(find.text('Injected voucher section'), findsNothing);
+  expect(tester.takeException(), isNull);
+});
 }

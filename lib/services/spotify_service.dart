@@ -612,7 +612,7 @@ class SpotifyService {
         if (refreshToken != null && refreshToken.isNotEmpty) {
           final newToken = await _refreshAccessToken(refreshToken);
           if (newToken != null) {
-            return fetchCurrentlyPlaying();
+            return await fetchCurrentlyPlaying();
           }
         }
       }

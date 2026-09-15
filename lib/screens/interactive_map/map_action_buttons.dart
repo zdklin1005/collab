@@ -23,9 +23,7 @@ class MapActionButtons extends StatelessWidget {
   void _showMessage(BuildContext context, String message) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -34,15 +32,13 @@ class MapActionButtons extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (onFilter != null) ...[
-          const SizedBox(height: 12),
           _MapActionButton(
             icon: Icons.filter_alt_outlined,
-            tooltip: filterActive
-                ? 'Business filter active'
-                : 'Filter businesses',
+            tooltip: filterActive ? 'Place filter active' : 'Filter places',
             primary: filterActive,
             onPressed: onFilter!,
           ),
+          const SizedBox(height: 12),
         ],
 
         _MapActionButton(
@@ -55,8 +51,10 @@ class MapActionButtons extends StatelessWidget {
         _MapActionButton(
           icon: Icons.layers_outlined,
           tooltip: 'Map layers',
-          onPressed: onMapStyle ??
-              () => _showMessage(context, 'Map-style selection is unavailable.'),
+          onPressed:
+              onMapStyle ??
+              () =>
+                  _showMessage(context, 'Map-style selection is unavailable.'),
         ),
 
         const SizedBox(height: 12),
@@ -64,7 +62,8 @@ class MapActionButtons extends StatelessWidget {
           icon: Icons.search,
           tooltip: 'Search places',
           primary: true,
-          onPressed: onSearch ??
+          onPressed:
+              onSearch ??
               () => _showMessage(context, 'Place search is unavailable.'),
         ),
 
