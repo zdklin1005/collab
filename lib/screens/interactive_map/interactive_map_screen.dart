@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/map_test_config.dart';
 
@@ -59,6 +60,9 @@ import 'live_business_promotion_section.dart';
 import 'live_business_voucher_details_dialog.dart';
 import '../../services/live_business_voucher_claim_service.dart';
 import 'live_business_voucher_collection_check.dart';
+
+import '../../services/map_exp_history_repository.dart';
+import '../../services/map_voucher_history_repository.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
@@ -232,6 +236,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   bool _businessCampaignLoadFailed = false;
   int _businessCampaignRequestId = 0;
 
+  StreamSubscription<MapHistorySnapshot<Set<String>>>?
+  _businessVoucherHistorySubscription;
+
+  MapHistorySnapshot<Set<String>>? _businessVoucherHistory;
+  bool _businessVoucherHistoryLoadFailed = false;
+  int _businessVoucherHistoryRequestId = 0;
+
   Position? _position;
   String? _selectedBusinessCategory;
   String? _selectedLandmarkCategory;
@@ -307,6 +318,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       _startLiveBusinesses();
       _startLiveLandmarks();
       _startLiveBusinessCampaigns();
+      _startBusinessVoucherHistory();
     }
     WidgetsBinding.instance.addObserver(this);
 
@@ -332,6 +344,15 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     // On resume, MapLocationPermission rechecks access and calls
     // _onAccessChanged. Do not restart using an old permission result.
+  }
+
+  @override
+  void didUpdateWidget(covariant InteractiveMapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!MapTestConfig.enabled && oldWidget.user.id != widget.user.id) {
+      _startBusinessVoucherHistory();
+    }
   }
 
   bool _isCurrentRequest(int id) {
@@ -1173,6 +1194,16 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     if (voucherCampaignSubscription != null) {
       unawaited(voucherCampaignSubscription.cancel());
     }
+
+    _businessVoucherHistoryRequestId++;
+
+    final businessVoucherHistorySubscription =
+        _businessVoucherHistorySubscription;
+
+    if (businessVoucherHistorySubscription != null) {
+      unawaited(businessVoucherHistorySubscription.cancel());
+    }
+
     super.dispose();
   }
 
@@ -2526,11 +2557,34 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       );
     }
 
-    return LiveBusinessVoucherSection(
-      business: business,
-      campaigns: _liveBusinessCampaigns,
-      checkedAt: DateTime.now(),
-      onSelected: onSelected,
+    final history = _businessVoucherHistory;
+    final claimedIds = history?.data ?? const <String>{};
+    final historyReady =
+        !_businessVoucherHistoryLoadFailed && history?.serverConfirmed == true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LiveBusinessVoucherSection(
+          business: business,
+          campaigns: _liveBusinessCampaigns,
+          checkedAt: DateTime.now(),
+          claimedVoucherIds: claimedIds,
+          claimHistoryReady: historyReady,
+          onSelected: onSelected,
+        ),
+        if (_businessVoucherHistoryLoadFailed) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Your claimed-voucher history could not be confirmed.',
+            style: TextStyle(color: Color(0xFFB42318), fontSize: 12),
+          ),
+          TextButton(
+            onPressed: () => setState(_startBusinessVoucherHistory),
+            child: const Text('Retry claim history'),
+          ),
+        ],
+      ],
     );
   }
 
@@ -2743,6 +2797,59 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       businessId: business.id,
       voucherId: campaign.id,
     );
+  }
+
+  void _startBusinessVoucherHistory() {
+    final requestId = ++_businessVoucherHistoryRequestId;
+    final previous = _businessVoucherHistorySubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _businessVoucherHistory = null;
+    _businessVoucherHistoryLoadFailed = false;
+
+    final touristId = widget.user.id;
+
+    if (touristId.trim().isEmpty) {
+      _businessVoucherHistoryLoadFailed = true;
+      return;
+    }
+
+    _businessVoucherHistorySubscription =
+        MapVoucherHistoryRepository(firestore: FirebaseFirestore.instance)
+            .watchClaimedVoucherIds(touristId)
+            .listen(
+              (snapshot) {
+                if (!mounted ||
+                    requestId != _businessVoucherHistoryRequestId ||
+                    widget.user.id != touristId) {
+                  return;
+                }
+
+                setState(() {
+                  _businessVoucherHistory = snapshot;
+                  _businessVoucherHistoryLoadFailed = false;
+                });
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                if (!mounted ||
+                    requestId != _businessVoucherHistoryRequestId ||
+                    widget.user.id != touristId) {
+                  return;
+                }
+
+                setState(() {
+                  _businessVoucherHistory = null;
+                  _businessVoucherHistoryLoadFailed = true;
+                });
+
+                debugPrint(
+                  'Map: business voucher history loading failed: $error',
+                );
+              },
+            );
   }
 
   @override

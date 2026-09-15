@@ -10,12 +10,16 @@ class LiveBusinessVoucherSection extends StatelessWidget {
     required this.campaigns,
     required this.checkedAt,
     this.onSelected,
+    this.claimedVoucherIds = const {},
+    this.claimHistoryReady = true,
   });
 
   final Business business;
   final List<Campaign> campaigns;
   final DateTime checkedAt;
   final ValueChanged<Campaign>? onSelected;
+  final Set<String> claimedVoucherIds;
+  final bool claimHistoryReady;
 
   String _discountLabel(Campaign campaign) {
     if (campaign.discountValue <= 0) {
@@ -89,14 +93,31 @@ class LiveBusinessVoucherSection extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text('${campaign.quantity - campaign.claims} remaining'),
                     const SizedBox(height: 8),
-                    FilledButton(
-                      key: ValueKey(
-                        'select-live-business-voucher-${campaign.id}',
-                      ),
-                      onPressed: onSelected == null
-                          ? null
-                          : () => onSelected!(campaign),
-                      child: const Text('View voucher'),
+                    Builder(
+                      builder: (context) {
+                        final alreadyClaimed = claimedVoucherIds.contains(
+                          campaign.id,
+                        );
+
+                        return FilledButton(
+                          key: ValueKey(
+                            'select-live-business-voucher-${campaign.id}',
+                          ),
+                          onPressed:
+                              alreadyClaimed ||
+                                  !claimHistoryReady ||
+                                  onSelected == null
+                              ? null
+                              : () => onSelected!(campaign),
+                          child: Text(
+                            alreadyClaimed
+                                ? 'Already claimed'
+                                : !claimHistoryReady
+                                ? 'Checking claim history…'
+                                : 'View voucher',
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),

@@ -119,4 +119,33 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('disables a voucher already claimed by the tourist', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LiveBusinessVoucherSection(
+            business: business,
+            campaigns: [campaign(id: 'voucher-1')],
+            checkedAt: now,
+            claimedVoucherIds: const {'voucher-1'},
+            claimHistoryReady: true,
+            onSelected: (_) {
+              fail('A claimed voucher must not be selectable.');
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Already claimed'), findsOneWidget);
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('select-live-business-voucher-voucher-1')),
+    );
+
+    expect(button.onPressed, isNull);
+  });
 }
