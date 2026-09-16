@@ -292,11 +292,7 @@ class Campaign {
       startDate: startDate,
       endDate: endDate,
       businessId: data['businessId'] as String? ?? '',
-      status: Campaign.resolveStatus(
-        rawStatus: rawStatus,
-        startDate: startDate,
-        endDate: endDate,
-      ),
+      status: rawStatus,
       views: (data['views'] as num?)?.toInt() ?? 0,
       claims: (data['claims'] as num?)?.toInt() ?? 0,
       imageUrl: data['imageUrl'] as String?,
