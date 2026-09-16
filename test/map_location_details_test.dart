@@ -29,10 +29,7 @@ void main() {
   Widget host(MapLocation location, {VoidCallback? onClose}) {
     return MaterialApp(
       home: Scaffold(
-        body: MapLocationDetails(
-          location: location,
-          onClose: onClose ?? () {},
-        ),
+        body: MapLocationDetails(location: location, onClose: onClose ?? () {}),
       ),
     );
   }
@@ -53,8 +50,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Landmark details exclude business-only sections',
-      (tester) async {
+  testWidgets('Landmark details exclude business-only sections', (
+    tester,
+  ) async {
     await tester.pumpWidget(host(landmark));
 
     expect(find.text('Landmark details'), findsOneWidget);
@@ -84,9 +82,7 @@ void main() {
   testWidgets('Close button calls the supplied action', (tester) async {
     var closed = false;
 
-    await tester.pumpWidget(
-      host(business, onClose: () => closed = true),
-    );
+    await tester.pumpWidget(host(business, onClose: () => closed = true));
 
     await tester.tap(find.byTooltip('Close details'));
 
@@ -94,44 +90,44 @@ void main() {
   });
 
   testWidgets('business details display the supplied voucher section', (
-  tester,
-) async {
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: MapLocationDetails(
-          location: business,
-          onClose: () {},
-          voucherSection: const Text('Injected voucher section'),
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapLocationDetails(
+            location: business,
+            onClose: () {},
+            voucherSection: const Text('Injected voucher section'),
+          ),
         ),
       ),
-    ),
-  );
+    );
 
-  expect(find.text('Injected voucher section'), findsOneWidget);
-  expect(
-    find.text('Voucher availability is not connected for this business.'),
-    findsNothing,
-  );
-  expect(tester.takeException(), isNull);
-});
+    expect(find.text('Injected voucher section'), findsOneWidget);
+    expect(
+      find.text('Voucher availability is not connected for this business.'),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
-testWidgets('landmarks do not display a supplied business voucher section', (
-  tester,
-) async {
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: MapLocationDetails(
-          location: landmark,
-          onClose: () {},
-          voucherSection: const Text('Injected voucher section'),
+  testWidgets('landmarks do not display a supplied business voucher section', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapLocationDetails(
+            location: landmark,
+            onClose: () {},
+            voucherSection: const Text('Injected voucher section'),
+          ),
         ),
       ),
-    ),
-  );
+    );
 
-  expect(find.text('Injected voucher section'), findsNothing);
-  expect(tester.takeException(), isNull);
-});
+    expect(find.text('Injected voucher section'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

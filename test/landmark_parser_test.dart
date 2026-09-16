@@ -84,4 +84,20 @@ void main() {
       expect(parseLandmark('test-park', data), isNull);
     }
   });
+
+  test('parses an optional landmark photo URL', () {
+    final data = landmarkData()
+      ..['photoUrl'] = ' https://example.com/landmark.jpg ';
+
+    final result = parseLandmark('test-park', data);
+
+    expect(result, isNotNull);
+    expect(result!.photoUrl, 'https://example.com/landmark.jpg');
+  });
+
+  test('rejects an incorrectly typed landmark photo URL', () {
+    final data = landmarkData()..['photoUrl'] = 123;
+
+    expect(parseLandmark('test-park', data), isNull);
+  });
 }

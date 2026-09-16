@@ -5,6 +5,7 @@ MapLocation? parseLandmark(String documentId, Map<String, dynamic> data) {
   final category = data['category'];
   final address = data['address'];
   final description = data['description'];
+  final photoUrl = data['photoUrl'];
   final latitude = data['latitude'];
   final longitude = data['longitude'];
 
@@ -17,6 +18,7 @@ MapLocation? parseLandmark(String documentId, Map<String, dynamic> data) {
       address is! String ||
       address.trim().isEmpty ||
       (description != null && description is! String) ||
+      (photoUrl != null && photoUrl is! String) ||
       latitude is! num ||
       longitude is! num) {
     return null;
@@ -29,6 +31,9 @@ MapLocation? parseLandmark(String documentId, Map<String, dynamic> data) {
     category: category.trim(),
     address: address.trim(),
     description: description is String ? description.trim() : '',
+    photoUrl: photoUrl is String && photoUrl.trim().isNotEmpty
+        ? photoUrl.trim()
+        : null,
     latitude: latitude.toDouble(),
     longitude: longitude.toDouble(),
     active: true,
