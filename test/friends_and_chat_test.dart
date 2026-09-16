@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:collab/core/localquest_theme.dart';
+import 'package:collab/core/localquest_widgets.dart';
 import 'package:collab/data/mock_map_data.dart';
 import 'package:collab/models/localquest_models.dart';
 import 'package:collab/screens/ai_assistant_sheet.dart';
@@ -727,10 +728,12 @@ void main() {
       // Verify recipient sheet content
       expect(find.text('EXPLORER · LEVEL 3'), findsOneWidget);
       expect(find.text('2450 XP'), findsOneWidget);
-      expect(find.text('Level 3 Explorer • Next tier at 9000 XP'), findsOneWidget);
+      expect(find.text('Level 3 Explorer • Next tier at 1200 XP'), findsOneWidget);
+      expect(find.text('CURRENTLY PLAYING'), findsOneWidget);
       expect(find.text('"Exploring Armenian Street!"'), findsOneWidget);
       expect(find.text('Island in the Sun'), findsOneWidget);
       expect(find.text('Weezer'), findsOneWidget);
+      expect(find.byType(LqSpotifyLogo), findsOneWidget);
       expect(find.text('Vouchers'), findsNothing);
       expect(find.text('Reviews'), findsNothing);
       expect(find.byKey(const Key('direct_chat_remove_friend_button')), findsOneWidget);
