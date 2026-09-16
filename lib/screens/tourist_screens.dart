@@ -364,6 +364,12 @@ class TouristProfileScreen extends StatelessWidget {
                                 ? '${liveUser.voucherCount > 3 ? 3 : liveUser.voucherCount} expiring soon'
                                 : '0 expiring soon',
                             icon: Icons.confirmation_num_outlined,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MyRewardsScreen(userId: user.id),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(
@@ -378,6 +384,12 @@ class TouristProfileScreen extends StatelessWidget {
                                 ? 'Top 8% storyteller'
                                 : 'Top storyteller',
                             icon: Icons.star_border,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MyReviewsScreen(userId: user.id),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -495,45 +507,53 @@ class _Stat extends StatelessWidget {
     required this.value,
     required this.icon,
     this.badgeText,
+    this.onTap,
   });
   final String label;
   final String value;
   final IconData icon;
   final String? badgeText;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label.toUpperCase(), style: monoLabel),
-              Icon(icon, color: LqColors.primary),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(label.toUpperCase(), style: monoLabel),
+                  Icon(icon, color: LqColors.primary),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+              ),
+              if (badgeText != null && badgeText!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  badgeText!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: LqColors.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-          ),
-          if (badgeText != null && badgeText!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              badgeText!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: LqColors.muted,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -753,52 +773,53 @@ class SettingsScreen extends StatelessWidget {
             'Preferences',
             user.role == AccountRole.merchant
                 ? [
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'campaignNotifications',
-                      icon: Icons.campaign_outlined,
-                      title: 'Campaign notifications',
-                      subtitle: 'Campaign status and performance updates',
-                    ),
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'claimNotifications',
-                      icon: Icons.confirmation_num_outlined,
-                      title: 'Voucher claim notifications',
-                      subtitle: 'Alerts when tourists claim your vouchers',
-                    ),
-                  ]
+              _PreferenceTile(
+                user: user,
+                keyName: 'campaignNotifications',
+                icon: Icons.campaign_outlined,
+                title: 'Campaign notifications',
+                subtitle: 'Campaign status and performance updates',
+              ),
+              _PreferenceTile(
+                user: user,
+                keyName: 'claimNotifications',
+                icon: Icons.confirmation_num_outlined,
+                title: 'Voucher claim notifications',
+                subtitle: 'Alerts when tourists claim your vouchers',
+              ),
+            ]
                 : [
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'tripNotifications',
-                      icon: Icons.notifications_none,
-                      title: 'Trip notifications',
-                      subtitle: 'Check-ins, rewards & reminders',
-                    ),
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'locationHistory',
-                      icon: Icons.location_on_outlined,
-                      title: 'Location history',
-                      subtitle: 'Automatic visit logging',
-                    ),
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'partnerOffers',
-                      icon: Icons.card_giftcard,
-                      title: 'Partner offers',
-                      subtitle: 'Occasional local reward updates',
-                    ),
-                  ],
+              _PreferenceTile(
+                user: user,
+                keyName: 'tripNotifications',
+                icon: Icons.notifications_none,
+                title: 'Trip notifications',
+                subtitle: 'Check-ins, rewards & reminders',
+              ),
+              _PreferenceTile(
+                user: user,
+                keyName: 'locationHistory',
+                icon: Icons.location_on_outlined,
+                title: 'Location history',
+                subtitle: 'Automatic visit logging',
+              ),
+              _PreferenceTile(
+                user: user,
+                keyName: 'partnerOffers',
+                icon: Icons.card_giftcard,
+                title: 'Partner offers',
+                subtitle: 'Occasional local reward updates',
+              ),
+            ],
           ),
           const SizedBox(height: 24),
-          if (user.role == AccountRole.tourist) ...[
-            _section('Connected Accounts', [
+          _section('Connected Accounts', [
+            _GoogleSettingTile(user: user),
+            if (user.role == AccountRole.tourist) ...[
               _SpotifySettingTile(userId: user.id),
-            ]),
-            const SizedBox(height: 24),
-          ],
+            ],
+          ]),
+          const SizedBox(height: 24),
           _section('Support', [
             _SettingTile(
               icon: Icons.explore_outlined,
@@ -855,6 +876,227 @@ class SettingsScreen extends StatelessWidget {
   );
 }
 
+class _GoogleSettingTile extends StatefulWidget {
+  const _GoogleSettingTile({required this.user});
+  final AppUser user;
+
+  @override
+  State<_GoogleSettingTile> createState() => _GoogleSettingTileState();
+}
+
+class _GoogleSettingTileState extends State<_GoogleSettingTile> {
+  bool _isLinked = false;
+  String? _linkedEmail;
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStatus();
+  }
+
+  Future<void> _checkStatus() async {
+    final linked = await AuthService.instance.isGoogleLinked(widget.user.id);
+    final email =
+    await AuthService.instance.getLinkedGoogleEmail(widget.user.id);
+    if (mounted) {
+      setState(() {
+        _isLinked = linked;
+        _linkedEmail = email;
+        _loading = false;
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: LqColors.line),
+        ),
+        alignment: Alignment.center,
+        child: const LqGoogleLogo(size: 22),
+      ),
+      title: const Text(
+        'Google Account',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        _loading
+            ? 'Checking connection...'
+            : _isLinked
+            ? (_linkedEmail != null && _linkedEmail!.isNotEmpty
+            ? 'Connected · $_linkedEmail'
+            : 'Connected to Google')
+            : 'Not connected',
+        style: TextStyle(
+          color: _isLinked ? const Color(0xFF15803D) : LqColors.muted,
+          fontSize: 12,
+          fontWeight: _isLinked ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: _busy
+          ? const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      )
+          : _loading
+          ? const SizedBox(width: 40, height: 28)
+          : _isLinked
+          ? OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: LqColors.danger,
+          side: const BorderSide(color: LqColors.danger),
+          padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () async {
+          final canUnlink =
+          await AuthService.instance.canUnlinkGoogle();
+          if (!context.mounted) return;
+
+          if (!canUnlink) {
+            await showDialog<void>(
+              context: context,
+              builder: (dCtx) => AlertDialog(
+                title: const Text('Cannot Unlink Google'),
+                content: const Text(
+                  'Google is your only sign-in method for this account. Please set a password in Password & Security first before unlinking your Google account.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dCtx),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(dCtx);
+                      if (context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                            const PasswordSecurityScreen(),
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text('Set Password'),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+
+          if (!context.mounted) return;
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (dCtx) => AlertDialog(
+              title: const Text('Unlink Google Account?'),
+              content: Text(
+                _linkedEmail != null && _linkedEmail!.isNotEmpty
+                    ? 'This will disconnect your Google account ($_linkedEmail) from LocalQuest. You can still sign in using your email and password.'
+                    : 'This will disconnect your Google account from LocalQuest. You can still sign in using your email and password.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dCtx, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: LqColors.danger,
+                  ),
+                  onPressed: () => Navigator.pop(dCtx, true),
+                  child: const Text('Unlink'),
+                ),
+              ],
+            ),
+          );
+
+          if (confirm == true) {
+            setState(() => _busy = true);
+            try {
+              await AuthService.instance.unlinkGoogleAccount();
+              await _checkStatus();
+              if (context.mounted) {
+                showLqMessage(
+                  context,
+                  'Google account unlinked successfully.',
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                showLqMessage(
+                  context,
+                  e.toString().replaceAll('Exception: ', ''),
+                  error: true,
+                );
+              }
+            } finally {
+              if (mounted) setState(() => _busy = false);
+            }
+          }
+        },
+        child: const Text(
+          'Unlink',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      )
+          : OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: LqColors.primary,
+          side: const BorderSide(color: LqColors.primary),
+          padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () async {
+          setState(() => _busy = true);
+          try {
+            final success =
+            await AuthService.instance.linkGoogleAccount();
+            await _checkStatus();
+            if (context.mounted && success) {
+              showLqMessage(
+                context,
+                'Google account linked successfully!',
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              showLqMessage(
+                context,
+                e.toString().replaceAll('Exception: ', ''),
+                error: true,
+              );
+            }
+          } finally {
+            if (mounted) setState(() => _busy = false);
+          }
+        },
+        child: const Text(
+          'Connect',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
 class _SpotifySettingTile extends StatefulWidget {
   const _SpotifySettingTile({required this.userId});
   final String userId;
@@ -909,8 +1151,8 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
         _loading
             ? 'Checking connection...'
             : _isLinked
-                ? 'Connected · Live sharing active'
-                : 'Not connected',
+            ? 'Connected · Live sharing active'
+            : 'Not connected',
         style: TextStyle(
           color: _isLinked ? const Color(0xFF1DB954) : LqColors.muted,
           fontSize: 12,
@@ -920,62 +1162,62 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
       trailing: _loading
           ? const SizedBox(width: 40, height: 28)
           : _isLinked
-              ? OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: LqColors.danger,
-                    side: const BorderSide(color: LqColors.danger),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (dCtx) => AlertDialog(
-                        title: const Text('Unlink Spotify?'),
-                        content: const Text(
-                          'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dCtx, false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
-                            onPressed: () => Navigator.pop(dCtx, true),
-                            child: const Text('Unlink'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) {
-                      await SpotifyService.instance.disconnectUser(widget.userId);
-                      _checkStatus();
-                      if (context.mounted) {
-                        showLqMessage(context, 'Spotify unlinked successfully.');
-                      }
-                    }
-                  },
-                  child: const Text('Unlink', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                )
-              : OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF1DB954),
-                    side: const BorderSide(color: Color(0xFF1DB954)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () async {
-                    final success = await SpotifyService.instance.authenticateWithSpotify();
-                    _checkStatus();
-                    if (context.mounted && success) {
-                      showLqMessage(context, 'Spotify connected!');
-                    }
-                  },
-                  child: const Text('Connect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          ? OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: LqColors.danger,
+          side: const BorderSide(color: LqColors.danger),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () async {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (dCtx) => AlertDialog(
+              title: const Text('Unlink Spotify?'),
+              content: const Text(
+                'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dCtx, false),
+                  child: const Text('Cancel'),
                 ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
+                  onPressed: () => Navigator.pop(dCtx, true),
+                  child: const Text('Unlink'),
+                ),
+              ],
+            ),
+          );
+          if (confirm == true) {
+            await SpotifyService.instance.disconnectUser(widget.userId);
+            _checkStatus();
+            if (context.mounted) {
+              showLqMessage(context, 'Spotify unlinked successfully.');
+            }
+          }
+        },
+        child: const Text('Unlink', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+      )
+          : OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF1DB954),
+          side: const BorderSide(color: Color(0xFF1DB954)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () async {
+          final success = await SpotifyService.instance.authenticateWithSpotify();
+          _checkStatus();
+          if (context.mounted && success) {
+            showLqMessage(context, 'Spotify connected!');
+          }
+        },
+        child: const Text('Connect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+      ),
     );
   }
 }
@@ -1000,7 +1242,7 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
   Future<void> _loadBiometrics() async {
     final supported = await BiometricAuthService.instance.isSupported();
     final enabled =
-        await BiometricAuthService.instance.isEnabled(widget.userId);
+    await BiometricAuthService.instance.isEnabled(widget.userId);
     if (mounted) {
       setState(() {
         _supported = supported;
@@ -1013,7 +1255,7 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
     if (value) {
       final authenticated = await BiometricAuthService.instance.authenticate(
         localizedReason:
-            'Verify biometric identity to enable biometric sign-in',
+        'Verify biometric identity to enable biometric sign-in',
       );
       if (!authenticated) return;
     }
@@ -1319,7 +1561,7 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
           children: [
             TextFormField(
               initialValue:
-                  widget.currentEmail ?? FirebaseAuth.instance.currentUser?.email,
+              widget.currentEmail ?? FirebaseAuth.instance.currentUser?.email,
               enabled: false,
               decoration: const InputDecoration(labelText: 'Current email'),
             ),
@@ -1338,7 +1580,7 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
               label: 'Current password',
               obscureText: true,
               validator: (v) =>
-                  v == null || v.isEmpty ? 'Enter your current password.' : null,
+              v == null || v.isEmpty ? 'Enter your current password.' : null,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -1382,6 +1624,20 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   final _next = TextEditingController();
   final _confirm = TextEditingController();
   bool _busy = false;
+  bool _hasPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPasswordStatus();
+  }
+
+  Future<void> _checkPasswordStatus() async {
+    final has = await AuthService.instance.hasPassword();
+    if (mounted) {
+      setState(() => _hasPassword = has);
+    }
+  }
 
   @override
   void dispose() {
@@ -1394,8 +1650,10 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
   @override
   Widget build(BuildContext context) => _SimpleFormPage(
     eyebrow: 'Security',
-    title: 'Password & security',
-    subtitle: 'Keep your account protected with a strong password.',
+    title: _hasPassword ? 'Password & security' : 'Set account password',
+    subtitle: _hasPassword
+        ? 'Keep your account protected with a strong password.'
+        : 'Create a password for your account to sign in with email.',
     headerIcon: Icons.shield_outlined,
     children: [
       Form(
@@ -1403,15 +1661,17 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
         autovalidateMode: AutovalidateMode.disabled,
         child: Column(
           children: [
-            LqField(
-              key: const Key('change_password_current_field'),
-              controller: _current,
-              label: 'Current password',
-              obscureText: true,
-              validator: (v) =>
-                  v == null || v.isEmpty ? 'Enter your current password.' : null,
-            ),
-            const SizedBox(height: 16),
+            if (_hasPassword) ...[
+              LqField(
+                key: const Key('change_password_current_field'),
+                controller: _current,
+                label: 'Current password',
+                obscureText: true,
+                validator: (v) =>
+                v == null || v.isEmpty ? 'Enter your current password.' : null,
+              ),
+              const SizedBox(height: 16),
+            ],
             LqNewPasswordField(
               key: const Key('change_password_new_field'),
               controller: _next,
@@ -1449,7 +1709,7 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
       showLqMessage(context, policyError, error: true);
       return;
     }
-    if (_next.text == _current.text) {
+    if (_hasPassword && _next.text == _current.text) {
       showLqMessage(
         context,
         'Choose a different password from your current one.',
@@ -1458,16 +1718,21 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
       return;
     }
     setState(() => _busy = true);
+    final wasAlreadySet = _hasPassword;
     try {
       await AuthService.instance.updatePassword(
-        currentPassword: _current.text,
+        currentPassword: wasAlreadySet ? _current.text : null,
         newPassword: _next.text,
       );
       if (mounted) {
         _current.clear();
         _next.clear();
         _confirm.clear();
-        showLqMessage(context, 'Password updated.');
+        setState(() => _hasPassword = true);
+        showLqMessage(
+          context,
+          wasAlreadySet ? 'Password updated.' : 'Password set successfully.',
+        );
       }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
@@ -1562,8 +1827,8 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
     final yesterday = now.subtract(const Duration(days: 1));
     final isYesterday =
         date.year == yesterday.year &&
-        date.month == yesterday.month &&
-        date.day == yesterday.day;
+            date.month == yesterday.month &&
+            date.day == yesterday.day;
     if (isYesterday) {
       return 'Yesterday, ${DateFormat('HH:mm').format(date)}';
     }
@@ -2004,26 +2269,26 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
     if (widget.role == AccountRole.merchant) {
       return const {
         'How do I verify my SSM registration?':
-            'Open the business editor, tap "Scan SSM registration certificate" or enter your 12-digit SSM number to request verification.',
+        'Open the business editor, tap "Scan SSM registration certificate" or enter your 12-digit SSM number to request verification.',
         'How do campaigns and advertisements work?':
-            'Active businesses can create ads and campaigns to reach nearby tourists and attract visitors to your location.',
+        'Active businesses can create ads and campaigns to reach nearby tourists and attract visitors to your location.',
         'How do customers redeem vouchers at my business?':
-            'Tourists present an active redemption screen in Rewards. Check their redemption code and apply the offer.',
+        'Tourists present an active redemption screen in Rewards. Check their redemption code and apply the offer.',
         'How do I adjust my business entrance pin on the map?':
-            'Open your business listing, tap "Street address", and use "Pin location on map" to set the exact storefront location.',
+        'Open your business listing, tap "Street address", and use "Pin location on map" to set the exact storefront location.',
         'Can I use one account as a Tourist and Merchant?':
-            'Tourist and Merchant accounts are separate so that business operations and personal travel activity remain distinct.',
+        'Tourist and Merchant accounts are separate so that business operations and personal travel activity remain distinct.',
       };
     }
     return const {
       'How does automatic place logging work?':
-          'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
+      'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
       'How do I redeem a voucher?':
-          'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
+      'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
       'Why is my check-in not showing?':
-          'Check location permission and network access, then reopen the app near the registered location.',
+      'Check location permission and network access, then reopen the app near the registered location.',
       'Can I use one account as a Tourist and Merchant?':
-          'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
+      'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
     };
   }
 
@@ -2067,43 +2332,43 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
                 children: values.indexed
                     .map(
                       (item) => Padding(
-                        padding: EdgeInsets.only(
-                          bottom: item.$1 == values.length - 1 ? 0 : 8,
-                        ),
-                        child: LqCard(
-                          padding: EdgeInsets.zero,
-                          child: ExpansionTile(
-                            initiallyExpanded: item.$1 == 0,
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            title: Text(
-                              item.$2.key,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            children: [
-                              const LqDashedDivider(color: Color(0xFFE8ECF2)),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  12,
-                                  16,
-                                  16,
-                                ),
-                                child: Text(
-                                  item.$2.value,
-                                  style: const TextStyle(
-                                    color: LqColors.muted,
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ],
+                    padding: EdgeInsets.only(
+                      bottom: item.$1 == values.length - 1 ? 0 : 8,
+                    ),
+                    child: LqCard(
+                      padding: EdgeInsets.zero,
+                      child: ExpansionTile(
+                        initiallyExpanded: item.$1 == 0,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        title: Text(
+                          item.$2.key,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
+                        children: [
+                          const LqDashedDivider(color: Color(0xFFE8ECF2)),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              16,
+                              12,
+                              16,
+                              16,
+                            ),
+                            child: Text(
+                              item.$2.value,
+                              style: const TextStyle(
+                                color: LqColors.muted,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    )
+                    ),
+                  ),
+                )
                     .toList(),
               ),
             ),
@@ -2475,7 +2740,7 @@ class PrivacyScreen extends StatelessWidget {
           const SizedBox(height: 14),
           LqTitleBlock(
             eyebrow:
-                role == AccountRole.merchant ? 'Merchant privacy' : 'Privacy',
+            role == AccountRole.merchant ? 'Merchant privacy' : 'Privacy',
             title: 'Privacy & data',
             subtitle: role == AccountRole.merchant
                 ? 'Review business data policies, certificate confidentiality, and permissions.'
