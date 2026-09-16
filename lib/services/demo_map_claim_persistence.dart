@@ -2,17 +2,46 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'demo_map_claim_store.dart';
 
+import '../core/map_test_config.dart';
+
 /// Local storage for simulated map claims only.
 /// Does not credit EXP, issue vouchers, or update Firebase.
 class DemoMapClaimPersistence {
   static const _storageKey = 'localquest.map.demo.claims.v1';
 
+  static bool _failNextRead = const bool.fromEnvironment(
+    'MAP_DEMO_FAIL_READ_ONCE',
+  );
+
+  static bool _failNextWrite = const bool.fromEnvironment(
+    'MAP_DEMO_FAIL_WRITE_ONCE',
+  );
+
+  static Future<String?> _readPhoneStorage() async {
+    // MapTestConfig.enabled is already restricted to debug builds.
+    if (MapTestConfig.enabled && _failNextRead) {
+      _failNextRead = false;
+      throw StateError('Simulated demo claim read failure.');
+    }
+
+    return _preferences.getString(_storageKey);
+  }
+
+  static Future<void> _writePhoneStorage(String value) async {
+    if (MapTestConfig.enabled && _failNextWrite) {
+      _failNextWrite = false;
+      throw StateError('Simulated demo claim write failure.');
+    }
+
+    await _preferences.setString(_storageKey, value);
+  }
+
   static final _preferences = SharedPreferencesAsync();
 
   // One shared instance keeps app writes in order.
   static final _instance = DemoMapClaimPersistence.withStorage(
-    read: () => _preferences.getString(_storageKey),
-    write: (value) => _preferences.setString(_storageKey, value),
+    read: _readPhoneStorage,
+    write: _writePhoneStorage,
   );
 
   factory DemoMapClaimPersistence() => _instance;

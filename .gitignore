@@ -45,4 +45,5 @@ app.*.map.json
 /android/app/release
 
 # Private local development settings and test coordinates
-/dev_local/
+/dev_local/*
+!/dev_local/README.md

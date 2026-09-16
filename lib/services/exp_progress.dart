@@ -43,7 +43,6 @@ class ExpProgress {
     final level = (currentLevel != null && currentLevel > 0)
         ? currentLevel
         : calculatedLevel;
-
     return ExpProgress._(
       totalExp: totalExp,
       level: level,

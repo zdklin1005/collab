@@ -5,17 +5,16 @@ import '../../core/localquest_theme.dart';
 import '../../models/localquest_models.dart';
 import '../../services/reward_service.dart';
 
+import '../../services/exp_progress.dart';
+
 class MapProgressCard extends StatelessWidget {
-  const MapProgressCard({
-    super.key,
-    required this.user,
-  });
+  const MapProgressCard({super.key, required this.user});
 
   final AppUser user;
 
   @override
   Widget build(BuildContext context) {
-    final levelProgress = RewardService.instance.getLevelProgress(user.exp, user.level);
+    final progress = ExpProgress.fromTotalExp(user.exp < 0 ? 0 : user.exp, user.level);
     final numberFormat = NumberFormat('#,##0');
 
     return Container(
@@ -42,7 +41,7 @@ class MapProgressCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
             ),
             child: Text(
-              '${levelProgress.currentLevel}',
+              '${progress.level}',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 26,
@@ -56,7 +55,7 @@ class MapProgressCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'LEVEL ${levelProgress.currentLevel} · EXPLORER',
+                  'LEVEL ${progress.level} · EXPLORER',
                   style: const TextStyle(
                     color: LqColors.muted,
                     fontWeight: FontWeight.w700,
@@ -65,8 +64,8 @@ class MapProgressCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${numberFormat.format(user.exp)} / '
-                  '${numberFormat.format(levelProgress.nextLevelExp)} EXP',
+                  '${numberFormat.format(progress.expIntoLevel)} / '
+                  '${numberFormat.format(progress.expRequiredThisLevel)} EXP',
                   style: const TextStyle(
                     color: LqColors.primary,
                     fontWeight: FontWeight.w700,
@@ -75,7 +74,16 @@ class MapProgressCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
-                  value: levelProgress.progress,
+                  value: progress.fraction,
+                  semanticsLabel: 'Progress to level ${progress.level + 1}',
+                  semanticsValue:
+                      '${progress.expToNextLevel} EXP remaining; '
+                      '${progress.totalExp} total EXP',
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  color: LqColors.primary,
+                  backgroundColor: LqColors.line,
+                ),
                   minHeight: 8,
                   borderRadius: BorderRadius.circular(12),
                   color: LqColors.primary,

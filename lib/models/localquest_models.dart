@@ -90,6 +90,7 @@ class Business {
     this.dietaryStatus,
     this.website,
     this.description,
+    this.rewardPlacementApproved = false,
   });
 
   final String id;
@@ -112,6 +113,7 @@ class Business {
   final String? dietaryStatus;
   final String? website;
   final String? description;
+  final bool rewardPlacementApproved;
 
   bool get isSsmVerified => verificationStatus == 'verified';
 
@@ -138,6 +140,7 @@ class Business {
       dietaryStatus: data['dietaryStatus'] as String?,
       website: data['website'] as String?,
       description: data['description'] as String?,
+      rewardPlacementApproved: data['rewardPlacementApproved'] == true,
     );
   }
 }
@@ -249,10 +252,10 @@ class Campaign {
 
   /// The effective (date-resolved) status of this campaign.
   String get effectiveStatus => Campaign.resolveStatus(
-        rawStatus: status,
-        startDate: startDate,
-        endDate: endDate,
-      );
+    rawStatus: status,
+    startDate: startDate,
+    endDate: endDate,
+  );
 
   /// True when the campaign's end date has passed (expired).
   bool get isExpired {
@@ -272,8 +275,10 @@ class Campaign {
 
   factory Campaign.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
-    final validHrs = data['validHours'] as String? ?? data['redemptionHours'] as String?;
-    final startDate = (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final validHrs =
+        data['validHours'] as String? ?? data['redemptionHours'] as String?;
+    final startDate =
+        (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now();
     final endDate =
         (data['endDate'] as Timestamp?)?.toDate() ??
         DateTime.now().add(const Duration(days: 30));
@@ -287,11 +292,7 @@ class Campaign {
       startDate: startDate,
       endDate: endDate,
       businessId: data['businessId'] as String? ?? '',
-      status: Campaign.resolveStatus(
-        rawStatus: rawStatus,
-        startDate: startDate,
-        endDate: endDate,
-      ),
+      status: rawStatus,
       views: (data['views'] as num?)?.toInt() ?? 0,
       claims: (data['claims'] as num?)?.toInt() ?? 0,
       imageUrl: data['imageUrl'] as String?,
@@ -525,8 +526,7 @@ class ChatConversation {
       lastMessage: data['lastMessage'] as String? ?? '',
       lastMessageTime:
           (data['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      unreadCount:
-          (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
+      unreadCount: (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
       lastSenderId: data['lastSenderId'] as String? ?? '',
     );
   }
@@ -588,10 +588,7 @@ class LeaderboardEntry {
     );
   }
 
-  LeaderboardEntry copyWith({
-    int? rank,
-    bool? isCurrentUser,
-  }) {
+  LeaderboardEntry copyWith({int? rank, bool? isCurrentUser}) {
     return LeaderboardEntry(
       userId: userId,
       displayName: displayName,

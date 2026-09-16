@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/localquest_widgets.dart';
 import 'core/localquest_theme.dart';
@@ -8,18 +9,27 @@ import 'models/localquest_models.dart';
 import 'screens/auth_screens.dart';
 import 'screens/merchant_screens.dart';
 import 'screens/tourist_screens.dart';
+import 'screens/interactive_map/map_style.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/in_app_notification_service.dart';
 import 'services/localquest_services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
+  await MapStyleConfig.initialize();
+
   Object? setupError;
   try {
     await Firebase.initializeApp();
   } catch (error) {
     setupError = error;
   }
+
   runApp(LocalQuestApp(setupError: setupError));
 }
 
@@ -137,8 +147,9 @@ class _BiometricGateState extends State<BiometricGate>
       );
       _checkBiometricRequirement();
     } else if (!_unlocked) {
-      if (BiometricAuthService.instance
-              .isSessionAuthenticated(widget.user.id) ||
+      if (BiometricAuthService.instance.isSessionAuthenticated(
+            widget.user.id,
+          ) ||
           BiometricAuthService.instance.consumeJustAuthenticated()) {
         setState(() {
           _checked = true;
@@ -173,14 +184,17 @@ class _BiometricGateState extends State<BiometricGate>
 
   Future<void> _reLock() async {
     final supported = await BiometricAuthService.instance.isSupported();
-    final enabled =
-        await BiometricAuthService.instance.isEnabled(widget.user.id);
+    final enabled = await BiometricAuthService.instance.isEnabled(
+      widget.user.id,
+    );
     if (!supported || !enabled) return;
 
     BiometricAuthService.instance.clearSessionAuthentication(widget.user.id);
     if (mounted) {
-      Navigator.of(context, rootNavigator: true)
-          .popUntil((route) => route.isFirst);
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).popUntil((route) => route.isFirst);
       setState(() => _unlocked = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _authenticate();
@@ -208,8 +222,9 @@ class _BiometricGateState extends State<BiometricGate>
     }
 
     final supported = await BiometricAuthService.instance.isSupported();
-    final enabled =
-        await BiometricAuthService.instance.isEnabled(widget.user.id);
+    final enabled = await BiometricAuthService.instance.isEnabled(
+      widget.user.id,
+    );
 
     if (!supported || !enabled) {
       if (mounted) {
@@ -333,7 +348,9 @@ class _BiometricGateState extends State<BiometricGate>
                 const SizedBox(height: 36),
                 LqButton(
                   key: const Key('biometric_gate_unlock_btn'),
-                  label: _authenticating ? 'Verifying...' : 'Unlock with biometrics',
+                  label: _authenticating
+                      ? 'Verifying...'
+                      : 'Unlock with biometrics',
                   icon: Icons.fingerprint,
                   onPressed: _authenticating ? null : _authenticate,
                 ),
@@ -388,10 +405,7 @@ class _BiometricGateState extends State<BiometricGate>
 }
 
 class _PasswordUnlockSheet extends StatefulWidget {
-  const _PasswordUnlockSheet({
-    required this.user,
-    required this.onUnlocked,
-  });
+  const _PasswordUnlockSheet({required this.user, required this.onUnlocked});
 
   final AppUser user;
   final VoidCallback onUnlocked;
@@ -539,7 +553,9 @@ class _PasswordUnlockSheetState extends State<_PasswordUnlockSheet> {
             child: TextButton(
               onPressed: () async {
                 try {
-                  await AuthService.instance.sendPasswordReset(widget.user.email);
+                  await AuthService.instance.sendPasswordReset(
+                    widget.user.email,
+                  );
                   if (context.mounted) {
                     showLqMessage(
                       context,

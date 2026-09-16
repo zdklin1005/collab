@@ -31,11 +31,7 @@ import '../services/reward_service.dart';
 import '../services/review_service.dart';
 
 class TouristHome extends StatefulWidget {
-  const TouristHome({
-    super.key,
-    required this.user,
-    this.initialIndex = 0,
-  });
+  const TouristHome({super.key, required this.user, this.initialIndex = 0});
   final AppUser user;
   final int initialIndex;
 
@@ -49,7 +45,8 @@ class _TouristHomeState extends State<TouristHome> {
   @override
   void initState() {
     super.initState();
-    final historyEnabled = widget.user.preferences['locationHistory'] as bool? ?? true;
+    final historyEnabled =
+        widget.user.preferences['locationHistory'] as bool? ?? true;
     LocationTrackerService.instance.setLocationHistoryEnabled(historyEnabled);
     if (historyEnabled) {
       LocationTrackerService.instance.startTracking(userId: widget.user.id);
@@ -69,7 +66,7 @@ class _TouristHomeState extends State<TouristHome> {
       onNavigateToRewards: () => setState(() => _index = 1),
     );
     final pages = [
-      InteractiveMapScreen(user: widget.user),
+      InteractiveMapScreen(user: widget.user, isActive: _index == 0),
       MyRewardsScreen(userId: widget.user.id, showBackButton: false),
       profile,
     ];
@@ -86,7 +83,11 @@ class _TouristHomeState extends State<TouristHome> {
           profileInitials: initialsFor(widget.user.displayName),
           profilePhotoUrl: widget.user.photoUrl,
         ),
-        child: pages[_index],
+        child: IndexedStack(
+          index: _index,
+          sizing: StackFit.expand,
+          children: pages,
+        ),
       ),
       floatingActionButtonLocation: const _AboveNavBarFabLocation(),
       floatingActionButton: _FloatingAiGuideButton(user: widget.user),
@@ -99,7 +100,10 @@ class _AboveNavBarFabLocation extends StandardFabLocation
   const _AboveNavBarFabLocation();
 
   @override
-  double getOffsetY(ScaffoldPrelayoutGeometry scaffoldGeometry, double adjustment) {
+  double getOffsetY(
+    ScaffoldPrelayoutGeometry scaffoldGeometry,
+    double adjustment,
+  ) {
     return super.getOffsetY(scaffoldGeometry, adjustment) - 76.0;
   }
 }
@@ -143,11 +147,7 @@ class _FloatingAiGuideButton extends StatelessWidget {
             border: Border.all(color: Colors.white, width: 2),
           ),
           child: const Center(
-            child: Icon(
-              Icons.auto_awesome,
-              color: Colors.white,
-              size: 26,
-            ),
+            child: Icon(Icons.auto_awesome, color: Colors.white, size: 26),
           ),
         ),
       ),
@@ -166,7 +166,10 @@ class TouristProfileScreen extends StatelessWidget {
 
   Stream<DocumentSnapshot<Map<String, dynamic>>?> _userDocStream(String uid) {
     try {
-      return FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .snapshots();
     } catch (_) {
       return const Stream.empty();
     }
@@ -175,40 +178,39 @@ class TouristProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
-    stream: MerchantRepository.instance.touristClaimedVouchers(user.id),
-    builder: (context, claimedSnap) {
-      return StreamBuilder<List<Map<String, dynamic>>>(
-        stream: RewardService.instance.watchAchievementVouchers(user.id),
-        builder: (context, achSnap) {
-          return StreamBuilder<List<Review>>(
-            stream: ReviewService.instance.watchReviewsForUser(user.id),
-            builder: (context, reviewSnap) {
-              return StreamBuilder<int>(
-                stream: ReviewService.instance.watchTotalAppReviewCount(),
-                builder: (context, totalAppReviewsSnap) {
-                  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
-                    stream: _userDocStream(user.id),
-                    builder: (context, userDocSnap) {
-                  final claimed = claimedSnap.data ?? const <Map<String, dynamic>>[];
-                  final ach = achSnap.data ?? const <Map<String, dynamic>>[];
-                  final unredeemedClaimed = claimed.where((v) => v['redeemed'] != true).length;
-                  final unredeemedAch = ach.where((v) => v['redeemed'] != true).length;
-                  final streamVouchers = unredeemedClaimed + unredeemedAch;
-                  final activeVoucherCount = streamVouchers > 0
-                      ? streamVouchers
-                      : user.voucherCount;
+      stream: MerchantRepository.instance.touristClaimedVouchers(user.id),
+      builder: (context, claimedSnap) {
+        return StreamBuilder<List<Map<String, dynamic>>>(
+          stream: RewardService.instance.watchAchievementVouchers(user.id),
+          builder: (context, achSnap) {
+            return StreamBuilder<List<Review>>(
+              stream: ReviewService.instance.watchReviewsForUser(user.id),
+              builder: (context, reviewSnap) {
+                return StreamBuilder<int>(
+                  stream: ReviewService.instance.watchTotalAppReviewCount(),
+                  builder: (context, totalAppReviewsSnap) {
+                    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+                      stream: _userDocStream(user.id),
+                      builder: (context, userDocSnap) {
+                    final claimed = claimedSnap.data ?? const <Map<String, dynamic>>[];
+                    final ach = achSnap.data ?? const <Map<String, dynamic>>[];
+                    final unredeemedClaimed = claimed.where((v) => v['redeemed'] != true).length;
+                    final unredeemedAch = ach.where((v) => v['redeemed'] != true).length;
+                    final activeVoucherCount = (claimedSnap.hasData || achSnap.hasData)
+                        ? (unredeemedClaimed + unredeemedAch)
+                        : user.voucherCount;
 
-                  final reviews = reviewSnap.data;
-                  final activeReviewCount =
-                      (reviews != null && reviews.isNotEmpty)
-                          ? reviews.length
-                          : user.reviewCount;
+                    final reviews = reviewSnap.data;
+                    final activeReviewCount =
+                        (reviews != null && reviews.isNotEmpty)
+                            ? reviews.length
+                            : user.reviewCount;
 
-                  final userData = userDocSnap.data?.data() ?? const <String, dynamic>{};
-                  final streakCount = (userData['streakCount'] as num?)?.toInt() ?? 0;
-                  final activeExp = (userData['exp'] as num?)?.toInt() ?? user.exp;
-                  final activeLevel = (userData['level'] as num?)?.toInt() ?? user.level;
-                  final levelProgress = RewardService.instance.getLevelProgress(activeExp, activeLevel);
+                    final userData = userDocSnap.data?.data() ?? const <String, dynamic>{};
+                    final streakCount = (userData['streakCount'] as num?)?.toInt() ?? 0;
+                    final activeExp = (userData['exp'] as num?)?.toInt() ?? user.exp;
+                    final activeLevel = (userData['level'] as num?)?.toInt() ?? user.level;
+                    final levelProgress = RewardService.instance.getLevelProgress(activeExp, activeLevel);
 
                   return SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(16, 42, 16, 116),
@@ -220,7 +222,10 @@ class TouristProfileScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             const Expanded(
-                              child: LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
+                              child: LqTitleBlock(
+                                eyebrow: 'My passport',
+                                title: 'Profile',
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Row(
@@ -229,7 +234,10 @@ class TouristProfileScreen extends StatelessWidget {
                                 IconButton.filledTonal(
                                   visualDensity: VisualDensity.compact,
                                   padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
                                   tooltip: 'Direct Chat',
                                   onPressed: () => Navigator.push(
                                     context,
@@ -240,34 +248,52 @@ class TouristProfileScreen extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                  icon: const Icon(Icons.chat_bubble_outline, size: 20),
+                                  icon: const Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 20,
+                                  ),
                                 ),
                                 const SizedBox(width: 4),
                                 StreamBuilder<List<ChatConversation>>(
-                                  stream: DirectChatService.instance.streamConversations(user.id),
+                                  stream: DirectChatService.instance
+                                      .streamConversations(user.id),
                                   builder: (context, chatSnap) {
-                                    final hasUnreadChat = (chatSnap.data ?? []).any((c) => c.unreadCount > 0);
+                                    final hasUnreadChat = (chatSnap.data ?? [])
+                                        .any((c) => c.unreadCount > 0);
                                     return StreamBuilder<List<FriendRequest>>(
-                                      stream: SocialService.instance.streamFriendRequests(user.id),
+                                      stream: SocialService.instance
+                                          .streamFriendRequests(user.id),
                                       builder: (context, reqSnap) {
-                                        final hasPendingReq = (reqSnap.data ?? []).isNotEmpty;
-                                        final hasNotif = hasUnreadChat || hasPendingReq;
+                                        final hasPendingReq =
+                                            (reqSnap.data ?? []).isNotEmpty;
+                                        final hasNotif =
+                                            hasUnreadChat || hasPendingReq;
                                         return Badge(
                                           isLabelVisible: hasNotif,
                                           smallSize: 8,
                                           backgroundColor: LqColors.primary,
                                           child: IconButton.filledTonal(
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 36,
+                                              minHeight: 36,
+                                            ),
                                             tooltip: 'Notifications',
                                             onPressed: () => Navigator.push(
                                               context,
                                               MaterialPageRoute(
-                                                builder: (_) => NotificationsScreen(user: user),
+                                                builder: (_) =>
+                                                    NotificationsScreen(
+                                                      user: user,
+                                                    ),
                                               ),
                                             ),
-                                            icon: const Icon(Icons.notifications_none, size: 20),
+                                            icon: const Icon(
+                                              Icons.notifications_none,
+                                              size: 20,
+                                            ),
                                           ),
                                         );
                                       },
@@ -278,15 +304,22 @@ class TouristProfileScreen extends StatelessWidget {
                                 IconButton.filledTonal(
                                   visualDensity: VisualDensity.compact,
                                   padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
                                   tooltip: 'Settings',
                                   onPressed: () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => SettingsScreen(user: user),
+                                      builder: (_) =>
+                                          SettingsScreen(user: user),
                                     ),
                                   ),
-                                  icon: const Icon(Icons.settings_outlined, size: 20),
+                                  icon: const Icon(
+                                    Icons.settings_outlined,
+                                    size: 20,
+                                  ),
                                 ),
                               ],
                             ),
@@ -299,12 +332,19 @@ class TouristProfileScreen extends StatelessWidget {
                             children: [
                               Material(
                                 color: Colors.transparent,
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(20),
+                                ),
                                 child: InkWell(
-                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(20),
+                                  ),
                                   onTap: () => Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AccountDetailsScreen(user: user),
+                                    ),
                                   ),
                                   child: Container(
                                     color: LqColors.primarySoft,
@@ -313,14 +353,17 @@ class TouristProfileScreen extends StatelessWidget {
                                       children: [
                                         LqAvatar(
                                           radius: 36,
-                                          initials: initialsFor(user.displayName),
+                                          initials: initialsFor(
+                                            user.displayName,
+                                          ),
                                           photoUrl: user.photoUrl,
                                           shape: LqAvatarShape.roundedSquare,
                                         ),
                                         const SizedBox(width: 16),
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(
                                                 user.displayName,
@@ -331,7 +374,9 @@ class TouristProfileScreen extends StatelessWidget {
                                               ),
                                               Text(
                                                 user.username,
-                                                style: const TextStyle(color: LqColors.muted),
+                                                style: const TextStyle(
+                                                  color: LqColors.muted,
+                                                ),
                                               ),
                                               const SizedBox(height: 10),
                                               Row(
@@ -347,8 +392,11 @@ class TouristProfileScreen extends StatelessWidget {
                                                   Text(
                                                     levelProgress.expLabel,
                                                     style: monoLabel.copyWith(
-                                                      color: const Color(0xFF466294),
-                                                      fontWeight: FontWeight.w700,
+                                                      color: const Color(
+                                                        0xFF466294,
+                                                      ),
+                                                      fontWeight:
+                                                          FontWeight.w700,
                                                       fontSize: 9,
                                                       letterSpacing: 0,
                                                     ),
@@ -359,7 +407,8 @@ class TouristProfileScreen extends StatelessWidget {
                                               LinearProgressIndicator(
                                                 value: levelProgress.progress,
                                                 minHeight: 7,
-                                                borderRadius: BorderRadius.circular(20),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
                                               ),
                                             ],
                                           ),
@@ -391,7 +440,9 @@ class TouristProfileScreen extends StatelessWidget {
                                           : Navigator.push(
                                               context,
                                               MaterialPageRoute(
-                                                builder: (_) => MyRewardsScreen(userId: user.id),
+                                                builder: (_) => MyRewardsScreen(
+                                                  userId: user.id,
+                                                ),
                                               ),
                                             ),
                                     ),
@@ -412,7 +463,8 @@ class TouristProfileScreen extends StatelessWidget {
                                       onTap: () => Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) => MyReviewsScreen(userId: user.id),
+                                          builder: (_) =>
+                                              MyReviewsScreen(userId: user.id),
                                         ),
                                       ),
                                     ),
@@ -435,7 +487,8 @@ class TouristProfileScreen extends StatelessWidget {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => MyRewardsScreen(userId: user.id),
+                                    builder: (_) =>
+                                        MyRewardsScreen(userId: user.id),
                                   ),
                                 ),
                               ),
@@ -446,17 +499,23 @@ class TouristProfileScreen extends StatelessWidget {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => MyReviewsScreen(userId: user.id),
+                                    builder: (_) =>
+                                        MyReviewsScreen(userId: user.id),
                                   ),
                                 ),
                               ),
                               StreamBuilder<List<Mission>>(
-                                stream: MissionService.instance.watchMissions(user.id),
+                                stream: MissionService.instance.watchMissions(
+                                  user.id,
+                                ),
                                 initialData: const <Mission>[],
                                 builder: (context, snapshot) {
-                                  final missions = snapshot.data ?? const <Mission>[];
+                                  final missions =
+                                      snapshot.data ?? const <Mission>[];
                                   final activeCount = missions
-                                      .where((m) => m.status == MissionStatus.active)
+                                      .where(
+                                        (m) => m.status == MissionStatus.active,
+                                      )
                                       .length;
                                   return _JourneyItem(
                                     icon: Icons.auto_awesome_outlined,
@@ -467,8 +526,18 @@ class TouristProfileScreen extends StatelessWidget {
                                       MaterialPageRoute(
                                         builder: (_) => MissionListScreen(
                                           uid: user.id,
-                                          currentLat: LocationTrackerService.instance.lastPosition?.latitude ?? 5.4141,
-                                          currentLng: LocationTrackerService.instance.lastPosition?.longitude ?? 100.3288,
+                                          currentLat:
+                                              LocationTrackerService
+                                                  .instance
+                                                  .lastPosition
+                                                  ?.latitude ??
+                                              5.4141,
+                                          currentLng:
+                                              LocationTrackerService
+                                                  .instance
+                                                  .lastPosition
+                                                  ?.longitude ??
+                                              100.3288,
                                         ),
                                       ),
                                     ),
@@ -478,11 +547,14 @@ class TouristProfileScreen extends StatelessWidget {
                               _JourneyItem(
                                 icon: Icons.calendar_month_outlined,
                                 title: 'Daily check-in',
-                                subtitle: streakCount > 0 ? '$streakCount-day streak' : 'Keep your streak',
+                                subtitle: streakCount > 0
+                                    ? '$streakCount-day streak'
+                                    : 'Keep your streak',
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => DailyCheckInScreen(userId: user.id),
+                                    builder: (_) =>
+                                        DailyCheckInScreen(userId: user.id),
                                   ),
                                 ),
                               ),
@@ -493,7 +565,10 @@ class TouristProfileScreen extends StatelessWidget {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => VisitedPlacesScreen(userId: user.id, user: user),
+                                    builder: (_) => VisitedPlacesScreen(
+                                      userId: user.id,
+                                      user: user,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -504,7 +579,8 @@ class TouristProfileScreen extends StatelessWidget {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => FriendsScreen(currentUser: user),
+                                    builder: (_) =>
+                                        FriendsScreen(currentUser: user),
                                   ),
                                 ),
                               ),
@@ -515,7 +591,8 @@ class TouristProfileScreen extends StatelessWidget {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => LeaderboardScreen(currentUser: user),
+                                    builder: (_) =>
+                                        LeaderboardScreen(currentUser: user),
                                   ),
                                 ),
                               ),
@@ -524,8 +601,10 @@ class TouristProfileScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 24),
                         LqLogoutButton(
-                          onPressed: () =>
-                              confirmLqSignOut(context, AuthService.instance.signOut),
+                          onPressed: () => confirmLqSignOut(
+                            context,
+                            AuthService.instance.signOut,
+                          ),
                         ),
                       ],
                     ),
@@ -578,7 +657,10 @@ class _Stat extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 value,
-                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               if (badgeText != null && badgeText!.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -600,8 +682,6 @@ class _Stat extends StatelessWidget {
     );
   }
 }
-
-
 
 class _JourneyItem extends StatelessWidget {
   const _JourneyItem({
@@ -820,8 +900,9 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
 
   Future<void> _checkStatus() async {
     final linked = await AuthService.instance.isGoogleLinked(widget.user.id);
-    final email =
-        await AuthService.instance.getLinkedGoogleEmail(widget.user.id);
+    final email = await AuthService.instance.getLinkedGoogleEmail(
+      widget.user.id,
+    );
     if (mounted) {
       setState(() {
         _isLinked = linked;
@@ -855,10 +936,10 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
         _loading
             ? 'Checking connection...'
             : _isLinked
-                ? (_linkedEmail != null && _linkedEmail!.isNotEmpty
-                    ? 'Connected · $_linkedEmail'
-                    : 'Connected to Google')
-                : 'Not connected',
+            ? (_linkedEmail != null && _linkedEmail!.isNotEmpty
+                  ? 'Connected · $_linkedEmail'
+                  : 'Connected to Google')
+            : 'Not connected',
         style: TextStyle(
           color: _isLinked ? const Color(0xFF15803D) : LqColors.muted,
           fontSize: 12,
@@ -872,149 +953,152 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : _loading
-              ? const SizedBox(width: 40, height: 28)
-              : _isLinked
-              ? OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: LqColors.danger,
-                    side: const BorderSide(color: LqColors.danger),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () async {
-                    final canUnlink =
-                        await AuthService.instance.canUnlinkGoogle();
-                    if (!context.mounted) return;
-
-                    if (!canUnlink) {
-                      await showDialog<void>(
-                        context: context,
-                        builder: (dCtx) => AlertDialog(
-                          title: const Text('Cannot Unlink Google'),
-                          content: const Text(
-                            'Google is your only sign-in method for this account. Please set a password in Password & Security first before unlinking your Google account.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(dCtx),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () {
-                                Navigator.pop(dCtx);
-                                if (context.mounted) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const PasswordSecurityScreen(),
-                                    ),
-                                  );
-                                }
-                              },
-                              child: const Text('Set Password'),
-                            ),
-                          ],
-                        ),
-                      );
-                      return;
-                    }
-
-                    if (!context.mounted) return;
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (dCtx) => AlertDialog(
-                        title: const Text('Unlink Google Account?'),
-                        content: Text(
-                          _linkedEmail != null && _linkedEmail!.isNotEmpty
-                              ? 'This will disconnect your Google account ($_linkedEmail) from LocalQuest. You can still sign in using your email and password.'
-                              : 'This will disconnect your Google account from LocalQuest. You can still sign in using your email and password.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dCtx, false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: LqColors.danger,
-                            ),
-                            onPressed: () => Navigator.pop(dCtx, true),
-                            child: const Text('Unlink'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (confirm == true) {
-                      setState(() => _busy = true);
-                      try {
-                        await AuthService.instance.unlinkGoogleAccount();
-                        await _checkStatus();
-                        if (context.mounted) {
-                          showLqMessage(
-                            context,
-                            'Google account unlinked successfully.',
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          showLqMessage(
-                            context,
-                            e.toString().replaceAll('Exception: ', ''),
-                            error: true,
-                          );
-                        }
-                      } finally {
-                        if (mounted) setState(() => _busy = false);
-                      }
-                    }
-                  },
-                  child: const Text(
-                    'Unlink',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                )
-              : OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: LqColors.primary,
-                    side: const BorderSide(color: LqColors.primary),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () async {
-                    setState(() => _busy = true);
-                    try {
-                      final success =
-                          await AuthService.instance.linkGoogleAccount();
-                      await _checkStatus();
-                      if (context.mounted && success) {
-                        showLqMessage(
-                          context,
-                          'Google account linked successfully!',
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          e.toString().replaceAll('Exception: ', ''),
-                          error: true,
-                        );
-                      }
-                    } finally {
-                      if (mounted) setState(() => _busy = false);
-                    }
-                  },
-                  child: const Text(
-                    'Connect',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
+          ? const SizedBox(width: 40, height: 28)
+          : _isLinked
+          ? OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: LqColors.danger,
+                side: const BorderSide(color: LqColors.danger),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                final canUnlink = await AuthService.instance.canUnlinkGoogle();
+                if (!context.mounted) return;
+
+                if (!canUnlink) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (dCtx) => AlertDialog(
+                      title: const Text('Cannot Unlink Google'),
+                      content: const Text(
+                        'Google is your only sign-in method for this account. Please set a password in Password & Security first before unlinking your Google account.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dCtx),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () {
+                            Navigator.pop(dCtx);
+                            if (context.mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const PasswordSecurityScreen(),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Set Password'),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
+
+                if (!context.mounted) return;
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    title: const Text('Unlink Google Account?'),
+                    content: Text(
+                      _linkedEmail != null && _linkedEmail!.isNotEmpty
+                          ? 'This will disconnect your Google account ($_linkedEmail) from LocalQuest. You can still sign in using your email and password.'
+                          : 'This will disconnect your Google account from LocalQuest. You can still sign in using your email and password.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: LqColors.danger,
+                        ),
+                        onPressed: () => Navigator.pop(dCtx, true),
+                        child: const Text('Unlink'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  setState(() => _busy = true);
+                  try {
+                    await AuthService.instance.unlinkGoogleAccount();
+                    await _checkStatus();
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        'Google account unlinked successfully.',
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        e.toString().replaceAll('Exception: ', ''),
+                        error: true,
+                      );
+                    }
+                  } finally {
+                    if (mounted) setState(() => _busy = false);
+                  }
+                }
+              },
+              child: const Text(
+                'Unlink',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            )
+          : OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: LqColors.primary,
+                side: const BorderSide(color: LqColors.primary),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                setState(() => _busy = true);
+                try {
+                  final success = await AuthService.instance
+                      .linkGoogleAccount();
+                  await _checkStatus();
+                  if (context.mounted && success) {
+                    showLqMessage(
+                      context,
+                      'Google account linked successfully!',
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    showLqMessage(
+                      context,
+                      e.toString().replaceAll('Exception: ', ''),
+                      error: true,
+                    );
+                  }
+                } finally {
+                  if (mounted) setState(() => _busy = false);
+                }
+              },
+              child: const Text(
+                'Connect',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
     );
   }
 }
@@ -1059,11 +1143,7 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
           borderRadius: BorderRadius.circular(12),
         ),
         alignment: Alignment.center,
-        child: const Icon(
-          Icons.headphones,
-          color: Color(0xFF1DB954),
-          size: 24,
-        ),
+        child: const Icon(Icons.headphones, color: Color(0xFF1DB954), size: 24),
       ),
       title: const Text(
         'Spotify Music',
@@ -1073,8 +1153,8 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
         _loading
             ? 'Checking connection...'
             : _isLinked
-                ? 'Connected · Live sharing active'
-                : 'Not connected',
+            ? 'Connected · Live sharing active'
+            : 'Not connected',
         style: TextStyle(
           color: _isLinked ? const Color(0xFF1DB954) : LqColors.muted,
           fontSize: 12,
@@ -1084,62 +1164,77 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
       trailing: _loading
           ? const SizedBox(width: 40, height: 28)
           : _isLinked
-              ? OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: LqColors.danger,
-                    side: const BorderSide(color: LqColors.danger),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (dCtx) => AlertDialog(
-                        title: const Text('Unlink Spotify?'),
-                        content: const Text(
-                          'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dCtx, false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
-                            onPressed: () => Navigator.pop(dCtx, true),
-                            child: const Text('Unlink'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) {
-                      await SpotifyService.instance.disconnectUser(widget.userId);
-                      _checkStatus();
-                      if (context.mounted) {
-                        showLqMessage(context, 'Spotify unlinked successfully.');
-                      }
-                    }
-                  },
-                  child: const Text('Unlink', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                )
-              : OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF1DB954),
-                    side: const BorderSide(color: Color(0xFF1DB954)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () async {
-                    final success = await SpotifyService.instance.authenticateWithSpotify();
-                    _checkStatus();
-                    if (context.mounted && success) {
-                      showLqMessage(context, 'Spotify connected!');
-                    }
-                  },
-                  child: const Text('Connect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          ? OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: LqColors.danger,
+                side: const BorderSide(color: LqColors.danger),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    title: const Text('Unlink Spotify?'),
+                    content: const Text(
+                      'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: LqColors.danger,
+                        ),
+                        onPressed: () => Navigator.pop(dCtx, true),
+                        child: const Text('Unlink'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await SpotifyService.instance.disconnectUser(widget.userId);
+                  _checkStatus();
+                  if (context.mounted) {
+                    showLqMessage(context, 'Spotify unlinked successfully.');
+                  }
+                }
+              },
+              child: const Text(
+                'Unlink',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            )
+          : OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1DB954),
+                side: const BorderSide(color: Color(0xFF1DB954)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                final success = await SpotifyService.instance
+                    .authenticateWithSpotify();
+                _checkStatus();
+                if (context.mounted && success) {
+                  showLqMessage(context, 'Spotify connected!');
+                }
+              },
+              child: const Text(
+                'Connect',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
     );
   }
 }
@@ -1163,8 +1258,9 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
 
   Future<void> _loadBiometrics() async {
     final supported = await BiometricAuthService.instance.isSupported();
-    final enabled =
-        await BiometricAuthService.instance.isEnabled(widget.userId);
+    final enabled = await BiometricAuthService.instance.isEnabled(
+      widget.userId,
+    );
     if (mounted) {
       setState(() {
         _supported = supported;
@@ -1218,10 +1314,7 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
         'Use fingerprint or Face ID for faster login',
         style: TextStyle(color: LqColors.muted, fontSize: 12),
       ),
-      trailing: Switch(
-        value: _enabled,
-        onChanged: _toggleBiometrics,
-      ),
+      trailing: Switch(value: _enabled, onChanged: _toggleBiometrics),
     );
   }
 }
@@ -1313,7 +1406,9 @@ class _PreferenceTileState extends State<_PreferenceTile> {
         if (widget.keyName == 'locationHistory') {
           LocationTrackerService.instance.setLocationHistoryEnabled(next);
           if (next) {
-            await LocationTrackerService.instance.startTracking(userId: widget.user.id);
+            await LocationTrackerService.instance.startTracking(
+              userId: widget.user.id,
+            );
           } else {
             await LocationTrackerService.instance.stopTracking();
           }
@@ -1391,10 +1486,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
         children: [
           const LqBackButton(label: 'Profile'),
           const SizedBox(height: 14),
-          const LqTitleBlock(
-            eyebrow: 'Identity',
-            title: 'Account details',
-          ),
+          const LqTitleBlock(eyebrow: 'Identity', title: 'Account details'),
           const SizedBox(height: 20),
           // Top profile card matching Photo 2 design
           Container(
@@ -1412,8 +1504,8 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
                   _name.text.trim().isNotEmpty
                       ? _name.text.trim()
                       : (widget.user.displayName.isNotEmpty
-                          ? widget.user.displayName
-                          : 'Explorer'),
+                            ? widget.user.displayName
+                            : 'Explorer'),
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
@@ -1647,8 +1739,9 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
               controller: _password,
               label: 'Current password',
               obscureText: true,
-              validator: (v) =>
-                  v == null || v.isEmpty ? 'Enter your current password.' : null,
+              validator: (v) => v == null || v.isEmpty
+                  ? 'Enter your current password.'
+                  : null,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -1765,8 +1858,9 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
                 controller: _current,
                 label: 'Current password',
                 obscureText: true,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Enter your current password.' : null,
+                validator: (v) => v == null || v.isEmpty
+                    ? 'Enter your current password.'
+                    : null,
               ),
               const SizedBox(height: 16),
             ],
@@ -1880,11 +1974,7 @@ class _SimpleFormPage extends StatelessWidget {
 }
 
 class VisitedPlacesScreen extends StatefulWidget {
-  const VisitedPlacesScreen({
-    super.key,
-    required this.userId,
-    this.user,
-  });
+  const VisitedPlacesScreen({super.key, required this.userId, this.user});
   final String userId;
   final AppUser? user;
 
@@ -1992,13 +2082,16 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                 final seenKeys = <String>{};
                 for (final doc in rawDocs) {
                   final data = doc.data();
-                  final name = (data['name'] as String? ?? '').trim().toLowerCase();
+                  final name = (data['name'] as String? ?? '')
+                      .trim()
+                      .toLowerCase();
                   final bizId = (data['businessId'] as String? ?? '').trim();
                   final date = (data['visitedAt'] as Timestamp?)?.toDate();
                   final timeKey = date != null
                       ? '${date.year}-${date.month}-${date.day}_${date.hour}:${date.minute}'
                       : doc.id;
-                  final dedupeKey = '${bizId.isNotEmpty ? bizId : name}_$timeKey';
+                  final dedupeKey =
+                      '${bizId.isNotEmpty ? bizId : name}_$timeKey';
 
                   if (!seenKeys.contains(dedupeKey)) {
                     seenKeys.add(dedupeKey);
@@ -2127,7 +2220,9 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                                   children: [
                                     if (businessId.isNotEmpty) ...[
                                       InkWell(
-                                        key: Key('visited_place_review_${docs[index].id}'),
+                                        key: Key(
+                                          'visited_place_review_${docs[index].id}',
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
                                         onTap: () => Navigator.push(
                                           context,
@@ -2135,7 +2230,9 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                                             builder: (_) => WriteReviewScreen(
                                               userId: widget.userId,
                                               businessId: businessId,
-                                              businessName: data['name'] as String? ?? 'this business',
+                                              businessName:
+                                                  data['name'] as String? ??
+                                                  'this business',
                                             ),
                                           ),
                                         ),
@@ -2151,17 +2248,28 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                                       const SizedBox(width: 4),
                                     ],
                                     InkWell(
-                                      key: Key('visited_place_delete_${docs[index].id}'),
+                                      key: Key(
+                                        'visited_place_delete_${docs[index].id}',
+                                      ),
                                       borderRadius: BorderRadius.circular(12),
                                       onTap: () async {
-                                        final placeName = data['name'] as String? ?? 'Visited place';
+                                        final placeName =
+                                            data['name'] as String? ??
+                                            'Visited place';
                                         await docs[index].reference.delete();
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
                                             SnackBar(
-                                              content: Text('Removed $placeName from history'),
-                                              behavior: SnackBarBehavior.floating,
-                                              duration: const Duration(seconds: 2),
+                                              content: Text(
+                                                'Removed $placeName from history',
+                                              ),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              duration: const Duration(
+                                                seconds: 2,
+                                              ),
                                             ),
                                           );
                                         }
@@ -2193,11 +2301,7 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.shield_outlined,
-                  size: 14,
-                  color: Color(0xFF8A94A6),
-                ),
+                Icon(Icons.shield_outlined, size: 14, color: Color(0xFF8A94A6)),
                 SizedBox(width: 6),
                 Text(
                   'Location history is private to you.',
@@ -2361,16 +2465,20 @@ class NotificationsScreen extends StatelessWidget {
       child: StreamBuilder<List<ChatConversation>>(
         stream: DirectChatService.instance.streamConversations(user.id),
         builder: (context, chatSnap) {
-          final conversations = (chatSnap.data ?? [])
-              .where((c) => c.lastMessage.isNotEmpty)
-              .toList()
-            ..sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+          final conversations =
+              (chatSnap.data ?? [])
+                  .where((c) => c.lastMessage.isNotEmpty)
+                  .toList()
+                ..sort(
+                  (a, b) => b.lastMessageTime.compareTo(a.lastMessageTime),
+                );
 
           return StreamBuilder<List<FriendRequest>>(
             stream: SocialService.instance.streamFriendRequests(user.id),
             builder: (context, reqSnap) {
               final requests = reqSnap.data ?? [];
-              final bool hasItems = conversations.isNotEmpty || requests.isNotEmpty;
+              final bool hasItems =
+                  conversations.isNotEmpty || requests.isNotEmpty;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
@@ -2399,8 +2507,12 @@ class NotificationsScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       ...requests.map((req) {
                         final rawUser = req.fromUsername;
-                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
-                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        final cleanUser = rawUser.startsWith('@')
+                            ? rawUser.substring(1)
+                            : rawUser;
+                        final userLabel = cleanUser.isNotEmpty
+                            ? '@$cleanUser'
+                            : '';
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.all(12),
@@ -2434,7 +2546,10 @@ class NotificationsScreen extends StatelessWidget {
                                     const SizedBox(height: 2),
                                     const Text(
                                       'Sent you a friend request',
-                                      style: TextStyle(fontSize: 12, color: LqColors.muted),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: LqColors.muted,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -2446,39 +2561,66 @@ class NotificationsScreen extends StatelessWidget {
                                   FilledButton(
                                     style: FilledButton.styleFrom(
                                       backgroundColor: LqColors.primary,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
                                       minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     onPressed: () async {
-                                      await SocialService.instance.acceptFriendRequest(
-                                        currentUser: user,
-                                        request: req,
-                                      );
+                                      await SocialService.instance
+                                          .acceptFriendRequest(
+                                            currentUser: user,
+                                            request: req,
+                                          );
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Connected with ${req.fromDisplayName}!')),
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Connected with ${req.fromDisplayName}!',
+                                            ),
+                                          ),
                                         );
                                       }
                                     },
-                                    child: const Text('Accept', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                    child: const Text(
+                                      'Accept',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 6),
                                   OutlinedButton(
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: LqColors.muted,
-                                      side: const BorderSide(color: LqColors.line),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      side: const BorderSide(
+                                        color: LqColors.line,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
                                       minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     onPressed: () async {
-                                      await SocialService.instance.rejectFriendRequest(
-                                        currentUserId: user.id,
-                                        requestId: req.id,
-                                      );
+                                      await SocialService.instance
+                                          .rejectFriendRequest(
+                                            currentUserId: user.id,
+                                            requestId: req.id,
+                                          );
                                     },
-                                    child: const Text('Decline', style: TextStyle(fontSize: 12)),
+                                    child: const Text(
+                                      'Decline',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -2503,17 +2645,25 @@ class NotificationsScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       ...conversations.map((conv) {
                         final rawUser = conv.otherUsername;
-                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
-                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        final cleanUser = rawUser.startsWith('@')
+                            ? rawUser.substring(1)
+                            : rawUser;
+                        final userLabel = cleanUser.isNotEmpty
+                            ? '@$cleanUser'
+                            : '';
                         final hasUnread = conv.unreadCount > 0;
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           decoration: BoxDecoration(
-                            color: hasUnread ? LqColors.primarySoft.withValues(alpha: 0.3) : LqColors.surface,
+                            color: hasUnread
+                                ? LqColors.primarySoft.withValues(alpha: 0.3)
+                                : LqColors.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: hasUnread ? LqColors.primary.withValues(alpha: 0.4) : LqColors.line,
+                              color: hasUnread
+                                  ? LqColors.primary.withValues(alpha: 0.4)
+                                  : LqColors.line,
                             ),
                           ),
                           child: InkWell(
@@ -2543,7 +2693,9 @@ class NotificationsScreen extends StatelessWidget {
                                   Stack(
                                     children: [
                                       LqAvatar(
-                                        initials: initialsFor(conv.otherDisplayName),
+                                        initials: initialsFor(
+                                          conv.otherDisplayName,
+                                        ),
                                         photoUrl: conv.otherPhotoUrl,
                                         radius: 22,
                                       ),
@@ -2565,7 +2717,8 @@ class NotificationsScreen extends StatelessWidget {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -2575,7 +2728,9 @@ class NotificationsScreen extends StatelessWidget {
                                                     ? '${conv.otherDisplayName} ($userLabel)'
                                                     : conv.otherDisplayName,
                                                 style: TextStyle(
-                                                  fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w700,
+                                                  fontWeight: hasUnread
+                                                      ? FontWeight.w800
+                                                      : FontWeight.w700,
                                                   fontSize: 14,
                                                   color: LqColors.ink,
                                                 ),
@@ -2587,8 +2742,12 @@ class NotificationsScreen extends StatelessWidget {
                                               _timeAgo(conv.lastMessageTime),
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w500,
-                                                color: hasUnread ? LqColors.primary : LqColors.muted,
+                                                fontWeight: hasUnread
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
+                                                color: hasUnread
+                                                    ? LqColors.primary
+                                                    : LqColors.muted,
                                               ),
                                             ),
                                           ],
@@ -2601,8 +2760,12 @@ class NotificationsScreen extends StatelessWidget {
                                                 conv.lastMessage,
                                                 style: TextStyle(
                                                   fontSize: 13,
-                                                  color: hasUnread ? LqColors.ink : LqColors.muted,
-                                                  fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                                                  color: hasUnread
+                                                      ? LqColors.ink
+                                                      : LqColors.muted,
+                                                  fontWeight: hasUnread
+                                                      ? FontWeight.w600
+                                                      : FontWeight.normal,
                                                 ),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
@@ -2610,10 +2773,15 @@ class NotificationsScreen extends StatelessWidget {
                                             ),
                                             if (hasUnread)
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 2,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: LqColors.primary,
-                                                  borderRadius: BorderRadius.circular(10),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
                                                 ),
                                                 child: Text(
                                                   '${conv.unreadCount}',
@@ -2652,14 +2820,20 @@ class NotificationsScreen extends StatelessWidget {
                             const SizedBox(height: 14),
                             const Text(
                               'You’re all caught up',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Text(
                               user.role == AccountRole.merchant
                                   ? 'Campaign and voucher activity will appear here.'
                                   : 'Friend messages, requests and activity will appear here.',
-                              style: const TextStyle(color: LqColors.muted, height: 1.45),
+                              style: const TextStyle(
+                                color: LqColors.muted,
+                                height: 1.45,
+                              ),
                             ),
                           ],
                         ),
@@ -2671,7 +2845,9 @@ class NotificationsScreen extends StatelessWidget {
                       icon: Icons.tune,
                       onPressed: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(user: user),
+                        ),
                       ),
                     ),
                   ],
@@ -2699,8 +2875,9 @@ class PrivacyScreen extends StatelessWidget {
           const LqBackButton(label: 'Back to settings'),
           const SizedBox(height: 14),
           LqTitleBlock(
-            eyebrow:
-                role == AccountRole.merchant ? 'Merchant privacy' : 'Privacy',
+            eyebrow: role == AccountRole.merchant
+                ? 'Merchant privacy'
+                : 'Privacy',
             title: 'Privacy & data',
             subtitle: role == AccountRole.merchant
                 ? 'Review business data policies, certificate confidentiality, and permissions.'
