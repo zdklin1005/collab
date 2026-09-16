@@ -11,6 +11,7 @@ import '../core/merchant_validation.dart';
 import '../core/password_policy.dart';
 import 'biometric_auth_service.dart';
 import 'cloudinary_images.dart';
+import 'voucher_code.dart';
 
 class LocalQuestException implements Exception {
   const LocalQuestException(this.message);
@@ -1551,6 +1552,22 @@ class MerchantRepository {
     await batch.commit();
   }
 
+  /// Looks up a claimed campaign voucher by its code. Any merchant can
+  /// run this query, but the security rule only lets them actually READ
+  /// the matching document if they own the business it belongs to —
+  /// so a code for someone else's business silently returns no match
+  /// rather than leaking another merchant's voucher data.
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> findClaimedVoucherByCode(
+      String code,
+      ) async {
+    final snap = await db
+        .collectionGroup('claimedVouchers')
+        .where('code', isEqualTo: code.trim().toUpperCase())
+        .limit(1)
+        .get();
+    return snap.docs.isEmpty ? null : snap.docs.first;
+  }
+
   Future<bool> claimVoucher({
     required String userId,
     required String voucherId,
@@ -1592,6 +1609,7 @@ class MerchantRepository {
       'voucherType': voucherType,
       'claimedAt': FieldValue.serverTimestamp(),
       'redeemed': false,
+      'code': VoucherCode.generate(),
     });
 
     try {

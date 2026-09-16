@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import 'voucher_code.dart';
 import '../models/localquest_models.dart';
 import 'exp_progress.dart';
 
@@ -63,8 +64,17 @@ class ExpAwardResult {
 /// `UserRepository` / `MerchantRepository` in localquest_services.dart.
 class RewardService {
   RewardService._();
-  RewardService.withFirestore(FirebaseFirestore firestore) : _db = firestore;
   static final instance = RewardService._();
+
+  /// Creates a RewardService instance bound to a specific Firestore
+  /// instance, rather than the shared singleton's db — used by
+  /// MapExpClaimStore so map-EXP awards run against the exact Firestore
+  /// instance the surrounding transaction is on.
+  factory RewardService.withFirestore(FirebaseFirestore firestore) {
+    final service = RewardService._();
+    service.db = firestore;
+    return service;
+  }
 
   FirebaseFirestore? _db;
   FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
@@ -73,15 +83,21 @@ class RewardService {
   /// EXP curve: total cumulative EXP required to *reach* [level].
   /// Level 1 requires 0 EXP (everyone starts here).
   int expRequiredForLevel(int level) {
-    // Preserve the existing RewardService behaviour for levels <= 1.
-    return ExpProgress.expRequiredForLevel(level <= 1 ? 1 : level);
+    if (level <= 1) return 0;
+    final steps = level - 1;
+    return 100 * steps * steps + 100 * steps;
   }
 
+  /// The level a given cumulative EXP total corresponds to.
   int levelForExp(int exp) {
-    // Preserve its existing fallback for negative input.
-    return ExpProgress.fromTotalExp(exp < 0 ? 0 : exp).level;
+    var level = 1;
+    while (exp >= expRequiredForLevel(level + 1)) {
+      level++;
+    }
+    return level;
   }
 
+  /// EXP still needed to reach the next level from [exp].
   int expToNextLevel(int exp) {
     final progress = ExpProgress.fromTotalExp(exp < 0 ? 0 : exp);
     // Preserve the existing result for negative input too.
@@ -117,10 +133,10 @@ class RewardService {
   /// to display and count, and it can be enriched once a real voucher
   /// shape exists in the Promotional Configuration module.
   Future<ExpAwardResult> awardExp(
-    String uid,
-    int amount, {
-    String reason = 'exp_collected',
-  }) async {
+      String uid,
+      int amount, {
+        String reason = 'exp_collected',
+      }) async {
     if (amount <= 0) {
       throw ArgumentError.value(amount, 'amount', 'must be positive');
     }
@@ -152,6 +168,7 @@ class RewardService {
           'levelReached': previousLevel + i + 1,
           'awardedAt': FieldValue.serverTimestamp(),
           'redeemed': false,
+          'code': VoucherCode.generate(),
         });
       }
 
@@ -189,36 +206,41 @@ class RewardService {
       'source': source,
       'awardedAt': FieldValue.serverTimestamp(),
       'redeemed': false,
+      'code': VoucherCode.generate(),
     });
     await batch.commit();
   }
-
   /// Live list of achievement vouchers (from level-ups / voucher-type
-  /// missions) awarded to [uid].
+  /// missions) awarded to [uid]. Raw maps, not a dedicated model — see
+  /// the class doc on awardVoucher() for why these are placeholders.
   Stream<List<Map<String, dynamic>>> watchAchievementVouchers(String uid) {
-    try {
-      return db
-          .collection('users')
-          .doc(uid)
-          .collection('vouchers')
-          .orderBy('awardedAt', descending: true)
-          .snapshots()
-          .map(
-            (snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList(),
-          );
-    } catch (_) {
-      return const Stream.empty();
-    }
+    return db
+        .collection('users').doc(uid).collection('vouchers')
+        .orderBy('awardedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
   }
 
-  /// Marks an achievement voucher as used.
+  /// Marks an achievement voucher as used. Self-reported by the tourist —
+  /// see RedeemVoucherScreen's class doc for the trust-model caveat.
   Future<void> markVoucherRedeemed(String uid, String voucherId) {
     return db
-        .collection('users')
-        .doc(uid)
-        .collection('vouchers')
-        .doc(voucherId)
+        .collection('users').doc(uid).collection('vouchers').doc(voucherId)
         .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
+  }
+
+  /// Looks up an achievement voucher by its code, across ALL tourists —
+  /// achievement vouchers aren't tied to a specific business, so any
+  /// signed-in merchant can verify one. Returns null if no match.
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> findByCode(
+      String code,
+      ) async {
+    final snap = await db
+        .collectionGroup('vouchers')
+        .where('code', isEqualTo: code.trim().toUpperCase())
+        .limit(1)
+        .get();
+    return snap.docs.isEmpty ? null : snap.docs.first;
   }
 
   static String mapExpAwardIdFor(String rewardId) {
@@ -233,11 +255,11 @@ class RewardService {
   ///
   /// This does not issue the teammate's separate level-up reward.
   Future<ExpAwardReceipt> awardMapExpInTransaction(
-    Transaction transaction, {
-    required String uid,
-    required String rewardId,
-    required int amount,
-  }) {
+      Transaction transaction, {
+        required String uid,
+        required String rewardId,
+        required int amount,
+      }) {
     return ExpAwardService(firestore: db).awardInTransaction(
       transaction,
       uid: uid,

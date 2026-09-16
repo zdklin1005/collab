@@ -166,7 +166,7 @@ class ReviewService {
   Future<ReviewSubmissionResult> submitReview({
     required String uid,
     required String businessId,
-    String businessName = '',
+    required String businessName,
     required double rating,
     String text = '',
     List<String> photoUrls = const [],
@@ -185,6 +185,14 @@ class ReviewService {
         success: false,
         failureReason:
             'You need to have visited this business before reviewing it.',
+      );
+    }
+
+    final alreadyReviewed = await hasReviewed(uid, businessId);
+    if (alreadyReviewed) {
+      return const ReviewSubmissionResult(
+        success: false,
+        failureReason: 'You have already reviewed this business.',
       );
     }
 
@@ -245,17 +253,27 @@ class ReviewService {
   }
 
   /// Live stream of every review [uid] has posted, most recent first,
-  /// across all businesses.
+  /// across all businesses. Reviews live in per-business subcollections
+  /// (`businesses/{id}/reviews`), so this uses a collection-group query
+  /// rather than a single collection reference. Firestore's security
+  /// rules already permit this — they match by document path
+  /// (`businesses/*/reviews/*`), not by how the query was issued, so no
+  /// rules change is needed. Firestore WILL require a composite index
+  /// for this (userId + createdAt) — see the index note below.
   Stream<List<Review>> watchReviewsForUser(String uid) {
-    try {
-      return db
-          .collectionGroup('reviews')
-          .where('userId', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
-          .snapshots()
-          .map((snap) => snap.docs.map(Review.fromDoc).toList());
-    } catch (_) {
-      return const Stream.empty();
-    }
+    return db
+        .collectionGroup('reviews')
+        .where('userId', isEqualTo: uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(Review.fromDoc).toList());
+  }
+
+  Future<bool> hasReviewed(String uid, String businessId) async {
+    final snap = await _reviewsRef(businessId)
+        .where('userId', isEqualTo: uid)
+        .limit(1)
+        .get();
+    return snap.docs.isNotEmpty;
   }
 }

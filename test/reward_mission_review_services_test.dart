@@ -116,12 +116,13 @@ void main() {
   });
 
   group('ReviewService Models and Validation', () {
-    test('Review serializes to and from Map', () {
+    test('Review serializes to and from Map, including businessName', () {
       final now = DateTime(2026, 9, 14, 12, 0);
       final review = Review(
         id: 'rev_1',
         userId: 'tourist_1',
         businessId: 'biz_1',
+        businessName: 'LocalQuest Cafe',
         rating: 4.5,
         text: 'Great food and ambience!',
         photoUrls: ['https://example.com/photo.jpg'],
@@ -131,6 +132,7 @@ void main() {
       final map = review.toMap();
       expect(map['userId'], 'tourist_1');
       expect(map['businessId'], 'biz_1');
+      expect(map['businessName'], 'LocalQuest Cafe');
       expect(map['rating'], 4.5);
       expect(map['text'], 'Great food and ambience!');
       expect(map['photoUrls'], ['https://example.com/photo.jpg']);
@@ -142,6 +144,7 @@ void main() {
       final lowRes = await service.submitReview(
         uid: 'user_1',
         businessId: 'biz_1',
+        businessName: 'Test Business',
         rating: 0.5,
       );
       expect(lowRes.success, isFalse);
@@ -150,6 +153,7 @@ void main() {
       final highRes = await service.submitReview(
         uid: 'user_1',
         businessId: 'biz_1',
+        businessName: 'Test Business',
         rating: 5.5,
       );
       expect(highRes.success, isFalse);
@@ -170,7 +174,7 @@ void main() {
       reviewCount: 7,
     );
 
-    testWidgets('Renders all 7 requested reward/mission/review compartments and journey options', (tester) async {
+    testWidgets('Renders vouchers/reviews compartments and journey options', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -180,29 +184,30 @@ void main() {
       );
       await tester.pump();
 
-      // 1. Vouchers compartment & count
+      // Vouchers compartment & count
       expect(find.text('VOUCHERS'), findsOneWidget);
       expect(find.text('4'), findsWidgets);
 
-      // 2. Reviews compartment & count
+      // Reviews compartment & count
       expect(find.text('REVIEWS'), findsOneWidget);
       expect(find.text('7'), findsWidgets);
 
-      // 3. "My vouchers" journey option
+      // "My vouchers" journey option
       expect(find.text('My vouchers'), findsOneWidget);
       expect(find.text('4 ready to use'), findsOneWidget);
 
-      // 4. "Reviews & ratings" journey option
+      // "Reviews & ratings" journey option
       expect(find.text('Reviews & ratings'), findsOneWidget);
       expect(find.text('7 posted'), findsOneWidget);
 
-      // 5. "Missions" journey option (dynamic count)
+      // "Missions" journey option (dynamic count)
       expect(find.text('Missions'), findsOneWidget);
       expect(find.textContaining('in progress'), findsOneWidget);
 
-      // 6. "Daily check-in" journey option
-      expect(find.text('Daily check-in'), findsOneWidget);
-      expect(find.text('Keep your streak'), findsOneWidget);
+      // NOTE: there is no standalone "Daily check-in" journey list item
+      // anymore — it was replaced by the always-visible _DailyCheckInCard
+      // rendered directly on the profile (see the streak-card test
+      // below), so it's intentionally not asserted here.
     });
 
     testWidgets('My vouchers journey item is displayed with chevron and does not trigger removed popup', (tester) async {
@@ -226,7 +231,7 @@ void main() {
       expect(find.textContaining('ready in your passport'), findsNothing);
     });
 
-    testWidgets('Tapping Missions opens missions screen directly', (tester) async {
+    testWidgets('Tapping Missions opens the mission list screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -246,7 +251,25 @@ void main() {
       expect(find.text('Dynamic Missions'), findsOneWidget);
     });
 
-    testWidgets('Reviews & ratings journey item is displayed with chevron and does not trigger removed popup', (tester) async {
+    testWidgets('Daily check-in card is rendered on the profile', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TouristProfileScreen(user: testUser),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The streak card renders directly on the profile (not behind a
+      // tap) — its exact text depends on live Firestore data (streakCount
+      // / lastCheckInDate), so this only confirms the card itself
+      // mounted, via its always-present icon, rather than asserting a
+      // specific streak state.
+      expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    });
+
+    testWidgets('Reviews & ratings journey item is displayed and navigates to MyReviewsScreen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

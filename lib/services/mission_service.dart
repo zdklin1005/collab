@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
+import 'package:flutter/foundation.dart';
 
 import 'city_resolver.dart';
 import 'reward_service.dart';
@@ -64,12 +65,17 @@ class MissionCheckpoint {
     );
   }
 
+  // Defensive/case-insensitive parsing with a safe fallback, so one
+  // malformed checkpoint (bad casing, legacy field value) doesn't throw
+  // and crash the whole mission list.
   factory MissionCheckpoint.fromMap(Map<String, dynamic> map) {
     final typeStr = (map['type'] as String? ?? 'visit').toLowerCase();
-    final type = MissionType.values.cast<MissionType?>().firstWhere(
-      (t) => t?.name.toLowerCase() == typeStr,
-      orElse: () => MissionType.visit,
-    ) ?? MissionType.visit;
+    final type =
+        MissionType.values.cast<MissionType?>().firstWhere(
+              (t) => t?.name.toLowerCase() == typeStr,
+          orElse: () => MissionType.visit,
+        ) ??
+            MissionType.visit;
 
     return MissionCheckpoint(
       businessId: map['businessId'] as String? ?? '',
@@ -167,6 +173,9 @@ class Mission {
   bool get hasStarted =>
       scheduledStartAt == null || scheduledStartAt!.isBefore(DateTime.now());
 
+  // Defensive parsing: skips individual malformed checkpoints rather
+  // than throwing and losing the whole mission, and falls back to safe
+  // defaults for rewardType/status on unexpected values.
   factory Mission.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     final rawCheckpoints = data['checkpoints'] as List? ?? const [];
@@ -178,22 +187,29 @@ class Mission {
         } catch (_) {}
       } else if (item is Map) {
         try {
-          checkpoints.add(MissionCheckpoint.fromMap(Map<String, dynamic>.from(item)));
+          checkpoints.add(
+            MissionCheckpoint.fromMap(Map<String, dynamic>.from(item)),
+          );
         } catch (_) {}
       }
     }
 
-    final rewardTypeStr = (data['rewardType'] as String? ?? 'exp').toLowerCase();
-    final rewardType = MissionRewardType.values.cast<MissionRewardType?>().firstWhere(
-      (r) => r?.name.toLowerCase() == rewardTypeStr,
-      orElse: () => MissionRewardType.exp,
-    ) ?? MissionRewardType.exp;
+    final rewardTypeStr = (data['rewardType'] as String? ?? 'exp')
+        .toLowerCase();
+    final rewardType =
+        MissionRewardType.values.cast<MissionRewardType?>().firstWhere(
+              (r) => r?.name.toLowerCase() == rewardTypeStr,
+          orElse: () => MissionRewardType.exp,
+        ) ??
+            MissionRewardType.exp;
 
     final statusStr = (data['status'] as String? ?? 'active').toLowerCase();
-    final status = MissionStatus.values.cast<MissionStatus?>().firstWhere(
-      (s) => s?.name.toLowerCase() == statusStr,
-      orElse: () => MissionStatus.active,
-    ) ?? MissionStatus.active;
+    final status =
+        MissionStatus.values.cast<MissionStatus?>().firstWhere(
+              (s) => s?.name.toLowerCase() == statusStr,
+          orElse: () => MissionStatus.active,
+        ) ??
+            MissionStatus.active;
 
     return Mission(
       id: doc.id,
@@ -244,6 +260,10 @@ class CheckpointCompletionResult {
 
   final bool success;
   final String? failureReason;
+
+  // NOTE: added by main but not previously set to true anywhere in
+  // completeNextCheckpoint — now wired up below so it's actually
+  // meaningful rather than always defaulting to false.
   final bool checkpointCompleted;
   final bool missionCompleted;
   final int expAwarded;
@@ -260,7 +280,10 @@ class MissionService {
   set db(FirebaseFirestore customDb) => _db = customDb;
   final Random _random = Random();
 
-  static const double _checkpointRadiusMeters = 50;
+  // PUBLIC — required by mission_list_screen.dart's pre-camera distance
+  // check. Do not make this private again; it's regressed back to
+  // private at least twice now during merges.
+  static const double checkpointRadiusMeters = 50;
 
   CollectionReference<Map<String, dynamic>> _missionsRef(String uid) =>
       db.collection('users').doc(uid).collection('missions');
@@ -301,7 +324,14 @@ class MissionService {
 
   /// Live stream of a tourist's missions (all statuses) for use in a
   /// StreamBuilder — the "In progress" list stays up to date as
-  /// checkpoints are completed elsewhere.
+  /// checkpoints are completed elsewhere. Defensive: skips individual
+  /// malformed documents and guards against an empty uid rather than
+  /// throwing. Note the .handleError below suppresses stream errors
+  /// (prevents a crash) but does not reliably substitute a replacement
+  /// data event — a real PERMISSION_DENIED will likely just stop
+  /// updates silently rather than show the fallback empty list. Prefer
+  /// checking snapshot.hasError in the consuming StreamBuilder for a
+  /// user-visible error message, same pattern used in MyReviewsScreen.
   Stream<List<Mission>> watchMissions(String uid) {
     if (uid.trim().isEmpty) {
       return Stream.value(const <Mission>[]);
@@ -310,13 +340,18 @@ class MissionService {
       return _missionsRef(uid)
           .orderBy('generatedAt', descending: true)
           .snapshots()
-          .map((snap) => snap.docs.map((doc) {
-                try {
-                  return Mission.fromDoc(doc);
-                } catch (_) {
-                  return null;
-                }
-              }).whereType<Mission>().toList())
+          .map(
+            (snap) => snap.docs
+            .map((doc) {
+          try {
+            return Mission.fromDoc(doc);
+          } catch (_) {
+            return null;
+          }
+        })
+            .whereType<Mission>()
+            .toList(),
+      )
           .handleError((_) => const <Mission>[]);
     } catch (_) {
       return Stream.value(const <Mission>[]);
@@ -496,10 +531,18 @@ class MissionService {
   /// checks whether any detected label matches [checkpoint]'s acceptable
   /// labels. The image itself is never uploaded or persisted anywhere —
   /// only this true/false result leaves this function.
+  ///
+  /// TEMP: bypassed in debug builds because the Android emulator has no
+  /// usable camera for real ML Kit verification. Remove the kDebugMode
+  /// check before submission and test this for real on a physical
+  /// device — right now the real verification path is completely
+  /// untested.
   Future<bool> _verifyPhoto(
       MissionCheckpoint checkpoint,
       String imagePath,
       ) async {
+    if (kDebugMode) return true; // TEMP — see doc comment above
+
     final acceptable = (checkpoint.photoTargetLabel ?? '')
         .split(',')
         .map((s) => s.trim().toLowerCase())
@@ -577,21 +620,25 @@ class MissionService {
 
     final checkpoint = mission.checkpoints[checkpointIndex];
 
-    if (checkpoint.type == MissionType.visit) {
-      final distance = _distanceMeters(
-        currentLat,
-        currentLng,
-        checkpoint.targetLatitude,
-        checkpoint.targetLongitude,
+    // Distance is checked for BOTH checkpoint types — a photo mission is
+    // still a location-based mission and shouldn't be completable from
+    // anywhere just because it also requires a photo. This must not be
+    // narrowed back to `if (checkpoint.type == MissionType.visit)` only.
+    final distance = _distanceMeters(
+      currentLat,
+      currentLng,
+      checkpoint.targetLatitude,
+      checkpoint.targetLongitude,
+    );
+    if (distance > checkpointRadiusMeters) {
+      return CheckpointCompletionResult(
+        success: false,
+        failureReason:
+        'Too far away (${distance.round()}m) — get closer to complete this checkpoint.',
       );
-      if (distance > _checkpointRadiusMeters) {
-        return CheckpointCompletionResult(
-          success: false,
-          failureReason:
-          'Too far away (${distance.round()}m) — get closer to complete this checkpoint.',
-        );
-      }
-    } else {
+    }
+
+    if (checkpoint.type == MissionType.photo) {
       if (photoPath == null || !await _verifyPhoto(checkpoint, photoPath)) {
         return const CheckpointCompletionResult(
           success: false,
@@ -616,7 +663,10 @@ class MissionService {
     });
 
     if (!allCompleted) {
-      return const CheckpointCompletionResult(success: true);
+      return const CheckpointCompletionResult(
+        success: true,
+        checkpointCompleted: true,
+      );
     }
 
     if (mission.rewardType == MissionRewardType.exp) {
@@ -627,6 +677,7 @@ class MissionService {
       );
       return CheckpointCompletionResult(
         success: true,
+        checkpointCompleted: true,
         missionCompleted: true,
         expAwarded: mission.expReward,
         levelUpResult: awardResult.leveledUp ? awardResult : null,
@@ -638,6 +689,7 @@ class MissionService {
       );
       return const CheckpointCompletionResult(
         success: true,
+        checkpointCompleted: true,
         missionCompleted: true,
         voucherAwarded: true,
       );

@@ -35,4 +35,4 @@ class LocationHistoryService {
         .get();
     return query.docs.isNotEmpty;
   }
-}
+}

@@ -128,7 +128,23 @@ class _MissionListViewState extends State<MissionListView> {
     if (_completing) return;
 
     final checkpoint = mission.nextIncompleteCheckpoint;
-    if (checkpoint == null) return; // nothing left to complete on this mission
+    if (checkpoint == null) return;
+
+    final distance = MissionService.instance.distanceToNextCheckpoint(
+      mission,
+      widget.currentLat,
+      widget.currentLng,
+    );
+    if (distance != null && distance > MissionService.checkpointRadiusMeters) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Too far away (${distance.round()}m) — get closer to complete this checkpoint.',
+          ),
+        ),
+      );
+      return;
+    }
 
     String? photoPath;
 

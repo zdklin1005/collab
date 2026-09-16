@@ -16,6 +16,7 @@ import '../core/lq_image_cropper.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
 import 'tourist_screens.dart';
+import 'merchant_redeem_voucher_screen.dart';
 
 class MerchantHome extends StatefulWidget {
   const MerchantHome({super.key, required this.user});
@@ -2899,6 +2900,16 @@ class MerchantProfile extends StatelessWidget {
         LqCard(
           child: Column(
             children: [
+              _MerchantProfileAction(
+                icon: Icons.qr_code_scanner_outlined,
+                label: 'Redeem a voucher',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MerchantRedeemVoucherScreen(merchant: user),
+                  ),
+                ),
+              ),
               _MerchantProfileAction(
                 icon: Icons.auto_awesome_outlined,
                 label: 'Ads',

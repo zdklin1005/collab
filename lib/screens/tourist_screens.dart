@@ -21,14 +21,14 @@ import '../services/direct_chat_service.dart';
 import '../services/social_service.dart';
 import '../services/spotify_service.dart';
 import '../services/location_service.dart';
-import 'my_rewards_screen.dart';
-import 'my_reviews_screen.dart';
-import 'daily_check_in_screen.dart';
+import 'rewards_tab.dart';
 import 'mission_list_screen.dart';
 import 'write_review_screen.dart';
 import '../services/mission_service.dart';
+import '../services/check_in_service.dart';
+import 'my_reviews_screen.dart';
+import 'my_rewards_screen.dart';
 import '../services/reward_service.dart';
-import '../services/review_service.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({super.key, required this.user, this.initialIndex = 0});
@@ -474,6 +474,8 @@ class TouristProfileScreen extends StatelessWidget {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        _DailyCheckInCard(uid: user.id),
                         const SizedBox(height: 28),
                         Text('YOUR JOURNEY', style: monoLabel),
                         const SizedBox(height: 12),
@@ -683,6 +685,141 @@ class _Stat extends StatelessWidget {
   }
 }
 
+class _DailyCheckInCard extends StatefulWidget {
+  const _DailyCheckInCard({required this.uid});
+  final String uid;
+
+  @override
+  State<_DailyCheckInCard> createState() => _DailyCheckInCardState();
+}
+
+class _DailyCheckInCardState extends State<_DailyCheckInCard> {
+  bool _checkingIn = false;
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Future<void> _checkIn() async {
+    if (_checkingIn) return;
+    setState(() => _checkingIn = true);
+    try {
+      final result = await CheckInService.instance.checkIn(widget.uid);
+      if (!mounted) return;
+      final message = result.alreadyCheckedInToday
+          ? "You've already checked in today — come back tomorrow!"
+          : 'Checked in! +${result.expAwarded} EXP'
+          '${result.levelUpResult != null ? ' — Level up!' : ''}'
+          ' · ${result.streakCount}-day streak';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not check in. Check your connection and try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingIn = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Reads streakCount/lastCheckInDate directly off the raw user doc —
+    // these fields deliberately aren't on AppUser (see CheckInService's
+    // class doc), so this bypasses UserRepository.watch() and streams
+    // the document itself instead.
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? const <String, dynamic>{};
+        final streakCount = (data['streakCount'] as num?)?.toInt() ?? 0;
+        final lastCheckIn = (data['lastCheckInDate'] as Timestamp?)?.toDate();
+        final alreadyCheckedInToday =
+            lastCheckIn != null && _isSameDay(lastCheckIn, DateTime.now());
+
+        return LqCard(
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: LqColors.peachSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.local_fire_department,
+                  color: Colors.deepOrange,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      streakCount > 0
+                          ? '$streakCount-day streak'
+                          : 'Start your streak',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      alreadyCheckedInToday
+                          ? 'Come back tomorrow to keep it going'
+                          : 'Check in today to earn EXP',
+                      style: const TextStyle(
+                        color: LqColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (alreadyCheckedInToday)
+                const Chip(
+                  avatar: Icon(
+                    Icons.check_circle,
+                    size: 16,
+                    color: LqColors.success,
+                  ),
+                  label: Text('Done'),
+                  visualDensity: VisualDensity.compact,
+                )
+              else
+                FilledButton(
+                  onPressed: _checkingIn ? null : _checkIn,
+                  child: _checkingIn
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Text('Check in'),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _JourneyItem extends StatelessWidget {
   const _JourneyItem({
     required this.icon,
@@ -773,44 +910,44 @@ class SettingsScreen extends StatelessWidget {
             'Preferences',
             user.role == AccountRole.merchant
                 ? [
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'campaignNotifications',
-                      icon: Icons.campaign_outlined,
-                      title: 'Campaign notifications',
-                      subtitle: 'Campaign status and performance updates',
-                    ),
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'claimNotifications',
-                      icon: Icons.confirmation_num_outlined,
-                      title: 'Voucher claim notifications',
-                      subtitle: 'Alerts when tourists claim your vouchers',
-                    ),
-                  ]
+              _PreferenceTile(
+                user: user,
+                keyName: 'campaignNotifications',
+                icon: Icons.campaign_outlined,
+                title: 'Campaign notifications',
+                subtitle: 'Campaign status and performance updates',
+              ),
+              _PreferenceTile(
+                user: user,
+                keyName: 'claimNotifications',
+                icon: Icons.confirmation_num_outlined,
+                title: 'Voucher claim notifications',
+                subtitle: 'Alerts when tourists claim your vouchers',
+              ),
+            ]
                 : [
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'tripNotifications',
-                      icon: Icons.notifications_none,
-                      title: 'Trip notifications',
-                      subtitle: 'Check-ins, rewards & reminders',
-                    ),
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'locationHistory',
-                      icon: Icons.location_on_outlined,
-                      title: 'Location history',
-                      subtitle: 'Automatic visit logging',
-                    ),
-                    _PreferenceTile(
-                      user: user,
-                      keyName: 'partnerOffers',
-                      icon: Icons.card_giftcard,
-                      title: 'Partner offers',
-                      subtitle: 'Occasional local reward updates',
-                    ),
-                  ],
+              _PreferenceTile(
+                user: user,
+                keyName: 'tripNotifications',
+                icon: Icons.notifications_none,
+                title: 'Trip notifications',
+                subtitle: 'Check-ins, rewards & reminders',
+              ),
+              _PreferenceTile(
+                user: user,
+                keyName: 'locationHistory',
+                icon: Icons.location_on_outlined,
+                title: 'Location history',
+                subtitle: 'Automatic visit logging',
+              ),
+              _PreferenceTile(
+                user: user,
+                keyName: 'partnerOffers',
+                icon: Icons.card_giftcard,
+                title: 'Partner offers',
+                subtitle: 'Occasional local reward updates',
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           _section('Connected Accounts', [
@@ -902,8 +1039,7 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
     final linked = await AuthService.instance.isGoogleLinked(widget.user.id);
     final email = await AuthService.instance.getLinkedGoogleEmail(
       widget.user.id,
-    );
-    if (mounted) {
+    );    if (mounted) {
       setState(() {
         _isLinked = linked;
         _linkedEmail = email;
@@ -938,8 +1074,7 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
             : _isLinked
             ? (_linkedEmail != null && _linkedEmail!.isNotEmpty
                   ? 'Connected · $_linkedEmail'
-                  : 'Connected to Google')
-            : 'Not connected',
+                  : 'Connected to Google')            : 'Not connected',
         style: TextStyle(
           color: _isLinked ? const Color(0xFF15803D) : LqColors.muted,
           fontSize: 12,
@@ -948,10 +1083,10 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
       ),
       trailing: _busy
           ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      )
           : _loading
           ? const SizedBox(width: 40, height: 28)
           : _isLinked
@@ -1098,8 +1233,7 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
                 'Connect',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
-            ),
-    );
+            ),    );
   }
 }
 
@@ -1234,8 +1368,7 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
                 'Connect',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
-            ),
-    );
+            ),    );
   }
 }
 
@@ -1260,8 +1393,7 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
     final supported = await BiometricAuthService.instance.isSupported();
     final enabled = await BiometricAuthService.instance.isEnabled(
       widget.userId,
-    );
-    if (mounted) {
+    );    if (mounted) {
       setState(() {
         _supported = supported;
         _enabled = enabled;
@@ -1273,7 +1405,7 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
     if (value) {
       final authenticated = await BiometricAuthService.instance.authenticate(
         localizedReason:
-            'Verify biometric identity to enable biometric sign-in',
+        'Verify biometric identity to enable biometric sign-in',
       );
       if (!authenticated) return;
     }
@@ -1460,14 +1592,12 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   late final _name = TextEditingController(text: widget.user.displayName);
   late final _username = TextEditingController(text: widget.user.username);
   late final _phone = TextEditingController(text: widget.user.phone);
-  late DateTime? _selectedBirthday = widget.user.birthday;
   late final _birthday = TextEditingController(
     text: widget.user.birthday == null
         ? ''
-        : DateFormat('d MMMM yyyy').format(widget.user.birthday!),
+        : DateFormat('dd/MM/yyyy').format(widget.user.birthday!),
   );
   bool _busy = false;
-
   @override
   void dispose() {
     _name.dispose();
@@ -1576,27 +1706,24 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
               ),
             ),
           ),
-        ],
+        ],      ),
+      const SizedBox(height: 24),
+      LqButton(
+        label: 'Save changes',
+        busy: _busy,
+        icon: Icons.save_outlined,
+        onPressed: _save,
       ),
-    ),
+    ],
   );
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
-    DateTime? birthday = _selectedBirthday;
-    if (birthday == null && _birthday.text.isNotEmpty) {
-      try {
-        birthday = DateFormat('d MMMM yyyy').parse(_birthday.text);
-      } catch (_) {
-        final parts = _birthday.text.split('/');
-        if (parts.length == 3) {
-          birthday = DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}');
-        } else {
-          birthday = DateTime.tryParse(_birthday.text);
-        }
-      }
-    }
+    final parts = _birthday.text.split('/');
+    final birthday = parts.length == 3
+        ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
+        : null;
     try {
       await UserRepository.instance.updateProfile(
         uid: widget.user.id,
@@ -1620,18 +1747,19 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   }
 
   Future<void> _pickBirthday() async {
+    final parts = _birthday.text.split('/');
+    final current = parts.length == 3
+        ? DateTime.tryParse('${parts[2]}-${parts[1]}-${parts[0]}')
+        : null;
     final chosen = await showLqDatePicker(
       context,
-      initialDate: _selectedBirthday ?? DateTime(2000, 1, 1),
+      initialDate: current ?? DateTime(2000, 1, 1),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       title: 'Select birthday',
     );
     if (chosen != null) {
-      setState(() {
-        _selectedBirthday = chosen;
-        _birthday.text = DateFormat('d MMMM yyyy').format(chosen);
-      });
+      setState(() => _birthday.text = DateFormat('dd/MM/yyyy').format(chosen));
     }
   }
 }
@@ -1721,8 +1849,7 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
           children: [
             TextFormField(
               key: ValueKey(_currentEmail),
-              initialValue: _currentEmail,
-              enabled: false,
+              initialValue: _currentEmail,              enabled: false,
               decoration: const InputDecoration(labelText: 'Current email'),
             ),
             const SizedBox(height: 16),
@@ -1741,8 +1868,7 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
               obscureText: true,
               validator: (v) => v == null || v.isEmpty
                   ? 'Enter your current password.'
-                  : null,
-            ),
+                  : null,            ),
             const SizedBox(height: 12),
             const Text(
               'We’ll send a verification link before your email address changes.',
@@ -1774,8 +1900,7 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
                 busy: _busy,
                 onPressed: _save,
               ),
-            ),
-          ],
+            ),          ],
         ),
       ),
     ],
@@ -1860,8 +1985,7 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
                 obscureText: true,
                 validator: (v) => v == null || v.isEmpty
                     ? 'Enter your current password.'
-                    : null,
-              ),
+                    : null,              ),
               const SizedBox(height: 16),
             ],
             LqNewPasswordField(
@@ -1882,13 +2006,11 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
               },
             ),
             const SizedBox(height: 24),
-            Align(
-              alignment: Alignment.centerRight,
-              child: LqButton.pill(
-                label: 'Save changes',
-                busy: _busy,
-                onPressed: _save,
-              ),
+            LqButton(
+              label: 'Save changes',
+              busy: _busy,
+              icon: Icons.lock_outline,
+              onPressed: _save,
             ),
           ],
         ),
@@ -2017,8 +2139,8 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
     final yesterday = now.subtract(const Duration(days: 1));
     final isYesterday =
         date.year == yesterday.year &&
-        date.month == yesterday.month &&
-        date.day == yesterday.day;
+            date.month == yesterday.month &&
+            date.day == yesterday.day;
     if (isYesterday) {
       return 'Yesterday, ${DateFormat('HH:mm').format(date)}';
     }
@@ -2035,8 +2157,8 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Expanded(
+            children: [
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2054,6 +2176,144 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                     ),
                   ],
                 ),
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: LqColors.muted),
+                tooltip: 'Tracker Options & Simulation',
+                onSelected: (value) async {
+                  if (value == 'simulate_chinahouse') {
+                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
+                      if (context.mounted) {
+                        showLqMessage(
+                          context,
+                          'Location history logging is paused in Settings.',
+                          error: true,
+                        );
+                      }
+                      return;
+                    }
+                    final ok = await LocationTrackerService.instance.simulateArrival(
+                      businessId: 'demo_biz_chinahouse_penang',
+                      userId: widget.userId,
+                    );
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        ok
+                            ? 'Simulated arrival at ChinaHouse Cafe! Visit recorded.'
+                            : 'Already dwelling at or cooldown active for ChinaHouse.',
+                      );
+                    }
+                  } else if (value == 'simulate_tohsoon') {
+                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
+                      if (context.mounted) {
+                        showLqMessage(
+                          context,
+                          'Location history logging is paused in Settings.',
+                          error: true,
+                        );
+                      }
+                      return;
+                    }
+                    final ok = await LocationTrackerService.instance.simulateArrival(
+                      businessId: 'demo_biz_toh_soon_penang',
+                      userId: widget.userId,
+                    );
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        ok
+                            ? 'Simulated arrival at Toh Soon Cafe! Visit recorded.'
+                            : 'Already dwelling at or cooldown active for Toh Soon.',
+                      );
+                    }
+                  } else if (value == 'resume_tracking') {
+                    final ok = await LocationTrackerService.instance.startTracking(userId: widget.userId);
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        ok ? 'Automatic tracking active.' : 'Could not start tracking (check GPS permission or Settings).',
+                      );
+                    }
+                  } else if (value == 'open_settings') {
+                    final targetUser = widget.user ??
+                        AppUser(
+                          id: widget.userId,
+                          email: '',
+                          displayName: 'Explorer',
+                          username: '@explorer',
+                          role: AccountRole.tourist,
+                        );
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(user: targetUser),
+                      ),
+                    );
+                  } else if (value == 'clean_duplicates') {
+                    final removed = await UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        removed > 0
+                            ? 'Removed $removed duplicate record(s).'
+                            : 'No duplicate records found.',
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'simulate_chinahouse',
+                    child: Row(
+                      children: [
+                        Icon(Icons.coffee, size: 18, color: LqColors.primary),
+                        SizedBox(width: 8),
+                        Text('Simulate Arrival: ChinaHouse'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'simulate_tohsoon',
+                    child: Row(
+                      children: [
+                        Icon(Icons.breakfast_dining, size: 18, color: LqColors.primary),
+                        SizedBox(width: 8),
+                        Text('Simulate Arrival: Toh Soon'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'resume_tracking',
+                    child: Row(
+                      children: [
+                        Icon(Icons.my_location, size: 18, color: LqColors.muted),
+                        SizedBox(width: 8),
+                        Text('Re-check GPS Tracking'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'clean_duplicates',
+                    child: Row(
+                      children: [
+                        Icon(Icons.cleaning_services_outlined, size: 18, color: LqColors.primary),
+                        SizedBox(width: 8),
+                        Text('Clean Duplicate Records'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'open_settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.tune, size: 18, color: LqColors.muted),
+                        SizedBox(width: 8),
+                        Text('Location History Settings'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2335,26 +2595,26 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
     if (widget.role == AccountRole.merchant) {
       return const {
         'How do I verify my SSM registration?':
-            'Open the business editor, tap "Scan SSM registration certificate" or enter your 12-digit SSM number to request verification.',
+        'Open the business editor, tap "Scan SSM registration certificate" or enter your 12-digit SSM number to request verification.',
         'How do campaigns and advertisements work?':
-            'Active businesses can create ads and campaigns to reach nearby tourists and attract visitors to your location.',
+        'Active businesses can create ads and campaigns to reach nearby tourists and attract visitors to your location.',
         'How do customers redeem vouchers at my business?':
-            'Tourists present an active redemption screen in Rewards. Check their redemption code and apply the offer.',
+        'Tourists present an active redemption screen in Rewards. Check their redemption code and apply the offer.',
         'How do I adjust my business entrance pin on the map?':
-            'Open your business listing, tap "Street address", and use "Pin location on map" to set the exact storefront location.',
+        'Open your business listing, tap "Street address", and use "Pin location on map" to set the exact storefront location.',
         'Can I use one account as a Tourist and Merchant?':
-            'Tourist and Merchant accounts are separate so that business operations and personal travel activity remain distinct.',
+        'Tourist and Merchant accounts are separate so that business operations and personal travel activity remain distinct.',
       };
     }
     return const {
       'How does automatic place logging work?':
-          'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
+      'When location history is enabled, LocalQuest records a visit only after a verified proximity event.',
       'How do I redeem a voucher?':
-          'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
+      'Open the voucher in Rewards and present its active redemption screen to the participating merchant.',
       'Why is my check-in not showing?':
-          'Check location permission and network access, then reopen the app near the registered location.',
+      'Check location permission and network access, then reopen the app near the registered location.',
       'Can I use one account as a Tourist and Merchant?':
-          'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
+      'Tourist and Merchant accounts are separate so that data and permissions remain clear and secure.',
     };
   }
 
@@ -2398,43 +2658,43 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
                 children: values.indexed
                     .map(
                       (item) => Padding(
-                        padding: EdgeInsets.only(
-                          bottom: item.$1 == values.length - 1 ? 0 : 8,
-                        ),
-                        child: LqCard(
-                          padding: EdgeInsets.zero,
-                          child: ExpansionTile(
-                            initiallyExpanded: item.$1 == 0,
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            title: Text(
-                              item.$2.key,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            children: [
-                              const LqDashedDivider(color: Color(0xFFE8ECF2)),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  12,
-                                  16,
-                                  16,
-                                ),
-                                child: Text(
-                                  item.$2.value,
-                                  style: const TextStyle(
-                                    color: LqColors.muted,
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ],
+                    padding: EdgeInsets.only(
+                      bottom: item.$1 == values.length - 1 ? 0 : 8,
+                    ),
+                    child: LqCard(
+                      padding: EdgeInsets.zero,
+                      child: ExpansionTile(
+                        initiallyExpanded: item.$1 == 0,
+                        shape: const Border(),
+                        collapsedShape: const Border(),
+                        title: Text(
+                          item.$2.key,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
+                        children: [
+                          const LqDashedDivider(color: Color(0xFFE8ECF2)),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              16,
+                              12,
+                              16,
+                              16,
+                            ),
+                            child: Text(
+                              item.$2.value,
+                              style: const TextStyle(
+                                color: LqColors.muted,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    )
+                    ),
+                  ),
+                )
                     .toList(),
               ),
             ),
@@ -2490,6 +2750,8 @@ class NotificationsScreen extends StatelessWidget {
                     const LqTitleBlock(
                       eyebrow: 'Activity',
                       title: 'Notifications',
+                      subtitle: 'Messages, friend requests & updates in one place.',
+                      icon: Icons.notifications_none_outlined,
                     ),
                     const SizedBox(height: 20),
 
@@ -2877,8 +3139,7 @@ class PrivacyScreen extends StatelessWidget {
           LqTitleBlock(
             eyebrow: role == AccountRole.merchant
                 ? 'Merchant privacy'
-                : 'Privacy',
-            title: 'Privacy & data',
+                : 'Privacy',            title: 'Privacy & data',
             subtitle: role == AccountRole.merchant
                 ? 'Review business data policies, certificate confidentiality, and permissions.'
                 : 'Review personal data, permissions, and account-export options.',
