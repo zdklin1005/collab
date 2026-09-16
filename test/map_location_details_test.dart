@@ -26,10 +26,18 @@ void main() {
     longitude: 101,
   );
 
-  Widget host(MapLocation location, {VoidCallback? onClose}) {
+  Widget host(
+    MapLocation location, {
+    VoidCallback? onClose,
+    VoidCallback? onNavigate,
+  }) {
     return MaterialApp(
       home: Scaffold(
-        body: MapLocationDetails(location: location, onClose: onClose ?? () {}),
+        body: MapLocationDetails(
+          location: location,
+          onClose: onClose ?? () {},
+          onNavigate: onNavigate,
+        ),
       ),
     );
   }
@@ -129,5 +137,23 @@ void main() {
 
     expect(find.text('Injected voucher section'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('navigation button calls the supplied action', (tester) async {
+    var navigationRequested = false;
+
+    await tester.pumpWidget(
+      host(business, onNavigate: () => navigationRequested = true),
+    );
+
+    final button = find.byKey(const ValueKey('navigate-location-button'));
+
+    expect(button, findsOneWidget);
+
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pump();
+
+    expect(navigationRequested, isTrue);
   });
 }

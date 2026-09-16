@@ -64,6 +64,8 @@ import 'live_business_voucher_collection_check.dart';
 import '../../services/map_exp_history_repository.dart';
 import '../../services/map_voucher_history_repository.dart';
 
+import '../../services/external_map_navigation.dart';
+
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
 
@@ -920,6 +922,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               isDemo: MapTestConfig.enabled,
               location: location,
               onClose: () => Navigator.of(sheetContext).pop(),
+              onNavigate: () {
+                unawaited(_navigateToLocation(location));
+              },
               voucherSection: business == null
                   ? null
                   : MapTestConfig.enabled
@@ -2945,6 +2950,25 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                 );
               },
             );
+  }
+
+  Future<void> _navigateToLocation(MapLocation location) async {
+    final opened = await ExternalMapNavigation.openWalkingDirections(
+      latitude: location.latitude,
+      longitude: location.longitude,
+    );
+
+    if (!mounted || opened) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Google Maps could not be opened. Please try again.'),
+        ),
+      );
   }
 
   @override
