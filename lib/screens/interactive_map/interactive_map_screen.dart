@@ -1915,48 +1915,142 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           if (!demoMode) {
             final business = candidate.business;
 
+            final categoryLabel = business.category.trim().isEmpty
+                ? 'General business'
+                : business.category.trim();
+
             return AlertDialog(
-              icon: const Icon(
-                Icons.storefront_outlined,
-                color: Color(0xFF3267D8),
-                size: 36,
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
               ),
-              title: Text(
-                MapMovementTestConfig.enabled
-                    ? 'Business nearby · TEST LOCATION'
-                    : 'Business nearby',
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 20, 8),
+              contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              title: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3267D8),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.storefront_outlined,
+                      color: Colors.white,
+                      size: 27,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'BUSINESS NEARBY',
+                          style: TextStyle(
+                            color: Color(0xFF3267D8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          business.name,
+                          style: const TextStyle(
+                            color: Color(0xFF111827),
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      business.name,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F5FF),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.storefront_outlined,
+                            color: Color(0xFF3267D8),
+                            size: 22,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Business category',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  categoryLabel,
+                                  style: const TextStyle(
+                                    color: Color(0xFF1F2937),
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      business.category.trim().isEmpty
-                          ? 'Uncategorised'
-                          : business.category,
-                    ),
                     if (business.address.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(business.address),
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: Color(0xFF6B7280),
+                            size: 21,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              business.address,
+                              style: const TextStyle(
+                                color: Color(0xFF4B5563),
+                                fontSize: 14,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
-                    const SizedBox(height: 12),
-                    Text(
-                      'Approximately '
-                      '${candidate.distanceMeters.toStringAsFixed(0)} m '
-                      'away in a straight line when detected.',
-                    ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 18),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
                     _buildLiveBusinessPromotionSection(business, compact: true),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     _buildLiveBusinessVoucherSection(
                       business,
                       onSelected: (campaign) {
@@ -1975,11 +2069,12 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               actions: [
                 TextButton(
                   onPressed: () => closeWith(false),
-                  child: const Text('Dismiss'),
+                  child: const Text('Close'),
                 ),
-                FilledButton(
+                FilledButton.icon(
                   onPressed: () => closeWith(true),
-                  child: const Text('View details'),
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  label: const Text('View details'),
                 ),
               ],
             );

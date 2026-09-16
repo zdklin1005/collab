@@ -157,8 +157,9 @@ class _LqImageCropperScreenState extends State<LqImageCropperScreen> {
   }
 
   Future<void> _cropAndFinish() async {
-    if (_decodedImage == null || _isProcessing || _currentCropRect.isEmpty)
+    if (_decodedImage == null || _isProcessing || _currentCropRect.isEmpty) {
       return;
+    }
     setState(() => _isProcessing = true);
 
     try {
