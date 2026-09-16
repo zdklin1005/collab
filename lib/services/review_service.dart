@@ -261,12 +261,16 @@ class ReviewService {
   /// rules change is needed. Firestore WILL require a composite index
   /// for this (userId + createdAt) — see the index note below.
   Stream<List<Review>> watchReviewsForUser(String uid) {
-    return db
-        .collectionGroup('reviews')
-        .where('userId', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs.map(Review.fromDoc).toList());
+    try {
+      return db
+          .collectionGroup('reviews')
+          .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((snap) => snap.docs.map(Review.fromDoc).toList());
+    } catch (_) {
+      return const Stream.empty();
+    }
   }
 
   Future<bool> hasReviewed(String uid, String businessId) async {

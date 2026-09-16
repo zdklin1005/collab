@@ -47,7 +47,6 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
   final _scrollController = ScrollController();
   final List<_AiChatMessage> _messages = [];
   bool _isLoading = false;
-  bool _hasApiKey = false;
 
   List<Business> _cachedBusinesses = [];
   List<Campaign> _cachedVouchers = [];
@@ -145,7 +144,6 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
   @override
   void initState() {
     super.initState();
-    _checkApiKey();
     _loadLocalContext();
     _resolveLiveLocation();
     _messages.add(
@@ -221,14 +219,7 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     }
   }
 
-  Future<void> _checkApiKey() async {
-    final key = await _aiService.getEffectiveApiKey();
-    if (mounted) {
-      setState(() {
-        _hasApiKey = key != null && key.isNotEmpty;
-      });
-    }
-  }
+
 
   Future<void> _loadLocalContext() async {
     try {

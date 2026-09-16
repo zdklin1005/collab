@@ -62,7 +62,7 @@ void main() {
     );
 
     expect(find.text('Demo café voucher'), findsOneWidget);
-    expect(find.byIcon(Icons.bolt_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.confirmation_number_outlined), findsOneWidget);
     expect(
       find.text('No real voucher has been added to Rewards.'),
       findsOneWidget,

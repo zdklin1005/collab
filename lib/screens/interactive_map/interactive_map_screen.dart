@@ -318,10 +318,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   // Temporary claim radius, separate from business discovery.
   static const double _demoBusinessVoucherClaimRadiusMeters = 50;
 
+  late bool _hasBeenActive = widget.isActive;
+
   @override
   void initState() {
     super.initState();
-    if (!MapTestConfig.enabled) {
+    _hasBeenActive = widget.isActive;
+    if (_hasBeenActive && !MapTestConfig.enabled) {
       _startLiveBusinesses();
       _startLiveLandmarks();
       _startLiveBusinessCampaigns();
@@ -332,8 +335,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
 
-    unawaited(_restoreMapStyle());
-    unawaited(_restoreDemoClaims());
+    if (_hasBeenActive) {
+      unawaited(_restoreMapStyle());
+      unawaited(_restoreDemoClaims());
+    }
   }
 
   @override
@@ -356,7 +361,17 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   void didUpdateWidget(covariant InteractiveMapScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!MapTestConfig.enabled && oldWidget.user.id != widget.user.id) {
+    if (widget.isActive && !_hasBeenActive) {
+      _hasBeenActive = true;
+      if (!MapTestConfig.enabled) {
+        _startLiveBusinesses();
+        _startLiveLandmarks();
+        _startLiveBusinessCampaigns();
+        _startBusinessVoucherHistory();
+      }
+      unawaited(_restoreMapStyle());
+      unawaited(_restoreDemoClaims());
+    } else if (!MapTestConfig.enabled && oldWidget.user.id != widget.user.id) {
       _startBusinessVoucherHistory();
     }
 
@@ -2941,8 +2956,20 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       return;
     }
 
+    FirebaseFirestore? firestore;
+    try {
+      firestore = FirebaseFirestore.instance;
+    } catch (_) {
+      firestore = null;
+    }
+
+    if (firestore == null) {
+      _businessVoucherHistory = null;
+      return;
+    }
+
     _businessVoucherHistorySubscription =
-        MapVoucherHistoryRepository(firestore: FirebaseFirestore.instance)
+        MapVoucherHistoryRepository(firestore: firestore)
             .watchClaimedVoucherIds(touristId)
             .listen(
               (snapshot) {
@@ -2997,6 +3024,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (!_hasBeenActive) {
+      return const SizedBox.shrink();
+    }
+
     final position = _position;
     final point = _displayPoint;
 

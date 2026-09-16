@@ -652,9 +652,21 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
       });
     });
 
+    FirebaseFirestore? firestore;
+    try {
+      firestore = FirebaseFirestore.instance;
+    } catch (_) {
+      firestore = null;
+    }
+
+    if (firestore == null) {
+      fail(StateError('Firebase is not initialized'), StackTrace.empty);
+      return;
+    }
+
     try {
       final repository = MapExpHistoryRepository(
-        firestore: FirebaseFirestore.instance,
+        firestore: firestore,
       );
 
       _claimHistorySubscription = repository
@@ -678,23 +690,24 @@ class _LiveExpPreviewLayerState extends State<LiveExpPreviewLayer>
               receivedHistory();
             });
           }, onError: fail);
+
+      final voucherRepository = MapVoucherHistoryRepository(
+        firestore: firestore,
+      );
+
+      _claimedVoucherHistorySubscription = voucherRepository
+          .watchClaimedVoucherIds(widget.userId)
+          .listen((snapshot) {
+            if (!mounted || requestId != _historyRequestId) return;
+
+            setState(() {
+              _claimedVoucherHistory = snapshot;
+              receivedHistory();
+            });
+          }, onError: fail);
     } catch (error, stackTrace) {
       fail(error, stackTrace);
     }
-    final voucherRepository = MapVoucherHistoryRepository(
-      firestore: FirebaseFirestore.instance,
-    );
-
-    _claimedVoucherHistorySubscription = voucherRepository
-        .watchClaimedVoucherIds(widget.userId)
-        .listen((snapshot) {
-          if (!mounted || requestId != _historyRequestId) return;
-
-          setState(() {
-            _claimedVoucherHistory = snapshot;
-            receivedHistory();
-          });
-        }, onError: fail);
   }
 
   Future<LiveMapVoucherClaimResult> _collectLiveVoucher(

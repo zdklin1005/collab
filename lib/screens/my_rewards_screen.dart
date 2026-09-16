@@ -53,6 +53,7 @@ class MyRewardsScreen extends StatelessWidget {
                   Text('MERCHANT VOUCHERS', style: monoLabel),
                   const SizedBox(height: 10),
                   StreamBuilder<List<Map<String, dynamic>>>(
+                    initialData: const [],
                     stream: MerchantRepository.instance.touristClaimedVouchers(userId),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
@@ -82,6 +83,7 @@ class MyRewardsScreen extends StatelessWidget {
                   Text('ACHIEVEMENT REWARDS', style: monoLabel),
                   const SizedBox(height: 10),
                   StreamBuilder<List<Map<String, dynamic>>>(
+                    initialData: const [],
                     stream: RewardService.instance.watchAchievementVouchers(userId),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {

@@ -21,14 +21,15 @@ import '../services/direct_chat_service.dart';
 import '../services/social_service.dart';
 import '../services/spotify_service.dart';
 import '../services/location_service.dart';
-import 'rewards_tab.dart';
 import 'mission_list_screen.dart';
 import 'write_review_screen.dart';
 import '../services/mission_service.dart';
 import '../services/check_in_service.dart';
+import 'daily_check_in_screen.dart';
 import 'my_reviews_screen.dart';
 import 'my_rewards_screen.dart';
 import '../services/reward_service.dart';
+import '../services/review_service.dart';
 
 class TouristHome extends StatefulWidget {
   const TouristHome({super.key, required this.user, this.initialIndex = 0});
@@ -728,17 +729,25 @@ class _DailyCheckInCardState extends State<_DailyCheckInCard> {
     }
   }
 
+  Stream<DocumentSnapshot<Map<String, dynamic>>?> _docStream() {
+    try {
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .snapshots();
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Reads streakCount/lastCheckInDate directly off the raw user doc —
     // these fields deliberately aren't on AppUser (see CheckInService's
     // class doc), so this bypasses UserRepository.watch() and streams
     // the document itself instead.
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.uid)
-          .snapshots(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+      stream: _docStream(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data() ?? const <String, dynamic>{};
         final streakCount = (data['streakCount'] as num?)?.toInt() ?? 0;
@@ -1273,11 +1282,12 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: LqColors.line),
         ),
         alignment: Alignment.center,
-        child: const Icon(Icons.headphones, color: Color(0xFF1DB954), size: 24),
+        child: const LqSpotifyLogo(size: 24),
       ),
       title: const Text(
         'Spotify Music',
@@ -1706,15 +1716,9 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
               ),
             ),
           ),
-        ],      ),
-      const SizedBox(height: 24),
-      LqButton(
-        label: 'Save changes',
-        busy: _busy,
-        icon: Icons.save_outlined,
-        onPressed: _save,
+        ],
       ),
-    ],
+    ),
   );
 
   Future<void> _save() async {
@@ -2157,8 +2161,8 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(
+            children: const [
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2176,144 +2180,6 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                     ),
                   ],
                 ),
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: LqColors.muted),
-                tooltip: 'Tracker Options & Simulation',
-                onSelected: (value) async {
-                  if (value == 'simulate_chinahouse') {
-                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          'Location history logging is paused in Settings.',
-                          error: true,
-                        );
-                      }
-                      return;
-                    }
-                    final ok = await LocationTrackerService.instance.simulateArrival(
-                      businessId: 'demo_biz_chinahouse_penang',
-                      userId: widget.userId,
-                    );
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok
-                            ? 'Simulated arrival at ChinaHouse Cafe! Visit recorded.'
-                            : 'Already dwelling at or cooldown active for ChinaHouse.',
-                      );
-                    }
-                  } else if (value == 'simulate_tohsoon') {
-                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          'Location history logging is paused in Settings.',
-                          error: true,
-                        );
-                      }
-                      return;
-                    }
-                    final ok = await LocationTrackerService.instance.simulateArrival(
-                      businessId: 'demo_biz_toh_soon_penang',
-                      userId: widget.userId,
-                    );
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok
-                            ? 'Simulated arrival at Toh Soon Cafe! Visit recorded.'
-                            : 'Already dwelling at or cooldown active for Toh Soon.',
-                      );
-                    }
-                  } else if (value == 'resume_tracking') {
-                    final ok = await LocationTrackerService.instance.startTracking(userId: widget.userId);
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok ? 'Automatic tracking active.' : 'Could not start tracking (check GPS permission or Settings).',
-                      );
-                    }
-                  } else if (value == 'open_settings') {
-                    final targetUser = widget.user ??
-                        AppUser(
-                          id: widget.userId,
-                          email: '',
-                          displayName: 'Explorer',
-                          username: '@explorer',
-                          role: AccountRole.tourist,
-                        );
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SettingsScreen(user: targetUser),
-                      ),
-                    );
-                  } else if (value == 'clean_duplicates') {
-                    final removed = await UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        removed > 0
-                            ? 'Removed $removed duplicate record(s).'
-                            : 'No duplicate records found.',
-                      );
-                    }
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'simulate_chinahouse',
-                    child: Row(
-                      children: [
-                        Icon(Icons.coffee, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Simulate Arrival: ChinaHouse'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'simulate_tohsoon',
-                    child: Row(
-                      children: [
-                        Icon(Icons.breakfast_dining, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Simulate Arrival: Toh Soon'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'resume_tracking',
-                    child: Row(
-                      children: [
-                        Icon(Icons.my_location, size: 18, color: LqColors.muted),
-                        SizedBox(width: 8),
-                        Text('Re-check GPS Tracking'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'clean_duplicates',
-                    child: Row(
-                      children: [
-                        Icon(Icons.cleaning_services_outlined, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Clean Duplicate Records'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'open_settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.tune, size: 18, color: LqColors.muted),
-                        SizedBox(width: 8),
-                        Text('Location History Settings'),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ],
           ),

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import 'voucher_code.dart';
 import '../models/localquest_models.dart';
+import 'exp_award_service.dart';
 import 'exp_progress.dart';
 
 /// Represents the user's progress within their current level.
@@ -31,9 +32,6 @@ class LevelProgress {
     return '${nf.format(currentExp)}/${nf.format(nextLevelExp)}XP';
   }
 }
-
-import 'exp_progress.dart';
-import 'exp_award_service.dart';
 
 /// Result of awarding EXP to a tourist, including whether they leveled up
 /// and how many vouchers were awarded as a result.
@@ -214,11 +212,15 @@ class RewardService {
   /// missions) awarded to [uid]. Raw maps, not a dedicated model — see
   /// the class doc on awardVoucher() for why these are placeholders.
   Stream<List<Map<String, dynamic>>> watchAchievementVouchers(String uid) {
-    return db
-        .collection('users').doc(uid).collection('vouchers')
-        .orderBy('awardedAt', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+    try {
+      return db
+          .collection('users').doc(uid).collection('vouchers')
+          .orderBy('awardedAt', descending: true)
+          .snapshots()
+          .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+    } catch (_) {
+      return const Stream.empty();
+    }
   }
 
   /// Marks an achievement voucher as used. Self-reported by the tourist —

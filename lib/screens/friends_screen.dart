@@ -184,11 +184,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.headphones,
-                              color: isStatusEnabled ? const Color(0xFF1DB954) : LqColors.muted,
-                              size: 20,
-                            ),
+                            const LqSpotifyLogo(size: 20),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Column(
@@ -453,11 +449,11 @@ class _FriendsScreenState extends State<FriendsScreen>
                                       color: Color(0xFF1DB954),
                                     ),
                                   )
-                                : const Icon(Icons.headphones, size: 20),
+                                : const LqSpotifyLogo(size: 20),
                             label: Text(
                               isSyncingSpotify
                                   ? 'Connecting to Spotify...'
-                                  : '🎧 Sync Currently Playing on Spotify',
+                                  : 'Sync Currently Playing on Spotify',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
@@ -603,7 +599,7 @@ class _FriendsScreenState extends State<FriendsScreen>
             const SizedBox(height: 16),
             const Row(
               children: [
-                Icon(Icons.headphones, color: Color(0xFF1DB954), size: 24),
+                LqSpotifyLogo(size: 24),
                 SizedBox(width: 10),
                 Text(
                   'No Spotify Song Detected',
@@ -2210,11 +2206,11 @@ class _SpotifySongPickerModalState extends State<_SpotifySongPickerModal> {
                         color: Color(0xFF1DB954),
                       ),
                     )
-                  : const Icon(Icons.headphones, size: 18),
+                  : const LqSpotifyLogo(size: 18),
               label: Text(
                 _isSyncing
                     ? 'Connecting to Spotify...'
-                    : '🎧 Sync Currently Playing on Spotify',
+                    : 'Sync Currently Playing on Spotify',
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
