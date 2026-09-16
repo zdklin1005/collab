@@ -484,7 +484,14 @@ class _FriendsScreenState extends State<FriendsScreen>
                                         );
                                       } else {
                                         if (context.mounted) {
-                                          _showSpotifyHelpSheet(context);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'No song currently playing on Spotify. Start a song in Spotify and tap Sync again!',
+                                              ),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
                                         }
                                       }
                                     } finally {
@@ -571,99 +578,6 @@ class _FriendsScreenState extends State<FriendsScreen>
       trackSub?.cancel();
       pollTimer?.cancel();
     });
-  }
-
-  void _showSpotifyHelpSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: LqColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: LqColors.line,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Row(
-              children: [
-                LqSpotifyLogo(size: 24),
-                SizedBox(width: 10),
-                Text(
-                  'No Spotify Song Detected',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: LqColors.ink,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Why does LocalQuest use Spotify Broadcast?\n\n'
-              '• Instagram has an official enterprise cloud contract with Spotify that runs on Meta\'s servers.\n'
-              '• Spotify Developer API blocks free accounts from web player sync ("Spotify Premium subscription required").\n'
-              '• LocalQuest uses Android\'s on-device broadcast so you can sync and auto-switch songs 100% FREE without Spotify Premium!\n\n'
-              'To enable instant auto-switching:\n'
-              '1. Open Spotify and play any song.\n'
-              '2. In Spotify Settings ➔ Privacy & Social ➔ turn ON "Device Broadcast Status".\n'
-              '3. Come back and tap Sync — your note will update automatically as songs play!',
-              style: TextStyle(fontSize: 13, color: LqColors.muted, height: 1.5),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: const BorderSide(color: Color(0xFF1DB954)),
-                      foregroundColor: const Color(0xFF1DB954),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    label: const Text('Open Spotify'),
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      SpotifyService.instance.openSpotifyApp();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: LqColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Got It'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _openSearchSheet() {

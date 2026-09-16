@@ -219,8 +219,8 @@ class SpotifyService {
   }
 
   // Registered Spotify Developer App credentials
-  static const String clientId = 'b7d1315dc27e4e7f83f0947858afe872';
-  static const String clientSecret = 'cb1181f778ea4ce5842ea3a2c44e1ab8';
+  static const String clientId = 'f7ebb503ee4d4265b1dee2884042a53e';
+  static const String clientSecret = '7b7545ff84f6411d90249147671fd6e8';
   static const String redirectUri = 'http://127.0.0.1:8888/callback';
 
   static const String _prefAccessToken = 'spotify_user_access_token';
@@ -567,20 +567,13 @@ class SpotifyService {
       } catch (e) {
         debugPrint('Native Spotify broadcast check: $e');
       }
-
-      lastPlaybackStatus =
-          'No song detected from Spotify yet.\n\n'
-          '1. Play any song in Spotify.\n'
-          '2. In Spotify Settings ➔ Privacy & Social ➔ turn ON "Device Broadcast Status".\n'
-          '3. Tap Sync again!';
-      return null;
     }
 
-    // 2. Secondary: Spotify Web API (For Web/iOS)
+    // 2. Secondary: Spotify Web API (For Web, iOS, or linked Android accounts)
     final token = await getValidUserAccessToken();
     if (token == null) {
       lastPlaybackStatus =
-          'Connect Spotify or search a song below to attach to your note.';
+          'No song detected playing on Spotify. Start a song in Spotify and tap Sync again!';
       return null;
     }
 

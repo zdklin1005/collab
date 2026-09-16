@@ -168,8 +168,8 @@ void main() {
     });
 
     test('SpotifyService configuration and curated tracks', () {
-      expect(SpotifyService.clientId, 'b7d1315dc27e4e7f83f0947858afe872');
-      expect(SpotifyService.clientSecret, 'cb1181f778ea4ce5842ea3a2c44e1ab8');
+      expect(SpotifyService.clientId, 'f7ebb503ee4d4265b1dee2884042a53e');
+      expect(SpotifyService.clientSecret, '7b7545ff84f6411d90249147671fd6e8');
 
       final tracks = SpotifyService.instance.getCuratedPenangVibes();
       expect(tracks.isNotEmpty, isTrue);
