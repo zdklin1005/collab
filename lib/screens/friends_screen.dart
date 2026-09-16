@@ -68,20 +68,38 @@ class _FriendsScreenState extends State<FriendsScreen>
           )
         : null;
 
+    bool hasAutoFetched = false;
     StreamSubscription<SpotifyTrack>? trackSub;
     Timer? pollTimer;
-
-    // Check if Spotify is actively broadcasting a track right now
-    SpotifyService.instance.checkLocalBroadcast().then((track) {
-      if (track != null && selectedTrack == null) {
-        selectedTrack = track;
-      }
-    });
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
+          if (!hasAutoFetched && selectedTrack == null) {
+            hasAutoFetched = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!ctx.mounted) return;
+              final track = await SpotifyService.instance.fetchCurrentlyPlaying();
+              if (track != null && selectedTrack == null && ctx.mounted) {
+                setModalState(() {
+                  selectedTrack = track;
+                  if (isStatusEnabled) {
+                    SocialService.instance.updateUserNote(
+                      uid: widget.currentUser.id,
+                      text: '',
+                      songTitle: track.title,
+                      songArtist: track.artist,
+                      albumArtUrl: track.albumArtUrl,
+                      spotifyUrl: track.spotifyUrl,
+                    );
+                    SpotifyService.instance.setLiveSync(widget.currentUser.id, true);
+                  }
+                });
+              }
+            });
+          }
+
           trackSub ??= SpotifyService.instance.onTrackChanged.listen((newTrack) {
             if (context.mounted) {
               setModalState(() {
