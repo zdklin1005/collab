@@ -917,6 +917,8 @@ class AuthService {
         } catch (_) {}
       }
 
+      final userRef = db.collection('users').doc(user.uid);
+
       final businesses = await db
           .collection('businesses')
           .where('ownerId', isEqualTo: user.uid)
@@ -925,23 +927,75 @@ class AuthService {
           .collection('campaigns')
           .where('ownerId', isEqualTo: user.uid)
           .get();
-      final visits = await db
-          .collection('users')
-          .doc(user.uid)
-          .collection('visitedPlaces')
-          .get();
-      final batch = db.batch();
-      for (final document in businesses.docs) {
-        batch.delete(document.reference);
+      final visits = await userRef.collection('visitedPlaces').get();
+      final friends = await userRef.collection('friends').get();
+      final friendRequests = await userRef.collection('friendRequests').get();
+      final missions = await userRef.collection('missions').get();
+      final vouchers = await userRef.collection('vouchers').get();
+      final claimedVouchers = await userRef.collection('claimedVouchers').get();
+      final expLogs = await userRef.collection('expLog').get();
+      final rewardClaims = await userRef.collection('rewardClaims').get();
+      final cooldowns = await userRef.collection('checkpointCooldowns').get();
+
+      final toDelete = <DocumentReference>[];
+      for (final doc in businesses.docs) {
+        toDelete.add(doc.reference);
       }
-      for (final document in campaigns.docs) {
-        batch.delete(document.reference);
+      for (final doc in campaigns.docs) {
+        toDelete.add(doc.reference);
       }
-      for (final document in visits.docs) {
-        batch.delete(document.reference);
+      for (final doc in visits.docs) {
+        toDelete.add(doc.reference);
       }
-      batch.delete(db.collection('users').doc(user.uid));
-      await batch.commit();
+
+      // Clean up reverse friend relationships in each friend's account
+      for (final doc in friends.docs) {
+        final friendId = doc.data()['friendUserId'] as String? ?? doc.id;
+        if (friendId.isNotEmpty && friendId != user.uid) {
+          toDelete.add(db.collection('users').doc(friendId).collection('friends').doc(user.uid));
+        }
+        toDelete.add(doc.reference);
+      }
+
+      for (final doc in friendRequests.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in missions.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in vouchers.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in claimedVouchers.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in expLogs.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in rewardClaims.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in cooldowns.docs) {
+        toDelete.add(doc.reference);
+      }
+
+      toDelete.add(userRef.collection('notes').doc('status'));
+      toDelete.add(userRef);
+
+      WriteBatch currentBatch = db.batch();
+      int opCount = 0;
+      for (final ref in toDelete) {
+        currentBatch.delete(ref);
+        opCount++;
+        if (opCount >= 400) {
+          await currentBatch.commit();
+          currentBatch = db.batch();
+          opCount = 0;
+        }
+      }
+      if (opCount > 0) {
+        await currentBatch.commit();
+      }
       BiometricAuthService.instance.clearSessionAuthentication(user.uid);
       try {
         await BiometricAuthService.instance.clearLastUser();

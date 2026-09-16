@@ -945,5 +945,52 @@ void main() {
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
     });
+
+    test('streamFriends omits deleted friends and only returns active users', () async {
+      SocialService.instance.mockFriendsStream = (uid) => Stream.value([
+        Friend(
+          id: 'active_friend_doc',
+          friendUserId: 'active_friend_uid',
+          displayName: 'Active Explorer',
+          username: '@active_user',
+          level: 3,
+          createdAt: DateTime.now(),
+        ),
+      ]);
+
+      final friends = await SocialService.instance.streamFriends('current_user_1').first;
+
+      expect(friends.length, equals(1));
+      expect(friends.first.friendUserId, equals('active_friend_uid'));
+      expect(friends.first.displayName, equals('Active Explorer'));
+
+      SocialService.instance.mockFriendsStream = null;
+    });
+
+    test('streamConversations marks deleted participants as Deleted Account', () async {
+      DirectChatService.instance.mockConversationsStream = (uid) => Stream.value([
+        ChatConversation(
+          id: 'chat_with_deleted',
+          participants: [uid, 'deleted_user_uid'],
+          otherUserId: 'deleted_user_uid',
+          otherDisplayName: 'Deleted Account',
+          otherUsername: 'deleted_user',
+          otherPhotoUrl: null,
+          lastMessage: 'Goodbye!',
+          lastMessageTime: DateTime.now(),
+          unreadCount: 0,
+        ),
+      ]);
+
+      final convos =
+          await DirectChatService.instance.streamConversations('current_user_1').first;
+
+      expect(convos.length, equals(1));
+      expect(convos.first.otherDisplayName, equals('Deleted Account'));
+      expect(convos.first.otherUsername, equals('deleted_user'));
+      expect(convos.first.otherPhotoUrl, isNull);
+
+      DirectChatService.instance.mockConversationsStream = null;
+    });
   });
 }

@@ -84,6 +84,15 @@ class LeaderboardService {
                       currentUserId: currentUserId,
                     ),
                   );
+                } else if (uid != currentUserId) {
+                  // Clean up orphaned friend record
+                  db
+                      .collection('users')
+                      .doc(currentUserId)
+                      .collection('friends')
+                      .doc(uid)
+                      .delete()
+                      .catchError((_) {});
                 }
               } catch (_) {}
             }

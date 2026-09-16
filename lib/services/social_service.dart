@@ -65,6 +65,11 @@ class SocialService {
                     ),
                   );
                   continue;
+                } else {
+                  // User account was deleted!
+                  // Clean up the orphaned reference from this user's friends subcollection
+                  doc.reference.delete().catchError((_) {});
+                  continue;
                 }
               } catch (_) {}
               friends.add(initial);
@@ -125,6 +130,11 @@ class SocialService {
                       fromLevel: liveLevel ?? req.fromLevel,
                     ),
                   );
+                  continue;
+                } else {
+                  // The requester's account was deleted!
+                  // Clean up orphaned friend request
+                  doc.reference.delete().catchError((_) {});
                   continue;
                 }
               } catch (_) {}
@@ -422,6 +432,9 @@ class SocialService {
     required String targetUserId,
   }) async {
     try {
+      final targetDoc = await db.collection('users').doc(targetUserId).get();
+      if (!targetDoc.exists) return false;
+
       final doc = await db
           .collection('users')
           .doc(targetUserId)
@@ -446,7 +459,15 @@ class SocialService {
           .collection('friends')
           .doc(targetUserId)
           .get();
-      return doc.exists;
+      if (!doc.exists) return false;
+
+      // Verify that target user actually still exists in Firestore
+      final targetDoc = await db.collection('users').doc(targetUserId).get();
+      if (!targetDoc.exists) {
+        doc.reference.delete().catchError((_) {});
+        return false;
+      }
+      return true;
     } catch (_) {
       return false;
     }
