@@ -9,6 +9,7 @@ import 'models/localquest_models.dart';
 import 'screens/auth_screens.dart';
 import 'screens/merchant_screens.dart';
 import 'screens/tourist_screens.dart';
+import 'screens/interactive_map/map_style.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/in_app_notification_service.dart';
 import 'services/localquest_services.dart';
@@ -16,7 +17,11 @@ import 'services/localquest_services.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
+  await MapStyleConfig.initialize();
 
   Object? setupError;
   try {
@@ -24,6 +29,7 @@ Future<void> main() async {
   } catch (error) {
     setupError = error;
   }
+
   runApp(LocalQuestApp(setupError: setupError));
 }
 

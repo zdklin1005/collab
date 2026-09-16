@@ -7,6 +7,7 @@ class MapLocationDetails extends StatelessWidget {
     super.key,
     required this.location,
     required this.onClose,
+    this.onNavigate,
     this.promotionSection,
     this.voucherSection,
     this.isDemo = false,
@@ -14,6 +15,7 @@ class MapLocationDetails extends StatelessWidget {
 
   final MapLocation location;
   final VoidCallback onClose;
+  final VoidCallback? onNavigate;
   final Widget? promotionSection;
   final Widget? voucherSection;
   final bool isDemo;
@@ -22,10 +24,7 @@ class MapLocationDetails extends StatelessWidget {
     return value.trim().isEmpty ? fallback : value.trim();
   }
 
-  Future<void> _openLocationPhoto(
-    BuildContext context,
-    String url,
-  ) async {
+  Future<void> _openLocationPhoto(BuildContext context, String url) async {
     if (ModalRoute.of(context)?.isCurrent != true) return;
 
     await showDialog<void>(
@@ -40,10 +39,7 @@ class MapLocationDetails extends StatelessWidget {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 8,
-                  ),
+                  padding: const EdgeInsets.only(left: 16, right: 8),
                   child: Row(
                     children: [
                       Expanded(
@@ -161,10 +157,7 @@ class MapLocationDetails extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: accentColor,
-          ),
+          Icon(icon, color: accentColor),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -180,10 +173,7 @@ class MapLocationDetails extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  _valueOr(
-                    location.category,
-                    'Not specified.',
-                  ),
+                  _valueOr(location.category, 'Not specified.'),
                   style: const TextStyle(
                     color: Color(0xFF18233F),
                     fontSize: 15,
@@ -217,11 +207,7 @@ class MapLocationDetails extends StatelessWidget {
               color: iconBackground,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              color: accentColor,
-              size: 21,
-            ),
+            child: Icon(icon, color: accentColor, size: 21),
           ),
           const SizedBox(width: 13),
           Expanded(
@@ -277,19 +263,14 @@ class MapLocationDetails extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: const Color(0xFFE2E8F0),
-            ),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Column(
             children: [
               for (var index = 0; index < rows.length; index++) ...[
                 rows[index],
                 if (index < rows.length - 1)
-                  const Divider(
-                    height: 1,
-                    indent: 51,
-                  ),
+                  const Divider(height: 1, indent: 51),
               ],
             ],
           ),
@@ -324,20 +305,14 @@ class MapLocationDetails extends StatelessWidget {
       _detailRow(
         icon: Icons.location_on_outlined,
         label: 'Address',
-        value: _valueOr(
-          location.address,
-          'Address not provided.',
-        ),
+        value: _valueOr(location.address, 'Address not provided.'),
         accentColor: accentColor,
         iconBackground: iconBackground,
       ),
       _detailRow(
         icon: Icons.schedule_outlined,
         label: 'Operating hours',
-        value: _valueOr(
-          location.operatingHours,
-          'Hours not provided.',
-        ),
+        value: _valueOr(location.operatingHours, 'Hours not provided.'),
         accentColor: accentColor,
         iconBackground: iconBackground,
       ),
@@ -385,10 +360,7 @@ class MapLocationDetails extends StatelessWidget {
         _detailRow(
           icon: Icons.location_on_outlined,
           label: 'Address',
-          value: _valueOr(
-            location.address,
-            'Address not provided.',
-          ),
+          value: _valueOr(location.address, 'Address not provided.'),
           accentColor: accentColor,
           iconBackground: iconBackground,
         ),
@@ -397,8 +369,7 @@ class MapLocationDetails extends StatelessWidget {
   }
 
   Widget _photoPlaceholder(String message) {
-    final isBusiness =
-        location.type == MapLocationType.business;
+    final isBusiness = location.type == MapLocationType.business;
 
     return ColoredBox(
       color: const Color(0xFFEDF2F7),
@@ -421,9 +392,7 @@ class MapLocationDetails extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF596579),
-                ),
+                style: const TextStyle(color: Color(0xFF596579)),
               ),
             ],
           ),
@@ -433,15 +402,12 @@ class MapLocationDetails extends StatelessWidget {
   }
 
   Widget _locationPhoto(BuildContext context) {
-    final isBusiness =
-        location.type == MapLocationType.business;
+    final isBusiness = location.type == MapLocationType.business;
     final url = location.photoUrl?.trim() ?? '';
     final uri = Uri.tryParse(url);
 
     final validUrl =
-        uri != null &&
-        uri.scheme == 'https' &&
-        uri.host.isNotEmpty;
+        uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
 
     final missingPhotoMessage = isBusiness
         ? 'No business photo yet'
@@ -453,16 +419,13 @@ class MapLocationDetails extends StatelessWidget {
         aspectRatio: 16 / 9,
         child: !validUrl
             ? _photoPlaceholder(
-                url.isEmpty
-                    ? missingPhotoMessage
-                    : 'Photo unavailable',
+                url.isEmpty ? missingPhotoMessage : 'Photo unavailable',
               )
             : Tooltip(
                 message: 'View full photo',
                 child: Semantics(
                   button: true,
-                  label:
-                      'View full photo of ${location.title}',
+                  label: 'View full photo of ${location.title}',
                   child: GestureDetector(
                     onTap: () {
                       _openLocationPhoto(context, url);
@@ -473,28 +436,20 @@ class MapLocationDetails extends StatelessWidget {
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
-                      semanticLabel:
-                          'Photo of ${location.title}',
-                      loadingBuilder:
-                          (context, child, progress) {
-                            if (progress == null) {
-                              return child;
-                            }
+                      semanticLabel: 'Photo of ${location.title}',
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) {
+                          return child;
+                        }
 
-                            return const ColoredBox(
-                              color: Color(0xFFEDF2F7),
-                              child: Center(
-                                child:
-                                    CircularProgressIndicator(),
-                              ),
-                            );
-                          },
-                      errorBuilder:
-                          (context, error, stackTrace) {
-                            return _photoPlaceholder(
-                              'Photo unavailable',
-                            );
-                          },
+                        return const ColoredBox(
+                          color: Color(0xFFEDF2F7),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return _photoPlaceholder('Photo unavailable');
+                      },
                     ),
                   ),
                 ),
@@ -520,10 +475,7 @@ class MapLocationDetails extends StatelessWidget {
         const SizedBox(height: 22),
         _section(
           'About this business',
-          _valueOr(
-            location.description,
-            'Description not provided yet.',
-          ),
+          _valueOr(location.description, 'Description not provided yet.'),
           titleColor: const Color(0xFF467A45),
         ),
         _businessInformationCard(),
@@ -565,10 +517,7 @@ class MapLocationDetails extends StatelessWidget {
         const SizedBox(height: 22),
         _section(
           'About this landmark',
-          _valueOr(
-            location.description,
-            'Description not provided yet.',
-          ),
+          _valueOr(location.description, 'Description not provided yet.'),
           titleColor: const Color(0xFF8055A6),
         ),
         _landmarkInformationCard(),
@@ -579,20 +528,14 @@ class MapLocationDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isBusiness =
-        location.type == MapLocationType.business;
+    final isBusiness = location.type == MapLocationType.business;
 
     return SafeArea(
       top: false,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              20,
-              0,
-              8,
-              8,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
             child: Row(
               children: [
                 Icon(
@@ -606,9 +549,7 @@ class MapLocationDetails extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    isBusiness
-                        ? 'Business details'
-                        : 'Landmark details',
+                    isBusiness ? 'Business details' : 'Landmark details',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -628,8 +569,7 @@ class MapLocationDetails extends StatelessWidget {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (isDemo) ...[
                     Container(
@@ -637,24 +577,52 @@ class MapLocationDetails extends StatelessWidget {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: const Color(0xFFEAF0FF),
-                        borderRadius:
-                            BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
                         'Demo location — fictional information for testing.',
-                        style: TextStyle(
-                          color: Color(0xFF334466),
+                        style: TextStyle(color: Color(0xFF334466)),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
+
+                  _locationPhoto(context),
+                  const SizedBox(height: 18),
+
+                  if (onNavigate != null) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        key: const ValueKey('navigate-location-button'),
+                        onPressed: onNavigate,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: isBusiness
+                              ? const Color(0xFF467A45)
+                              : const Color(0xFF8055A6),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(Icons.directions_walk),
+                        label: const Text(
+                          'Navigate with Google Maps',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 18),
                   ],
-                  _locationPhoto(context),
                   const SizedBox(height: 18),
-                  if (isBusiness)
-                    _businessDetails()
-                  else
-                    _landmarkDetails(),
+                  if (isBusiness) _businessDetails() else _landmarkDetails(),
                   _section(
                     'Ratings and reviews',
                     'The shared review module is not connected yet.',
