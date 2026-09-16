@@ -149,6 +149,14 @@ class ReviewService {
       );
     }
 
+    final alreadyReviewed = await hasReviewed(uid, businessId);
+    if (alreadyReviewed) {
+      return const ReviewSubmissionResult(
+        success: false,
+        failureReason: 'You have already reviewed this business.',
+      );
+    }
+
     final review = Review(
       id: '',
       userId: uid,
@@ -220,5 +228,13 @@ class ReviewService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snap) => snap.docs.map(Review.fromDoc).toList());
+  }
+
+  Future<bool> hasReviewed(String uid, String businessId) async {
+    final snap = await _reviewsRef(businessId)
+        .where('userId', isEqualTo: uid)
+        .limit(1)
+        .get();
+    return snap.docs.isNotEmpty;
   }
 }

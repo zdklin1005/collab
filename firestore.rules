@@ -39,12 +39,30 @@ service cloud.firestore {
         allow read, write: if owns(uid);
       }
 
-      // Written by RewardService.awardExp()/awardVoucher() as the
-      // signed-in tourist; read by whatever UI lists a tourist's vouchers.
-      // NOTE: distinct from claimedVouchers below — check with the
-      // merchant/voucher module owner whether these should be unified.
+      // Achievement vouchers: tourist owns theirs; ANY merchant can read
+      // and redeem, since these aren't tied to a specific business.
       match /vouchers/{voucherId} {
-        allow read, write: if owns(uid);
+        allow read: if owns(uid) || isMerchantNow();
+        allow write: if owns(uid)
+          || (isMerchantNow()
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['redeemed', 'redeemedAt']));
+      }
+
+      // Claimed campaign vouchers: tourist owns theirs; a merchant can
+      // only read/redeem if they own the business the voucher belongs to
+      // (checked via the campaigns doc's ownerId).
+      match /claimedVouchers/{voucherId} {
+        allow read: if owns(uid)
+          || (isMerchantNow()
+              && exists(/databases/$(database)/documents/campaigns/$(resource.data.voucherId))
+              && get(/databases/$(database)/documents/campaigns/$(resource.data.voucherId)).data.ownerId == request.auth.uid);
+        allow write: if owns(uid)
+          || (isMerchantNow()
+              && exists(/databases/$(database)/documents/campaigns/$(resource.data.voucherId))
+              && get(/databases/$(database)/documents/campaigns/$(resource.data.voucherId)).data.ownerId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['redeemed', 'redeemedAt']));
       }
 
       // EXP activity log written alongside every awardExp() call.
@@ -52,8 +70,12 @@ service cloud.firestore {
         allow read, write: if owns(uid);
       }
 
-      // From main: vouchers claimed via the merchant/campaign side.
-      match /claimedVouchers/{voucherId} {
+      // Each tourist may read their own map collection history.
+      match /rewardClaims/{claimId} {
+        allow read, write: if owns(uid);
+      }
+
+      match /checkpointCooldowns/{checkpointId} {
         allow read, write: if owns(uid);
       }
 
@@ -83,10 +105,30 @@ service cloud.firestore {
       }
     }
 
+    // Landmarks are maintained through the Firebase Console.
+    // App users may read active landmarks but cannot modify them.
+    match /landmarks/{landmarkId} {
+      allow read: if signedIn() && resource.data.active == true;
+      allow write: if false;
+    }
+
     match /businesses/{businessId} {
+      // Approval is optional for older records; missing means unapproved.
+      function validRewardPlacement(data) {
+        return data.get('rewardPlacementApproved', false) is bool;
+      }
+
+      function rewardPlacementUnchanged() {
+        return !request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasAny(['rewardPlacementApproved']);
+      }
+
       allow read: if signedIn();
       allow create: if willBeMerchant()
-        && request.resource.data.ownerId == request.auth.uid;
+        && request.resource.data.ownerId == request.auth.uid
+        && validRewardPlacement(request.resource.data)
+        && request.resource.data.get('rewardPlacementApproved', false) == false;
 
       // Two ways a business doc can legitimately be updated:
       // 1. The owning merchant editing their own listing (unchanged).
@@ -94,12 +136,21 @@ service cloud.firestore {
       //    only reviewCount/ratingTotal (see ReviewService.submitReview).
       //    Scoped to just those two fields so a tourist can't touch
       //    name, ownerId, verificationStatus, etc.
-      allow update: if (isMerchantNow()
-          && resource.data.ownerId == request.auth.uid
-          && request.resource.data.ownerId == request.auth.uid)
-        || (signedIn()
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['reviewCount', 'ratingTotal']));
+      allow update: if validRewardPlacement(request.resource.data)
+        && rewardPlacementUnchanged()
+        && (
+          (
+            isMerchantNow()
+            && resource.data.ownerId == request.auth.uid
+            && request.resource.data.ownerId == request.auth.uid
+          )
+          ||
+          (
+            signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['reviewCount', 'ratingTotal'])
+          )
+        );
 
       allow delete: if isMerchantNow()
         && resource.data.ownerId == request.auth.uid;
@@ -126,13 +177,13 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
-        // Collection-group read access for "My reviews" — a fixed-depth
-        // rule under /businesses/{id}/reviews isn't reliably honored for
-        // collectionGroup() queries; this recursive-wildcard rule is.
-        // Create/update/delete for reviews still goes through the rule
-        // nested inside /businesses/{businessId}/reviews below.
-        match /{path=**}/reviews/{reviewId} {
-          allow read: if signedIn();
-        }
+    // Collection-group read access for "My reviews" — a fixed-depth
+    // rule under /businesses/{id}/reviews isn't reliably honored for
+    // collectionGroup() queries; this recursive-wildcard rule is.
+    // Create/update/delete for reviews still goes through the rule
+    // nested inside /businesses/{businessId}/reviews above.
+    match /{path=**}/reviews/{reviewId} {
+      allow read: if signedIn();
+    }
   }
 }

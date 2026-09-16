@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'voucher_code.dart';
 import '../models/localquest_models.dart';
 
 /// Result of awarding EXP to a tourist, including whether they leveled up
@@ -110,6 +111,7 @@ class RewardService {
           'levelReached': previousLevel + i + 1,
           'awardedAt': FieldValue.serverTimestamp(),
           'redeemed': false,
+          'code': VoucherCode.generate(),
         });
       }
 
@@ -147,6 +149,7 @@ class RewardService {
       'source': source,
       'awardedAt': FieldValue.serverTimestamp(),
       'redeemed': false,
+      'code': VoucherCode.generate(),
     });
     await batch.commit();
   }
@@ -168,5 +171,19 @@ class RewardService {
     return db
         .collection('users').doc(uid).collection('vouchers').doc(voucherId)
         .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
+  }
+
+  /// Looks up an achievement voucher by its code, across ALL tourists —
+  /// achievement vouchers aren't tied to a specific business, so any
+  /// signed-in merchant can verify one. Returns null if no match.
+  Future<QueryDocumentSnapshot<Map<String, dynamic>>?> findByCode(
+      String code,
+      ) async {
+    final snap = await db
+        .collectionGroup('vouchers')
+        .where('code', isEqualTo: code.trim().toUpperCase())
+        .limit(1)
+        .get();
+    return snap.docs.isEmpty ? null : snap.docs.first;
   }
 }

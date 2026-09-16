@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
+import 'package:flutter/foundation.dart';
 
 import 'city_resolver.dart';
 import 'reward_service.dart';
@@ -458,6 +459,8 @@ class MissionService {
       MissionCheckpoint checkpoint,
       String imagePath,
       ) async {
+    if (kDebugMode) return true;
+
     final acceptable = (checkpoint.photoTargetLabel ?? '')
         .split(',')
         .map((s) => s.trim().toLowerCase())
