@@ -348,6 +348,28 @@ class Friend {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
+
+  Friend copyWith({
+    String? id,
+    String? friendUserId,
+    String? displayName,
+    String? username,
+    String? photoUrl,
+    int? level,
+    String? note,
+    DateTime? createdAt,
+  }) {
+    return Friend(
+      id: id ?? this.id,
+      friendUserId: friendUserId ?? this.friendUserId,
+      displayName: displayName ?? this.displayName,
+      username: username ?? this.username,
+      photoUrl: photoUrl ?? this.photoUrl,
+      level: level ?? this.level,
+      note: note ?? this.note,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
 
 class FriendRequest {
@@ -385,6 +407,30 @@ class FriendRequest {
       fromLevel: (data['fromLevel'] as num?)?.toInt() ?? 1,
       status: data['status'] as String? ?? 'pending',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+    );
+  }
+
+  FriendRequest copyWith({
+    String? id,
+    String? fromUserId,
+    String? toUserId,
+    String? fromDisplayName,
+    String? fromUsername,
+    String? fromPhotoUrl,
+    int? fromLevel,
+    String? status,
+    DateTime? createdAt,
+  }) {
+    return FriendRequest(
+      id: id ?? this.id,
+      fromUserId: fromUserId ?? this.fromUserId,
+      toUserId: toUserId ?? this.toUserId,
+      fromDisplayName: fromDisplayName ?? this.fromDisplayName,
+      fromUsername: fromUsername ?? this.fromUsername,
+      fromPhotoUrl: fromPhotoUrl ?? this.fromPhotoUrl,
+      fromLevel: fromLevel ?? this.fromLevel,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }
@@ -528,6 +574,32 @@ class ChatConversation {
           (data['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime.now(),
       unreadCount: (data['unreadCount_$currentUserId'] as num?)?.toInt() ?? 0,
       lastSenderId: data['lastSenderId'] as String? ?? '',
+    );
+  }
+
+  ChatConversation copyWith({
+    String? id,
+    List<String>? participants,
+    String? otherUserId,
+    String? otherDisplayName,
+    String? otherUsername,
+    String? otherPhotoUrl,
+    String? lastMessage,
+    DateTime? lastMessageTime,
+    int? unreadCount,
+    String? lastSenderId,
+  }) {
+    return ChatConversation(
+      id: id ?? this.id,
+      participants: participants ?? this.participants,
+      otherUserId: otherUserId ?? this.otherUserId,
+      otherDisplayName: otherDisplayName ?? this.otherDisplayName,
+      otherUsername: otherUsername ?? this.otherUsername,
+      otherPhotoUrl: otherPhotoUrl ?? this.otherPhotoUrl,
+      lastMessage: lastMessage ?? this.lastMessage,
+      lastMessageTime: lastMessageTime ?? this.lastMessageTime,
+      unreadCount: unreadCount ?? this.unreadCount,
+      lastSenderId: lastSenderId ?? this.lastSenderId,
     );
   }
 }

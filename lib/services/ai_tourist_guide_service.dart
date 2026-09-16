@@ -227,42 +227,40 @@ class AiTouristGuideService {
       return (
         detectedRegion: specificRegion,
         regionalTransitTip:
-            '• Note: The tourist is currently on the PENANG MAINLAND in $specificRegion, which is approximately 15 to 25 km away from George Town across the Penang Strait. '
-            'If they ask where they are, state clearly that they are in $specificRegion on the mainland, NOT in George Town or on Penang Island! '
-            'For local dining right here on the mainland, recommend Sunway Carnival, Raja Uda street food (Tom Yum noodles, Apollo morning market), or BM yam rice. '
-            'If they ask about island heritage / George Town sights, explicitly explain how to cross: '
-            'via Penang Bridge (15-20 min drive) or the iconic Penang Fast Ferry from Butterworth to Swettenham Pier (10-15 mins)!',
+            'You are currently on the PENANG MAINLAND in $specificRegion, approximately 15 to 25 km from George Town across the Penang Strait. '
+            'For delicious local dining right here on the mainland, try Sunway Carnival, Raja Uda street food (Tom Yum noodles, Apollo morning market), or BM yam rice. '
+            'To visit Penang Island and George Town heritage sights, you can cross via the Penang Bridge (15–20 min drive) or take the iconic Penang Fast Ferry from Butterworth to Swettenham Pier (10–15 mins)!',
       );
     } else if (userLat >= 5.40 && userLat <= 5.43 && userLng >= 100.31 && userLng <= 100.35) {
       return (
         detectedRegion: 'George Town UNESCO World Heritage Zone',
         regionalTransitTip:
-            '• Note: The tourist is in the heart of George Town UNESCO heritage zone. '
-            'Walking distance to Beach Street, Campbell Street, Chulia Street, and Armenian Street murals.',
+            'You are in the heart of the George Town UNESCO heritage zone. '
+            'Beach Street, Campbell Street, Chulia Street, and the famous Armenian Street street art murals are all within walking distance!',
       );
     } else if (userLat >= 5.45 && userLat <= 5.48 && userLng >= 100.23 && userLng <= 100.29) {
       return (
         detectedRegion: 'Batu Ferringhi & Teluk Bahang (Northern Coast)',
         regionalTransitTip:
-            '• Note: The tourist is along the scenic northern beach strip. Close to Batu Ferringhi night market, batik craft workshops, and Escape Theme Park.',
+            'You are along Penang’s scenic northern coastline, close to Batu Ferringhi night market, local batik craft workshops, and ESCAPE Theme Park.',
       );
     } else if (userLat >= 5.38 && userLat <= 5.42 && userLng >= 100.26 && userLng <= 100.30) {
       return (
         detectedRegion: 'Air Itam & Penang Hill',
         regionalTransitTip:
-            '• Note: The tourist is near Kek Lok Si Temple and Penang Hill funicular station. Highlight Air Itam Sister Curry Mee and market Asam Laksa.',
+            'You are near Kek Lok Si Temple and the Penang Hill lower station. Be sure to try the famous Air Itam Sister Curry Mee and local Asam Laksa nearby!',
       );
     } else if (userLat >= 5.42 && userLat <= 5.45 && userLng >= 100.30 && userLng <= 100.33) {
       return (
         detectedRegion: 'Gurney Drive & Pulau Tikus',
         regionalTransitTip:
-            '• Note: The tourist is along the northern coastal boulevard. Renowned for seaside hawkers, Gurney Plaza, and Pulau Tikus market.',
+            'You are along the northern seaside boulevard, known for Gurney Drive hawker delights, Gurney Plaza, and Pulau Tikus market delicacies.',
       );
     } else if (userLat >= 5.28 && userLat <= 5.35 && userLng >= 100.25 && userLng <= 100.32) {
       return (
         detectedRegion: 'Bayan Lepas & Queensbay (Southern Penang)',
         regionalTransitTip:
-            '• Note: The tourist is in southern Penang near Queensbay Mall and the Penang International Airport.',
+            'You are in southern Penang, conveniently close to Queensbay Mall, the Snake Temple, and the Penang International Airport.',
       );
     }
     return (

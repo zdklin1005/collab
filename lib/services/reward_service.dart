@@ -1,10 +1,37 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import 'voucher_code.dart';
 import '../models/localquest_models.dart';
-
-import 'exp_progress.dart';
 import 'exp_award_service.dart';
+import 'exp_progress.dart';
+
+/// Represents the user's progress within their current level.
+class LevelProgress {
+  const LevelProgress({
+    required this.currentLevel,
+    required this.currentExp,
+    required this.floorExp,
+    required this.nextLevelExp,
+    required this.expInLevel,
+    required this.levelSpan,
+    required this.progress,
+  });
+
+  final int currentLevel;
+  final int currentExp;
+  final int floorExp;
+  final int nextLevelExp;
+  final int expInLevel;
+  final int levelSpan;
+  final double progress;
+
+  /// Progress label showing current EXP vs next level target, e.g. "591/600XP"
+  String get expLabel {
+    final nf = NumberFormat('#,##0');
+    return '${nf.format(currentExp)}/${nf.format(nextLevelExp)}XP';
+  }
+}
 
 /// Result of awarding EXP to a tourist, including whether they leveled up
 /// and how many vouchers were awarded as a result.
@@ -52,9 +79,7 @@ class RewardService {
   set db(FirebaseFirestore customDb) => _db = customDb;
 
   /// EXP curve: total cumulative EXP required to *reach* [level].
-  /// Level 1 requires 0 EXP (everyone starts here). Tune this formula
-  /// freely later — every other method reads through this one function,
-  /// so changing the curve never requires touching leveling logic itself.
+  /// Level 1 requires 0 EXP (everyone starts here).
   int expRequiredForLevel(int level) {
     if (level <= 1) return 0;
     final steps = level - 1;
@@ -72,8 +97,25 @@ class RewardService {
 
   /// EXP still needed to reach the next level from [exp].
   int expToNextLevel(int exp) {
-    final level = levelForExp(exp);
-    return expRequiredForLevel(level + 1) - exp;
+    final progress = ExpProgress.fromTotalExp(exp < 0 ? 0 : exp);
+    // Preserve the existing result for negative input too.
+    return progress.nextLevelExp - exp;
+  }
+
+  /// Returns detailed level progress metrics for a given cumulative [exp].
+  /// Optionally accepts [currentLevel] if the stored user document has an
+  /// explicit level.
+  LevelProgress getLevelProgress(int exp, [int? currentLevel]) {
+    final progress = ExpProgress.fromTotalExp(exp < 0 ? 0 : exp, currentLevel);
+    return LevelProgress(
+      currentLevel: progress.level,
+      currentExp: progress.totalExp,
+      floorExp: progress.levelStartExp,
+      nextLevelExp: progress.nextLevelExp,
+      expInLevel: progress.expIntoLevel,
+      levelSpan: progress.expRequiredThisLevel,
+      progress: progress.fraction,
+    );
   }
 
   /// Adds [amount] EXP to the tourist identified by [uid], recalculates
@@ -170,11 +212,15 @@ class RewardService {
   /// missions) awarded to [uid]. Raw maps, not a dedicated model — see
   /// the class doc on awardVoucher() for why these are placeholders.
   Stream<List<Map<String, dynamic>>> watchAchievementVouchers(String uid) {
-    return db
-        .collection('users').doc(uid).collection('vouchers')
-        .orderBy('awardedAt', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+    try {
+      return db
+          .collection('users').doc(uid).collection('vouchers')
+          .orderBy('awardedAt', descending: true)
+          .snapshots()
+          .map((snap) => snap.docs.map((d) => {...d.data(), 'id': d.id}).toList());
+    } catch (_) {
+      return const Stream.empty();
+    }
   }
 
   /// Marks an achievement voucher as used. Self-reported by the tourist —

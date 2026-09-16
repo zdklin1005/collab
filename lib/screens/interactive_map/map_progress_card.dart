@@ -3,8 +3,8 @@ import 'package:intl/intl.dart';
 
 import '../../core/localquest_theme.dart';
 import '../../models/localquest_models.dart';
+import '../../services/exp_progress.dart';
 import '../../services/localquest_services.dart';
-import '../../services/reward_service.dart';
 import 'rewards_roadmap_screen.dart';
 
 class MapProgressCard extends StatelessWidget {
@@ -26,24 +26,11 @@ class MapProgressCard extends StatelessWidget {
       initialData: user,
       builder: (context, snapshot) {
         final liveUser = snapshot.data ?? user;
-        final reward = RewardService.instance;
+        final progress = ExpProgress.fromTotalExp(
+          liveUser.exp < 0 ? 0 : liveUser.exp,
+          liveUser.level,
+        );
         final numberFormat = NumberFormat('#,##0');
-
-        // Progress WITHIN the current level, using the real EXP curve
-        // (RewardService.expRequiredForLevel) rather than a flat total —
-        // this used to be a hardcoded 3000 placeholder regardless of
-        // level, which became increasingly inaccurate the higher the
-        // tourist got (e.g. level 5 actually only needs 2,000 cumulative
-        // EXP, level 8 needs 5,600 — a flat target doesn't reflect either).
-        final currentLevelBaseExp = reward.expRequiredForLevel(liveUser.level);
-        final nextLevelExp = reward.expRequiredForLevel(liveUser.level + 1);
-        final expIntoLevel = (liveUser.exp - currentLevelBaseExp) < 0
-            ? 0
-            : liveUser.exp - currentLevelBaseExp;
-        final expNeededForLevel = nextLevelExp - currentLevelBaseExp;
-        final progress = expNeededForLevel <= 0
-            ? 1.0
-            : (expIntoLevel / expNeededForLevel).clamp(0.0, 1.0);
 
         return InkWell(
           borderRadius: BorderRadius.circular(24),
@@ -77,7 +64,7 @@ class MapProgressCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Text(
-                    '${liveUser.level}',
+                    '${progress.level}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 26,
@@ -91,7 +78,7 @@ class MapProgressCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'LEVEL ${liveUser.level} · EXPLORER',
+                        'LEVEL ${progress.level} · EXPLORER',
                         style: const TextStyle(
                           color: LqColors.muted,
                           fontWeight: FontWeight.w700,
@@ -100,8 +87,8 @@ class MapProgressCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${numberFormat.format(expIntoLevel)} / '
-                            '${numberFormat.format(expNeededForLevel)} EXP to next level',
+                        '${numberFormat.format(progress.expIntoLevel)} / '
+                        '${numberFormat.format(progress.expRequiredThisLevel)} EXP to next level',
                         style: const TextStyle(
                           color: LqColors.primary,
                           fontWeight: FontWeight.w700,
@@ -110,7 +97,7 @@ class MapProgressCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       LinearProgressIndicator(
-                        value: progress,
+                        value: progress.fraction,
                         minHeight: 8,
                         borderRadius: BorderRadius.circular(12),
                         color: LqColors.primary,

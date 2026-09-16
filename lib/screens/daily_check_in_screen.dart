@@ -45,17 +45,22 @@ class _DailyCheckInScreenState extends State<DailyCheckInScreen> {
     }
   }
 
+  Stream<DocumentSnapshot<Map<String, dynamic>>?> _userStream(String uid) {
+    try {
+      return FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: LqPage(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(widget.userId)
-                .snapshots(),
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+            stream: _userStream(widget.userId),
             builder: (context, snapshot) {
               final data = snapshot.data?.data() ?? const <String, dynamic>{};
               final streakCount = (data['streakCount'] as num?)?.toInt() ?? 0;

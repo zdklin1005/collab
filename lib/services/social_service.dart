@@ -25,7 +25,52 @@ class SocialService {
           .collection('friends')
           .orderBy('createdAt', descending: true)
           .snapshots()
-          .map((snapshot) => snapshot.docs.map(Friend.fromDoc).toList());
+          .asyncMap((snapshot) async {
+            final friends = <Friend>[];
+            for (final doc in snapshot.docs) {
+              final initial = Friend.fromDoc(doc);
+              try {
+                final userDoc =
+                    await db.collection('users').doc(initial.friendUserId).get();
+                if (userDoc.exists) {
+                  final data = userDoc.data() ?? {};
+                  final livePhoto = (data['photoUrl'] as String?)?.trim();
+                  final liveName = (data['displayName'] as String?)?.trim();
+                  final liveUname = (data['username'] as String?)?.trim();
+                  final liveLevel = (data['level'] as num?)?.toInt();
+
+                  // Backfill subcollection doc if photo became available or changed
+                  if (livePhoto != null &&
+                      livePhoto.isNotEmpty &&
+                      livePhoto != initial.photoUrl) {
+                    doc.reference
+                        .update({'photoUrl': livePhoto}).catchError((_) {});
+                  }
+
+                  friends.add(
+                    initial.copyWith(
+                      photoUrl:
+                          (livePhoto != null && livePhoto.isNotEmpty)
+                              ? livePhoto
+                              : initial.photoUrl,
+                      displayName:
+                          (liveName != null && liveName.isNotEmpty)
+                              ? liveName
+                              : initial.displayName,
+                      username:
+                          (liveUname != null && liveUname.isNotEmpty)
+                              ? liveUname
+                              : initial.username,
+                      level: liveLevel ?? initial.level,
+                    ),
+                  );
+                  continue;
+                }
+              } catch (_) {}
+              friends.add(initial);
+            }
+            return friends;
+          });
     } catch (_) {
       return Stream.value([]);
     }
@@ -42,11 +87,52 @@ class SocialService {
           .collection('friendRequests')
           .where('status', isEqualTo: 'pending')
           .snapshots()
-          .map(
-            (snapshot) =>
-                snapshot.docs.map(FriendRequest.fromDoc).toList()
-                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
-          );
+          .asyncMap((snapshot) async {
+            final requests = <FriendRequest>[];
+            for (final doc in snapshot.docs) {
+              final req = FriendRequest.fromDoc(doc);
+              try {
+                final userDoc =
+                    await db.collection('users').doc(req.fromUserId).get();
+                if (userDoc.exists) {
+                  final data = userDoc.data() ?? {};
+                  final livePhoto = (data['photoUrl'] as String?)?.trim();
+                  final liveName = (data['displayName'] as String?)?.trim();
+                  final liveUname = (data['username'] as String?)?.trim();
+                  final liveLevel = (data['level'] as num?)?.toInt();
+
+                  if (livePhoto != null &&
+                      livePhoto.isNotEmpty &&
+                      livePhoto != req.fromPhotoUrl) {
+                    doc.reference
+                        .update({'fromPhotoUrl': livePhoto}).catchError((_) {});
+                  }
+
+                  requests.add(
+                    req.copyWith(
+                      fromPhotoUrl:
+                          (livePhoto != null && livePhoto.isNotEmpty)
+                              ? livePhoto
+                              : req.fromPhotoUrl,
+                      fromDisplayName:
+                          (liveName != null && liveName.isNotEmpty)
+                              ? liveName
+                              : req.fromDisplayName,
+                      fromUsername:
+                          (liveUname != null && liveUname.isNotEmpty)
+                              ? liveUname
+                              : req.fromUsername,
+                      fromLevel: liveLevel ?? req.fromLevel,
+                    ),
+                  );
+                  continue;
+                }
+              } catch (_) {}
+              requests.add(req);
+            }
+            requests.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return requests;
+          });
     } catch (_) {
       return Stream.value([]);
     }
@@ -148,6 +234,26 @@ class SocialService {
       if (e.toString().contains('Friend request already sent')) rethrow;
     }
 
+    // Fetch latest sender photo/details if available
+    String fromPhoto = currentUser.photoUrl ?? '';
+    String fromName = currentUser.displayName;
+    String fromUname = currentUser.username;
+    int fromLvl = currentUser.level;
+    try {
+      final curDoc = await db.collection('users').doc(currentUser.id).get();
+      if (curDoc.exists) {
+        final d = curDoc.data() ?? {};
+        final p = (d['photoUrl'] as String?)?.trim();
+        if (p != null && p.isNotEmpty) fromPhoto = p;
+        final dn = (d['displayName'] as String?)?.trim();
+        if (dn != null && dn.isNotEmpty) fromName = dn;
+        final un = (d['username'] as String?)?.trim();
+        if (un != null && un.isNotEmpty) fromUname = un;
+        final l = (d['level'] as num?)?.toInt();
+        if (l != null) fromLvl = l;
+      }
+    } catch (_) {}
+
     // Write request to target user's friendRequests subcollection
     await db
         .collection('users')
@@ -157,10 +263,10 @@ class SocialService {
         .set({
           'fromUserId': currentUser.id,
           'toUserId': targetUserId,
-          'fromDisplayName': currentUser.displayName,
-          'fromUsername': currentUser.username,
-          'fromPhotoUrl': currentUser.photoUrl,
-          'fromLevel': currentUser.level,
+          'fromDisplayName': fromName,
+          'fromUsername': fromUname,
+          'fromPhotoUrl': fromPhoto.isNotEmpty ? fromPhoto : null,
+          'fromLevel': fromLvl,
           'status': 'pending',
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -171,6 +277,48 @@ class SocialService {
     required AppUser currentUser,
     required FriendRequest request,
   }) async {
+    // 1. Fetch latest details for both users to ensure fresh photos
+    String senderDisplayName = request.fromDisplayName;
+    String senderUsername = request.fromUsername;
+    String? senderPhotoUrl = request.fromPhotoUrl;
+    int senderLevel = request.fromLevel;
+
+    try {
+      final senderDoc =
+          await db.collection('users').doc(request.fromUserId).get();
+      if (senderDoc.exists) {
+        final data = senderDoc.data() ?? {};
+        final p = (data['photoUrl'] as String?)?.trim();
+        if (p != null && p.isNotEmpty) senderPhotoUrl = p;
+        final d = (data['displayName'] as String?)?.trim();
+        if (d != null && d.isNotEmpty) senderDisplayName = d;
+        final u = (data['username'] as String?)?.trim();
+        if (u != null && u.isNotEmpty) senderUsername = u;
+        final l = (data['level'] as num?)?.toInt();
+        if (l != null) senderLevel = l;
+      }
+    } catch (_) {}
+
+    String currentDisplayName = currentUser.displayName;
+    String currentUsername = currentUser.username;
+    String? currentPhotoUrl = currentUser.photoUrl;
+    int currentLevel = currentUser.level;
+
+    try {
+      final curDoc = await db.collection('users').doc(currentUser.id).get();
+      if (curDoc.exists) {
+        final data = curDoc.data() ?? {};
+        final p = (data['photoUrl'] as String?)?.trim();
+        if (p != null && p.isNotEmpty) currentPhotoUrl = p;
+        final d = (data['displayName'] as String?)?.trim();
+        if (d != null && d.isNotEmpty) currentDisplayName = d;
+        final u = (data['username'] as String?)?.trim();
+        if (u != null && u.isNotEmpty) currentUsername = u;
+        final l = (data['level'] as num?)?.toInt();
+        if (l != null) currentLevel = l;
+      }
+    } catch (_) {}
+
     final batch = db.batch();
 
     // 1. Add sender to current user's friends list
@@ -181,10 +329,10 @@ class SocialService {
         .doc(request.fromUserId);
     batch.set(myFriendRef, {
       'friendUserId': request.fromUserId,
-      'displayName': request.fromDisplayName,
-      'username': request.fromUsername,
-      'photoUrl': request.fromPhotoUrl,
-      'level': request.fromLevel,
+      'displayName': senderDisplayName,
+      'username': senderUsername,
+      'photoUrl': senderPhotoUrl,
+      'level': senderLevel,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -196,10 +344,10 @@ class SocialService {
         .doc(currentUser.id);
     batch.set(theirFriendRef, {
       'friendUserId': currentUser.id,
-      'displayName': currentUser.displayName,
-      'username': currentUser.username,
-      'photoUrl': currentUser.photoUrl,
-      'level': currentUser.level,
+      'displayName': currentDisplayName,
+      'username': currentUsername,
+      'photoUrl': currentPhotoUrl,
+      'level': currentLevel,
       'createdAt': FieldValue.serverTimestamp(),
     });
 

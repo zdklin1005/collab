@@ -76,15 +76,44 @@ class DirectChatService {
           .collection('chats')
           .where('participants', arrayContains: currentUserId)
           .snapshots()
-          .map(
-            (snapshot) {
-              final list = snapshot.docs
-                  .map((doc) => ChatConversation.fromDoc(doc, currentUserId))
-                  .toList();
-              list.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
-              return list;
-            },
-          );
+          .asyncMap((snapshot) async {
+            final list = <ChatConversation>[];
+            for (final doc in snapshot.docs) {
+              final convo = ChatConversation.fromDoc(doc, currentUserId);
+              if (convo.otherUserId.isNotEmpty) {
+                try {
+                  final userDoc =
+                      await db.collection('users').doc(convo.otherUserId).get();
+                  if (userDoc.exists) {
+                    final data = userDoc.data() ?? {};
+                    final livePhoto = (data['photoUrl'] as String?)?.trim();
+                    final liveName = (data['displayName'] as String?)?.trim();
+                    final liveUname = (data['username'] as String?)?.trim();
+                    list.add(
+                      convo.copyWith(
+                        otherPhotoUrl:
+                            (livePhoto != null && livePhoto.isNotEmpty)
+                                ? livePhoto
+                                : convo.otherPhotoUrl,
+                        otherDisplayName:
+                            (liveName != null && liveName.isNotEmpty)
+                                ? liveName
+                                : convo.otherDisplayName,
+                        otherUsername:
+                            (liveUname != null && liveUname.isNotEmpty)
+                                ? liveUname
+                                : convo.otherUsername,
+                      ),
+                    );
+                    continue;
+                  }
+                } catch (_) {}
+              }
+              list.add(convo);
+            }
+            list.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+            return list;
+          });
     } catch (_) {
       return Stream.value([]);
     }

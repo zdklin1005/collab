@@ -168,8 +168,8 @@ void main() {
     });
 
     test('SpotifyService configuration and curated tracks', () {
-      expect(SpotifyService.clientId, 'b7d1315dc27e4e7f83f0947858afe872');
-      expect(SpotifyService.clientSecret, 'cb1181f778ea4ce5842ea3a2c44e1ab8');
+      expect(SpotifyService.clientId, 'f7ebb503ee4d4265b1dee2884042a53e');
+      expect(SpotifyService.clientSecret, '7b7545ff84f6411d90249147671fd6e8');
 
       final tracks = SpotifyService.instance.getCuratedPenangVibes();
       expect(tracks.isNotEmpty, isTrue);
@@ -228,6 +228,61 @@ void main() {
       expect(convo.otherDisplayName, 'Sarah Tan');
       expect(convo.unreadCount, 2);
       expect(convo.lastSenderId, 'user_1');
+
+      final updated = convo.copyWith(
+        otherPhotoUrl: 'https://example.com/sarah_live.jpg',
+        otherDisplayName: 'Sarah Tan (Updated)',
+      );
+      expect(updated.otherPhotoUrl, 'https://example.com/sarah_live.jpg');
+      expect(updated.otherDisplayName, 'Sarah Tan (Updated)');
+      expect(updated.otherUsername, '@sarah_t');
+    });
+
+    test('Friend copyWith updates photoUrl, displayName, and level', () {
+      final now = DateTime.now();
+      final friend = Friend(
+        id: 'f_1',
+        friendUserId: 'u_1',
+        displayName: 'Old Name',
+        username: '@old_handle',
+        level: 1,
+        createdAt: now,
+      );
+
+      final enriched = friend.copyWith(
+        photoUrl: 'https://res.cloudinary.com/test/image/upload/sample.jpg',
+        displayName: 'New Name',
+        level: 5,
+      );
+
+      expect(enriched.photoUrl, 'https://res.cloudinary.com/test/image/upload/sample.jpg');
+      expect(enriched.displayName, 'New Name');
+      expect(enriched.username, '@old_handle');
+      expect(enriched.level, 5);
+      expect(enriched.createdAt, now);
+    });
+
+    test('FriendRequest copyWith updates fromPhotoUrl and details', () {
+      final now = DateTime.now();
+      final req = FriendRequest(
+        id: 'r_1',
+        fromUserId: 'u_from',
+        toUserId: 'u_to',
+        fromDisplayName: 'Old Sender',
+        fromUsername: '@old_sender',
+        createdAt: now,
+      );
+
+      final enriched = req.copyWith(
+        fromPhotoUrl: 'https://res.cloudinary.com/test/photo.jpg',
+        fromDisplayName: 'Fresh Sender',
+        fromLevel: 4,
+      );
+
+      expect(enriched.fromPhotoUrl, 'https://res.cloudinary.com/test/photo.jpg');
+      expect(enriched.fromDisplayName, 'Fresh Sender');
+      expect(enriched.fromUsername, '@old_sender');
+      expect(enriched.fromLevel, 4);
     });
 
     test('InAppNotificationService formatSenderTitle displays actual sender name and username', () {

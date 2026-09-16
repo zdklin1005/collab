@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../core/password_field.dart';
 import '../core/password_policy.dart';
@@ -22,21 +21,18 @@ import '../services/direct_chat_service.dart';
 import '../services/social_service.dart';
 import '../services/spotify_service.dart';
 import '../services/location_service.dart';
-import 'rewards_tab.dart';
 import 'mission_list_screen.dart';
 import 'write_review_screen.dart';
 import '../services/mission_service.dart';
 import '../services/check_in_service.dart';
+import 'daily_check_in_screen.dart';
 import 'my_reviews_screen.dart';
 import 'my_rewards_screen.dart';
 import '../services/reward_service.dart';
+import '../services/review_service.dart';
 
 class TouristHome extends StatefulWidget {
-  const TouristHome({
-    super.key,
-    required this.user,
-    this.initialIndex = 0,
-  });
+  const TouristHome({super.key, required this.user, this.initialIndex = 0});
   final AppUser user;
   final int initialIndex;
 
@@ -50,7 +46,8 @@ class _TouristHomeState extends State<TouristHome> {
   @override
   void initState() {
     super.initState();
-    final historyEnabled = widget.user.preferences['locationHistory'] as bool? ?? true;
+    final historyEnabled =
+        widget.user.preferences['locationHistory'] as bool? ?? true;
     LocationTrackerService.instance.setLocationHistoryEnabled(historyEnabled);
     if (historyEnabled) {
       LocationTrackerService.instance.startTracking(userId: widget.user.id);
@@ -70,8 +67,8 @@ class _TouristHomeState extends State<TouristHome> {
       onNavigateToRewards: () => setState(() => _index = 1),
     );
     final pages = [
-      InteractiveMapScreen(user: widget.user),
-      RewardsTab(user: widget.user),
+      InteractiveMapScreen(user: widget.user, isActive: _index == 0),
+      MyRewardsScreen(userId: widget.user.id, showBackButton: false),
       profile,
     ];
     return Scaffold(
@@ -87,7 +84,11 @@ class _TouristHomeState extends State<TouristHome> {
           profileInitials: initialsFor(widget.user.displayName),
           profilePhotoUrl: widget.user.photoUrl,
         ),
-        child: pages[_index],
+        child: IndexedStack(
+          index: _index,
+          sizing: StackFit.expand,
+          children: pages,
+        ),
       ),
       floatingActionButtonLocation: const _AboveNavBarFabLocation(),
       floatingActionButton: _FloatingAiGuideButton(user: widget.user),
@@ -100,7 +101,10 @@ class _AboveNavBarFabLocation extends StandardFabLocation
   const _AboveNavBarFabLocation();
 
   @override
-  double getOffsetY(ScaffoldPrelayoutGeometry scaffoldGeometry, double adjustment) {
+  double getOffsetY(
+    ScaffoldPrelayoutGeometry scaffoldGeometry,
+    double adjustment,
+  ) {
     return super.getOffsetY(scaffoldGeometry, adjustment) - 76.0;
   }
 }
@@ -144,11 +148,7 @@ class _FloatingAiGuideButton extends StatelessWidget {
             border: Border.all(color: Colors.white, width: 2),
           ),
           child: const Center(
-            child: Icon(
-              Icons.auto_awesome,
-              color: Colors.white,
-              size: 26,
-            ),
+            child: Icon(Icons.auto_awesome, color: Colors.white, size: 26),
           ),
         ),
       ),
@@ -165,340 +165,464 @@ class TouristProfileScreen extends StatelessWidget {
   final AppUser user;
   final VoidCallback? onNavigateToRewards;
 
-  @override
-  Widget build(BuildContext context) => StreamBuilder<AppUser>(
-    // Live user doc instead of trusting the one-time snapshot TouristHome
-    // passed down — without this, EXP/level/voucher/review counts here
-    // stay frozen until the whole Profile tab is torn down and rebuilt,
-    // even after a check-in, mission, or review changes them.
-    stream: UserRepository.instance.watch(user.id),
-    initialData: user,
-    builder: (context, snapshot) {
-      final liveUser = snapshot.data ?? user;
+  Stream<DocumentSnapshot<Map<String, dynamic>>?> _userDocStream(String uid) {
+    try {
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .snapshots();
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
 
-      return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 42, 16, 116),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Expanded(
-                  child: LqTitleBlock(eyebrow: 'My passport', title: 'Profile'),
-                ),
-                const SizedBox(width: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton.filledTonal(
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                      tooltip: 'Direct Chat',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FriendsScreen(
-                            currentUser: user,
-                            initialTabIndex: 1,
-                          ),
-                        ),
-                      ),
-                      icon: const Icon(Icons.chat_bubble_outline, size: 20),
-                    ),
-                    const SizedBox(width: 4),
-                    StreamBuilder<List<ChatConversation>>(
-                      stream: DirectChatService.instance.streamConversations(user.id),
-                      builder: (context, chatSnap) {
-                        final hasUnreadChat = (chatSnap.data ?? []).any((c) => c.unreadCount > 0);
-                        return StreamBuilder<List<FriendRequest>>(
-                          stream: SocialService.instance.streamFriendRequests(user.id),
-                          builder: (context, reqSnap) {
-                            final hasPendingReq = (reqSnap.data ?? []).isNotEmpty;
-                            final hasNotif = hasUnreadChat || hasPendingReq;
-                            return Badge(
-                              isLabelVisible: hasNotif,
-                              smallSize: 8,
-                              backgroundColor: LqColors.primary,
-                              child: IconButton.filledTonal(
-                                visualDensity: VisualDensity.compact,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                tooltip: 'Notifications',
-                                onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => NotificationsScreen(user: user),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.notifications_none, size: 20),
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: MerchantRepository.instance.touristClaimedVouchers(user.id),
+      builder: (context, claimedSnap) {
+        return StreamBuilder<List<Map<String, dynamic>>>(
+          stream: RewardService.instance.watchAchievementVouchers(user.id),
+          builder: (context, achSnap) {
+            return StreamBuilder<List<Review>>(
+              stream: ReviewService.instance.watchReviewsForUser(user.id),
+              builder: (context, reviewSnap) {
+                return StreamBuilder<int>(
+                  stream: ReviewService.instance.watchTotalAppReviewCount(),
+                  builder: (context, totalAppReviewsSnap) {
+                    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+                      stream: _userDocStream(user.id),
+                      builder: (context, userDocSnap) {
+                    final claimed = claimedSnap.data ?? const <Map<String, dynamic>>[];
+                    final ach = achSnap.data ?? const <Map<String, dynamic>>[];
+                    final unredeemedClaimed = claimed.where((v) => v['redeemed'] != true).length;
+                    final unredeemedAch = ach.where((v) => v['redeemed'] != true).length;
+                    final activeVoucherCount = (claimedSnap.hasData || achSnap.hasData)
+                        ? (unredeemedClaimed + unredeemedAch)
+                        : user.voucherCount;
+
+                    final reviews = reviewSnap.data;
+                    final activeReviewCount =
+                        (reviews != null && reviews.isNotEmpty)
+                            ? reviews.length
+                            : user.reviewCount;
+
+                    final userData = userDocSnap.data?.data() ?? const <String, dynamic>{};
+                    final streakCount = (userData['streakCount'] as num?)?.toInt() ?? 0;
+                    final activeExp = (userData['exp'] as num?)?.toInt() ?? user.exp;
+                    final activeLevel = (userData['level'] as num?)?.toInt() ?? user.level;
+                    final levelProgress = RewardService.instance.getLevelProgress(activeExp, activeLevel);
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 42, 16, 116),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Expanded(
+                              child: LqTitleBlock(
+                                eyebrow: 'My passport',
+                                title: 'Profile',
                               ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton.filledTonal(
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                      tooltip: 'Settings',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SettingsScreen(user: user),
-                        ),
-                      ),
-                      icon: const Icon(Icons.settings_outlined, size: 20),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-            InkWell(
-              borderRadius: BorderRadius.circular(25),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => AccountDetailsScreen(user: user)),
-              ),
-              child: LqCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    Container(
-                      color: LqColors.primarySoft,
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          LqAvatar(
-                            radius: 36,
-                            initials: initialsFor(liveUser.displayName),
-                            photoUrl: liveUser.photoUrl,
-                            shape: LqAvatarShape.roundedSquare,
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            ),
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
-                                  liveUser.displayName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 20,
+                                IconButton.filledTonal(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
                                   ),
-                                ),
-                                Text(
-                                  liveUser.username,
-                                  style: const TextStyle(color: LqColors.muted),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.centerLeft,
-                                        child: LqTierBadge(level: liveUser.level),
+                                  tooltip: 'Direct Chat',
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => FriendsScreen(
+                                        currentUser: user,
+                                        initialTabIndex: 1,
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
-                                    Builder(builder: (context) {
-                                      // Same real-curve fix as MapProgressCard —
-                                      // was a flat "/3,000XP" regardless of level.
-                                      final reward = RewardService.instance;
-                                      final base = reward.expRequiredForLevel(liveUser.level);
-                                      final next = reward.expRequiredForLevel(liveUser.level + 1);
-                                      final into = (liveUser.exp - base) < 0 ? 0 : liveUser.exp - base;
-                                      final needed = next - base;
-                                      return Text(
-                                        '$into/${needed <= 0 ? into : needed}XP',
-                                        style: monoLabel.copyWith(
-                                          color: const Color(0xFF466294),
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 9,
-                                          letterSpacing: 0,
-                                        ),
-                                      );
-                                    }),
-                                  ],
+                                  ),
+                                  icon: const Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 20,
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
-                                Builder(builder: (context) {
-                                  final reward = RewardService.instance;
-                                  final base = reward.expRequiredForLevel(liveUser.level);
-                                  final next = reward.expRequiredForLevel(liveUser.level + 1);
-                                  final into = (liveUser.exp - base) < 0 ? 0 : liveUser.exp - base;
-                                  final needed = next - base;
-                                  final progress = needed <= 0 ? 1.0 : (into / needed).clamp(0.0, 1.0);
-                                  return LinearProgressIndicator(
-                                    value: progress,
-                                    minHeight: 7,
-                                    borderRadius: BorderRadius.circular(20),
-                                  );
-                                }),
+                                const SizedBox(width: 4),
+                                StreamBuilder<List<ChatConversation>>(
+                                  stream: DirectChatService.instance
+                                      .streamConversations(user.id),
+                                  builder: (context, chatSnap) {
+                                    final hasUnreadChat = (chatSnap.data ?? [])
+                                        .any((c) => c.unreadCount > 0);
+                                    return StreamBuilder<List<FriendRequest>>(
+                                      stream: SocialService.instance
+                                          .streamFriendRequests(user.id),
+                                      builder: (context, reqSnap) {
+                                        final hasPendingReq =
+                                            (reqSnap.data ?? []).isNotEmpty;
+                                        final hasNotif =
+                                            hasUnreadChat || hasPendingReq;
+                                        return Badge(
+                                          isLabelVisible: hasNotif,
+                                          smallSize: 8,
+                                          backgroundColor: LqColors.primary,
+                                          child: IconButton.filledTonal(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 36,
+                                              minHeight: 36,
+                                            ),
+                                            tooltip: 'Notifications',
+                                            onPressed: () => Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    NotificationsScreen(
+                                                      user: user,
+                                                    ),
+                                              ),
+                                            ),
+                                            icon: const Icon(
+                                              Icons.notifications_none,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                IconButton.filledTonal(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  tooltip: 'Settings',
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          SettingsScreen(user: user),
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.settings_outlined,
+                                    size: 20,
+                                  ),
+                                ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: LqColors.primary,
-                            size: 24,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const LqDashedDivider(),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _Stat(
-                            label: 'Vouchers',
-                            value: '${liveUser.voucherCount}',
-                            badgeText: liveUser.voucherCount > 0
-                                ? '${liveUser.voucherCount > 3 ? 3 : liveUser.voucherCount} expiring soon'
-                                : '0 expiring soon',
-                            icon: Icons.confirmation_num_outlined,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => MyRewardsScreen(userId: user.id),
+                          ],
+                        ),
+                        const SizedBox(height: 28),
+                        LqCard(
+                          padding: EdgeInsets.zero,
+                          child: Column(
+                            children: [
+                              Material(
+                                color: Colors.transparent,
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(20),
+                                ),
+                                child: InkWell(
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(20),
+                                  ),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AccountDetailsScreen(user: user),
+                                    ),
+                                  ),
+                                  child: Container(
+                                    color: LqColors.primarySoft,
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      children: [
+                                        LqAvatar(
+                                          radius: 36,
+                                          initials: initialsFor(
+                                            user.displayName,
+                                          ),
+                                          photoUrl: user.photoUrl,
+                                          shape: LqAvatarShape.roundedSquare,
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                user.displayName,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 20,
+                                                ),
+                                              ),
+                                              Text(
+                                                user.username,
+                                                style: const TextStyle(
+                                                  color: LqColors.muted,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Row(
+                                                children: [
+                                                  Flexible(
+                                                    child: FittedBox(
+                                                      fit: BoxFit.scaleDown,
+                                                      alignment: Alignment.centerLeft,
+                                                      child: LqTierBadge(level: levelProgress.currentLevel),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    levelProgress.expLabel,
+                                                    style: monoLabel.copyWith(
+                                                      color: const Color(
+                                                        0xFF466294,
+                                                      ),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      fontSize: 9,
+                                                      letterSpacing: 0,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              LinearProgressIndicator(
+                                                value: levelProgress.progress,
+                                                minHeight: 7,
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Icon(
+                                          Icons.chevron_right,
+                                          color: LqColors.primary,
+                                          size: 24,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                              const LqDashedDivider(),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _Stat(
+                                      label: 'Vouchers',
+                                      value: '$activeVoucherCount',
+                                      badgeText: activeVoucherCount > 0
+                                          ? '${activeVoucherCount > 3 ? 3 : activeVoucherCount} expiring soon'
+                                          : '0 expiring soon',
+                                      icon: Icons.confirmation_num_outlined,
+                                      onTap: () => onNavigateToRewards != null
+                                          ? onNavigateToRewards!()
+                                          : Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => MyRewardsScreen(
+                                                  userId: user.id,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(
+                                    height: 104,
+                                    child: LqDashedDivider(vertical: true),
+                                  ),
+                                  Expanded(
+                                    child: _Stat(
+                                      label: 'Reviews',
+                                      value: '$activeReviewCount',
+                                      badgeText: ReviewService.storytellerBadgeForReviews(
+                                        activeReviewCount,
+                                        totalAppReviewsSnap.data,
+                                      ),
+                                      icon: Icons.star_border,
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              MyReviewsScreen(userId: user.id),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(
-                          height: 104,
-                          child: LqDashedDivider(vertical: true),
-                        ),
-                        Expanded(
-                          child: _Stat(
-                            label: 'Reviews',
-                            value: '${liveUser.reviewCount}',
-                            badgeText: liveUser.reviewCount > 0
-                                ? 'Top 8% storyteller'
-                                : 'Top storyteller',
-                            icon: Icons.star_border,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => MyReviewsScreen(userId: user.id),
+                        const SizedBox(height: 16),
+                        _DailyCheckInCard(uid: user.id),
+                        const SizedBox(height: 28),
+                        Text('YOUR JOURNEY', style: monoLabel),
+                        const SizedBox(height: 12),
+                        LqCard(
+                          child: Column(
+                            children: [
+                              _JourneyItem(
+                                icon: Icons.confirmation_num_outlined,
+                                title: 'My vouchers',
+                                subtitle: '$activeVoucherCount ready to use',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        MyRewardsScreen(userId: user.id),
+                                  ),
+                                ),
                               ),
-                            ),
+                              _JourneyItem(
+                                icon: Icons.star_outline,
+                                title: 'Reviews & ratings',
+                                subtitle: '$activeReviewCount posted',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        MyReviewsScreen(userId: user.id),
+                                  ),
+                                ),
+                              ),
+                              StreamBuilder<List<Mission>>(
+                                stream: MissionService.instance.watchMissions(
+                                  user.id,
+                                ),
+                                initialData: const <Mission>[],
+                                builder: (context, snapshot) {
+                                  final missions =
+                                      snapshot.data ?? const <Mission>[];
+                                  final activeCount = missions
+                                      .where(
+                                        (m) => m.status == MissionStatus.active,
+                                      )
+                                      .length;
+                                  return _JourneyItem(
+                                    icon: Icons.auto_awesome_outlined,
+                                    title: 'Missions',
+                                    subtitle: '$activeCount in progress',
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => MissionListScreen(
+                                          uid: user.id,
+                                          currentLat:
+                                              LocationTrackerService
+                                                  .instance
+                                                  .lastPosition
+                                                  ?.latitude ??
+                                              5.4141,
+                                          currentLng:
+                                              LocationTrackerService
+                                                  .instance
+                                                  .lastPosition
+                                                  ?.longitude ??
+                                              100.3288,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _JourneyItem(
+                                icon: Icons.calendar_month_outlined,
+                                title: 'Daily check-in',
+                                subtitle: streakCount > 0
+                                    ? '$streakCount-day streak'
+                                    : 'Keep your streak',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        DailyCheckInScreen(userId: user.id),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.history,
+                                title: 'Visited places',
+                                subtitle: 'Your automatic location history',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => VisitedPlacesScreen(
+                                      userId: user.id,
+                                      user: user,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.people_outline,
+                                title: 'My Friends',
+                                subtitle: 'Connect & share vibes with friends',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        FriendsScreen(currentUser: user),
+                                  ),
+                                ),
+                              ),
+                              _JourneyItem(
+                                icon: Icons.emoji_events_outlined,
+                                title: 'Leaderboard',
+                                subtitle: 'Global & Friends rankings',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        LeaderboardScreen(currentUser: user),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        LqLogoutButton(
+                          onPressed: () => confirmLqSignOut(
+                            context,
+                            AuthService.instance.signOut,
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _DailyCheckInCard(uid: user.id),
-            const SizedBox(height: 28),
-            Text('YOUR JOURNEY', style: monoLabel),
-            const SizedBox(height: 12),
-            LqCard(
-              child: Column(
-                children: [
-                  _JourneyItem(
-                    icon: Icons.confirmation_num_outlined,
-                    title: 'My vouchers',
-                    subtitle: '${liveUser.voucherCount} ready to use',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MyRewardsScreen(userId: user.id),
-                      ),
-                    ),
-                  ),
-                  _JourneyItem(
-                    icon: Icons.star_outline,
-                    title: 'Reviews & ratings',
-                    subtitle: '${liveUser.reviewCount} posted',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MyReviewsScreen(userId: user.id),
-                      ),
-                    ),
-                  ),
-                  StreamBuilder<List<Mission>>(
-                    stream: MissionService.instance.watchMissions(user.id),
-                    initialData: const <Mission>[],
-                    builder: (context, snapshot) {
-                      final missions = snapshot.data ?? const <Mission>[];
-                      final activeCount = missions
-                          .where((m) => m.status == MissionStatus.active)
-                          .length;
-                      return _JourneyItem(
-                        icon: Icons.auto_awesome_outlined,
-                        title: 'Missions',
-                        subtitle: '$activeCount in progress',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MissionListScreen(
-                              uid: user.id,
-                              currentLat: LocationTrackerService.instance.lastPosition?.latitude ?? 5.4141,
-                              currentLng: LocationTrackerService.instance.lastPosition?.longitude ?? 100.3288,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  _JourneyItem(
-                    icon: Icons.history,
-                    title: 'Visited places',
-                    subtitle: 'Your automatic location history',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => VisitedPlacesScreen(userId: user.id, user: user),
-                      ),
-                    ),
-                  ),
-                  _JourneyItem(
-                    icon: Icons.people_outline,
-                    title: 'My Friends',
-                    subtitle: 'Connect & share vibes with friends',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => FriendsScreen(currentUser: user),
-                      ),
-                    ),
-                  ),
-                  _JourneyItem(
-                    icon: Icons.emoji_events_outlined,
-                    title: 'Leaderboard',
-                    subtitle: 'Global & Friends rankings',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => LeaderboardScreen(currentUser: user),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            LqLogoutButton(
-              onPressed: () =>
-                  confirmLqSignOut(context, AuthService.instance.signOut),
-            ),
-          ],
-        ),
+                  );
+                },
+              );
+            },
+          );
+        },
       );
     },
   );
+},
+);
+}
 }
 
 class _Stat extends StatelessWidget {
@@ -536,7 +660,10 @@ class _Stat extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 value,
-                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               if (badgeText != null && badgeText!.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -602,17 +729,25 @@ class _DailyCheckInCardState extends State<_DailyCheckInCard> {
     }
   }
 
+  Stream<DocumentSnapshot<Map<String, dynamic>>?> _docStream() {
+    try {
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.uid)
+          .snapshots();
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Reads streakCount/lastCheckInDate directly off the raw user doc —
     // these fields deliberately aren't on AppUser (see CheckInService's
     // class doc), so this bypasses UserRepository.watch() and streams
     // the document itself instead.
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.uid)
-          .snapshots(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+      stream: _docStream(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data() ?? const <String, dynamic>{};
         final streakCount = (data['streakCount'] as num?)?.toInt() ?? 0;
@@ -736,38 +871,49 @@ class SettingsScreen extends StatelessWidget {
   final Future<void> Function()? onSignOut;
 
   @override
-  Widget build(BuildContext context) => LqPage(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const LqBackButton(label: 'Profile'),
-          const LqTitleBlock(eyebrow: 'Profile', title: 'Settings'),
-          const SizedBox(height: 26),
-          _section('Personal details', [
-            _SettingTile(
-              icon: Icons.email_outlined,
-              title: 'Email address',
-              subtitle: user.email,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const EmailAddressScreen()),
-              ),
-            ),
-            _SettingTile(
-              icon: Icons.lock_outline,
-              title: 'Password & security',
-              subtitle: 'Protect your LocalQuest account',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const PasswordSecurityScreen(),
+  Widget build(BuildContext context) => StreamBuilder<AppUser>(
+    stream: UserRepository.instance.watch(user.id),
+    initialData: user,
+    builder: (context, snapshot) {
+      final currentUser = snapshot.data ?? user;
+      return LqPage(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 28, 16, 30),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const LqBackButton(label: 'Profile'),
+              const LqTitleBlock(eyebrow: 'Profile', title: 'Settings'),
+              const SizedBox(height: 26),
+              _section('Personal details', [
+                _SettingTile(
+                  icon: Icons.email_outlined,
+                  title: 'Email address',
+                  subtitle: currentUser.email,
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            EmailAddressScreen(currentEmail: currentUser.email),
+                      ),
+                    );
+                    await AuthService.instance.syncCurrentUserEmail(currentUser.id);
+                  },
                 ),
-              ),
-            ),
-            _BiometricSettingTile(userId: user.id),
-          ]),
+                _SettingTile(
+                  icon: Icons.lock_outline,
+                  title: 'Password & security',
+                  subtitle: 'Protect your LocalQuest account',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PasswordSecurityScreen(),
+                    ),
+                  ),
+                ),
+                _BiometricSettingTile(userId: currentUser.id),
+              ]),
           const SizedBox(height: 24),
           _section(
             'Preferences',
@@ -855,6 +1001,8 @@ class SettingsScreen extends StatelessWidget {
       ),
     ),
   );
+    },
+  );
 
   Widget _section(String label, List<Widget> children) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -898,9 +1046,9 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
 
   Future<void> _checkStatus() async {
     final linked = await AuthService.instance.isGoogleLinked(widget.user.id);
-    final email =
-    await AuthService.instance.getLinkedGoogleEmail(widget.user.id);
-    if (mounted) {
+    final email = await AuthService.instance.getLinkedGoogleEmail(
+      widget.user.id,
+    );    if (mounted) {
       setState(() {
         _isLinked = linked;
         _linkedEmail = email;
@@ -934,9 +1082,8 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
             ? 'Checking connection...'
             : _isLinked
             ? (_linkedEmail != null && _linkedEmail!.isNotEmpty
-            ? 'Connected · $_linkedEmail'
-            : 'Connected to Google')
-            : 'Not connected',
+                  ? 'Connected · $_linkedEmail'
+                  : 'Connected to Google')            : 'Not connected',
         style: TextStyle(
           color: _isLinked ? const Color(0xFF15803D) : LqColors.muted,
           fontSize: 12,
@@ -953,147 +1100,149 @@ class _GoogleSettingTileState extends State<_GoogleSettingTile> {
           ? const SizedBox(width: 40, height: 28)
           : _isLinked
           ? OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: LqColors.danger,
-          side: const BorderSide(color: LqColors.danger),
-          padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () async {
-          final canUnlink =
-          await AuthService.instance.canUnlinkGoogle();
-          if (!context.mounted) return;
-
-          if (!canUnlink) {
-            await showDialog<void>(
-              context: context,
-              builder: (dCtx) => AlertDialog(
-                title: const Text('Cannot Unlink Google'),
-                content: const Text(
-                  'Google is your only sign-in method for this account. Please set a password in Password & Security first before unlinking your Google account.',
+              style: OutlinedButton.styleFrom(
+                foregroundColor: LqColors.danger,
+                side: const BorderSide(color: LqColors.danger),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(dCtx),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.pop(dCtx);
-                      if (context.mounted) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                            const PasswordSecurityScreen(),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('Set Password'),
-                  ),
-                ],
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-            );
-            return;
-          }
+              onPressed: () async {
+                final canUnlink = await AuthService.instance.canUnlinkGoogle();
+                if (!context.mounted) return;
 
-          if (!context.mounted) return;
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (dCtx) => AlertDialog(
-              title: const Text('Unlink Google Account?'),
-              content: Text(
-                _linkedEmail != null && _linkedEmail!.isNotEmpty
-                    ? 'This will disconnect your Google account ($_linkedEmail) from LocalQuest. You can still sign in using your email and password.'
-                    : 'This will disconnect your Google account from LocalQuest. You can still sign in using your email and password.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dCtx, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: LqColors.danger,
+                if (!canUnlink) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (dCtx) => AlertDialog(
+                      title: const Text('Cannot Unlink Google'),
+                      content: const Text(
+                        'Google is your only sign-in method for this account. Please set a password in Password & Security first before unlinking your Google account.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dCtx),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () {
+                            Navigator.pop(dCtx);
+                            if (context.mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const PasswordSecurityScreen(),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Set Password'),
+                        ),
+                      ],
+                    ),
+                  );
+                  return;
+                }
+
+                if (!context.mounted) return;
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    title: const Text('Unlink Google Account?'),
+                    content: Text(
+                      _linkedEmail != null && _linkedEmail!.isNotEmpty
+                          ? 'This will disconnect your Google account ($_linkedEmail) from LocalQuest. You can still sign in using your email and password.'
+                          : 'This will disconnect your Google account from LocalQuest. You can still sign in using your email and password.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: LqColors.danger,
+                        ),
+                        onPressed: () => Navigator.pop(dCtx, true),
+                        child: const Text('Unlink'),
+                      ),
+                    ],
                   ),
-                  onPressed: () => Navigator.pop(dCtx, true),
-                  child: const Text('Unlink'),
-                ),
-              ],
-            ),
-          );
+                );
 
-          if (confirm == true) {
-            setState(() => _busy = true);
-            try {
-              await AuthService.instance.unlinkGoogleAccount();
-              await _checkStatus();
-              if (context.mounted) {
-                showLqMessage(
-                  context,
-                  'Google account unlinked successfully.',
-                );
-              }
-            } catch (e) {
-              if (context.mounted) {
-                showLqMessage(
-                  context,
-                  e.toString().replaceAll('Exception: ', ''),
-                  error: true,
-                );
-              }
-            } finally {
-              if (mounted) setState(() => _busy = false);
-            }
-          }
-        },
-        child: const Text(
-          'Unlink',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-      )
+                if (confirm == true) {
+                  setState(() => _busy = true);
+                  try {
+                    await AuthService.instance.unlinkGoogleAccount();
+                    await _checkStatus();
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        'Google account unlinked successfully.',
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      showLqMessage(
+                        context,
+                        e.toString().replaceAll('Exception: ', ''),
+                        error: true,
+                      );
+                    }
+                  } finally {
+                    if (mounted) setState(() => _busy = false);
+                  }
+                }
+              },
+              child: const Text(
+                'Unlink',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            )
           : OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: LqColors.primary,
-          side: const BorderSide(color: LqColors.primary),
-          padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () async {
-          setState(() => _busy = true);
-          try {
-            final success =
-            await AuthService.instance.linkGoogleAccount();
-            await _checkStatus();
-            if (context.mounted && success) {
-              showLqMessage(
-                context,
-                'Google account linked successfully!',
-              );
-            }
-          } catch (e) {
-            if (context.mounted) {
-              showLqMessage(
-                context,
-                e.toString().replaceAll('Exception: ', ''),
-                error: true,
-              );
-            }
-          } finally {
-            if (mounted) setState(() => _busy = false);
-          }
-        },
-        child: const Text(
-          'Connect',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
+              style: OutlinedButton.styleFrom(
+                foregroundColor: LqColors.primary,
+                side: const BorderSide(color: LqColors.primary),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                setState(() => _busy = true);
+                try {
+                  final success = await AuthService.instance
+                      .linkGoogleAccount();
+                  await _checkStatus();
+                  if (context.mounted && success) {
+                    showLqMessage(
+                      context,
+                      'Google account linked successfully!',
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    showLqMessage(
+                      context,
+                      e.toString().replaceAll('Exception: ', ''),
+                      error: true,
+                    );
+                  }
+                } finally {
+                  if (mounted) setState(() => _busy = false);
+                }
+              },
+              child: const Text(
+                'Connect',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),    );
   }
 }
 
@@ -1133,15 +1282,12 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: LqColors.line),
         ),
         alignment: Alignment.center,
-        child: const Icon(
-          Icons.headphones,
-          color: Color(0xFF1DB954),
-          size: 24,
-        ),
+        child: const LqSpotifyLogo(size: 24),
       ),
       title: const Text(
         'Spotify Music',
@@ -1163,62 +1309,76 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
           ? const SizedBox(width: 40, height: 28)
           : _isLinked
           ? OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: LqColors.danger,
-          side: const BorderSide(color: LqColors.danger),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () async {
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (dCtx) => AlertDialog(
-              title: const Text('Unlink Spotify?'),
-              content: const Text(
-                'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+              style: OutlinedButton.styleFrom(
+                foregroundColor: LqColors.danger,
+                side: const BorderSide(color: LqColors.danger),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dCtx, false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
-                  onPressed: () => Navigator.pop(dCtx, true),
-                  child: const Text('Unlink'),
-                ),
-              ],
-            ),
-          );
-          if (confirm == true) {
-            await SpotifyService.instance.disconnectUser(widget.userId);
-            _checkStatus();
-            if (context.mounted) {
-              showLqMessage(context, 'Spotify unlinked successfully.');
-            }
-          }
-        },
-        child: const Text('Unlink', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-      )
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    title: const Text('Unlink Spotify?'),
+                    content: const Text(
+                      'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dCtx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: LqColors.danger,
+                        ),
+                        onPressed: () => Navigator.pop(dCtx, true),
+                        child: const Text('Unlink'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await SpotifyService.instance.disconnectUser(widget.userId);
+                  _checkStatus();
+                  if (context.mounted) {
+                    showLqMessage(context, 'Spotify unlinked successfully.');
+                  }
+                }
+              },
+              child: const Text(
+                'Unlink',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            )
           : OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF1DB954),
-          side: const BorderSide(color: Color(0xFF1DB954)),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () async {
-          final success = await SpotifyService.instance.authenticateWithSpotify();
-          _checkStatus();
-          if (context.mounted && success) {
-            showLqMessage(context, 'Spotify connected!');
-          }
-        },
-        child: const Text('Connect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-      ),
-    );
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1DB954),
+                side: const BorderSide(color: Color(0xFF1DB954)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                final success = await SpotifyService.instance
+                    .authenticateWithSpotify();
+                _checkStatus();
+                if (context.mounted && success) {
+                  showLqMessage(context, 'Spotify connected!');
+                }
+              },
+              child: const Text(
+                'Connect',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),    );
   }
 }
 
@@ -1241,9 +1401,9 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
 
   Future<void> _loadBiometrics() async {
     final supported = await BiometricAuthService.instance.isSupported();
-    final enabled =
-    await BiometricAuthService.instance.isEnabled(widget.userId);
-    if (mounted) {
+    final enabled = await BiometricAuthService.instance.isEnabled(
+      widget.userId,
+    );    if (mounted) {
       setState(() {
         _supported = supported;
         _enabled = enabled;
@@ -1296,10 +1456,7 @@ class _BiometricSettingTileState extends State<_BiometricSettingTile> {
         'Use fingerprint or Face ID for faster login',
         style: TextStyle(color: LqColors.muted, fontSize: 12),
       ),
-      trailing: Switch(
-        value: _enabled,
-        onChanged: _toggleBiometrics,
-      ),
+      trailing: Switch(value: _enabled, onChanged: _toggleBiometrics),
     );
   }
 }
@@ -1391,7 +1548,9 @@ class _PreferenceTileState extends State<_PreferenceTile> {
         if (widget.keyName == 'locationHistory') {
           LocationTrackerService.instance.setLocationHistoryEnabled(next);
           if (next) {
-            await LocationTrackerService.instance.startTracking(userId: widget.user.id);
+            await LocationTrackerService.instance.startTracking(
+              userId: widget.user.id,
+            );
           } else {
             await LocationTrackerService.instance.stopTracking();
           }
@@ -1439,6 +1598,7 @@ class AccountDetailsScreen extends StatefulWidget {
 }
 
 class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
+  final _formKey = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.user.displayName);
   late final _username = TextEditingController(text: widget.user.username);
   late final _phone = TextEditingController(text: widget.user.phone);
@@ -1449,39 +1609,120 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   );
   bool _busy = false;
   @override
-  Widget build(BuildContext context) => _SimpleFormPage(
-    eyebrow: 'Identity',
-    title: 'Account details',
-    subtitle: 'Your personal details and how we reach you.',
-    headerIcon: Icons.person_outline,
-    children: [
-      ProfilePhotoEditor(user: widget.user),
-      const SizedBox(height: 20),
-      LqField(controller: _name, label: 'Display name'),
-      const SizedBox(height: 16),
-      LqField(controller: _username, label: 'Username'),
-      const SizedBox(height: 16),
-      LqField(controller: _phone, label: 'Phone number'),
-      const SizedBox(height: 16),
-      LqField(
-        controller: _birthday,
-        label: 'Birthday',
-        hint: 'Choose date',
-        readOnly: true,
-        suffixIcon: Icons.calendar_month_outlined,
-        onTap: _pickBirthday,
+  void dispose() {
+    _name.dispose();
+    _username.dispose();
+    _phone.dispose();
+    _birthday.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LqPage(
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const LqBackButton(label: 'Profile'),
+          const SizedBox(height: 14),
+          const LqTitleBlock(eyebrow: 'Identity', title: 'Account details'),
+          const SizedBox(height: 20),
+          // Top profile card matching Photo 2 design
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F0FE),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                ProfilePhotoEditor(user: widget.user, showInfoText: false),
+                const SizedBox(height: 12),
+                Text(
+                  _name.text.trim().isNotEmpty
+                      ? _name.text.trim()
+                      : (widget.user.displayName.isNotEmpty
+                            ? widget.user.displayName
+                            : 'Explorer'),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: LqColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_username.text.trim().isNotEmpty ? _username.text.trim() : widget.user.username} · ${widget.user.email}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: LqColors.muted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Form card with dashed border matching Photo 2
+          LqCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LqField(
+                    controller: _name,
+                    label: 'Display name',
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'Display name is required.'
+                        : null,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _username,
+                    label: 'Username',
+                    validator: LqInputValidators.validateUsernameFormat,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _phone,
+                    label: 'Phone number',
+                    keyboardType: TextInputType.phone,
+                    validator: LqInputValidators.validateMalaysianPhone,
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _birthday,
+                    label: 'Birthday',
+                    hint: 'Choose date',
+                    readOnly: true,
+                    suffixIcon: Icons.calendar_month_outlined,
+                    onTap: _pickBirthday,
+                  ),
+                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: LqButton.pill(
+                      label: 'Save changes',
+                      busy: _busy,
+                      onPressed: _save,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      const SizedBox(height: 24),
-      LqButton(
-        label: 'Save changes',
-        busy: _busy,
-        icon: Icons.save_outlined,
-        onPressed: _save,
-      ),
-    ],
+    ),
   );
 
   Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     final parts = _birthday.text.split('/');
     final birthday = parts.length == 3
@@ -1534,17 +1775,68 @@ class EmailAddressScreen extends StatefulWidget {
   State<EmailAddressScreen> createState() => _EmailAddressScreenState();
 }
 
-class _EmailAddressScreenState extends State<EmailAddressScreen> {
+class _EmailAddressScreenState extends State<EmailAddressScreen>
+    with WidgetsBindingObserver {
   final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  late String _currentEmail;
   bool _busy = false;
+  bool _checkingStatus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    String? initial;
+    try {
+      initial = widget.currentEmail ?? AuthService.instance.auth.currentUser?.email;
+    } catch (_) {
+      initial = widget.currentEmail;
+    }
+    _currentEmail = initial ?? '';
+    WidgetsBinding.instance.addObserver(this);
+    try {
+      if (AuthService.instance.auth.currentUser != null) {
+        _checkVerification(quiet: true);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkVerification(quiet: true);
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkVerification({bool quiet = false}) async {
+    if (_checkingStatus) return;
+    setState(() => _checkingStatus = true);
+    try {
+      final fresh = await AuthService.instance.syncCurrentUserEmail();
+      if (fresh != null && fresh.isNotEmpty && fresh != _currentEmail) {
+        if (mounted) {
+          setState(() => _currentEmail = fresh);
+          showLqMessage(context, 'Email address updated to $_currentEmail.');
+        }
+      } else if (!quiet && mounted) {
+        showLqMessage(
+          context,
+          'Email not changed yet. Please click the verification link sent to your new email.',
+        );
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _checkingStatus = false);
+    }
   }
 
   @override
@@ -1560,9 +1852,8 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
         child: Column(
           children: [
             TextFormField(
-              initialValue:
-              widget.currentEmail ?? FirebaseAuth.instance.currentUser?.email,
-              enabled: false,
+              key: ValueKey(_currentEmail),
+              initialValue: _currentEmail,              enabled: false,
               decoration: const InputDecoration(labelText: 'Current email'),
             ),
             const SizedBox(height: 16),
@@ -1579,17 +1870,41 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
               controller: _password,
               label: 'Current password',
               obscureText: true,
-              validator: (v) =>
-              v == null || v.isEmpty ? 'Enter your current password.' : null,
-            ),
+              validator: (v) => v == null || v.isEmpty
+                  ? 'Enter your current password.'
+                  : null,            ),
             const SizedBox(height: 12),
             const Text(
               'We’ll send a verification link before your email address changes.',
               style: TextStyle(color: LqColors.muted, fontSize: 12),
             ),
-            const SizedBox(height: 24),
-            LqButton(label: 'Send verification', busy: _busy, onPressed: _save),
-          ],
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _checkingStatus ? null : () => _checkVerification(quiet: false),
+                icon: _checkingStatus
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 16),
+                label: const Text(
+                  'Already verified? Check status',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: LqButton.pill(
+                label: 'Save changes',
+                busy: _busy,
+                onPressed: _save,
+              ),
+            ),          ],
         ),
       ),
     ],
@@ -1603,7 +1918,12 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
         currentPassword: _password.text,
         newEmail: _email.text,
       );
-      if (mounted) showLqMessage(context, 'Verification email sent.');
+      if (mounted) {
+        showLqMessage(
+          context,
+          'Verification email sent. Click the link in your email, then return here to check status.',
+        );
+      }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {
@@ -1667,9 +1987,9 @@ class _PasswordSecurityScreenState extends State<PasswordSecurityScreen> {
                 controller: _current,
                 label: 'Current password',
                 obscureText: true,
-                validator: (v) =>
-                v == null || v.isEmpty ? 'Enter your current password.' : null,
-              ),
+                validator: (v) => v == null || v.isEmpty
+                    ? 'Enter your current password.'
+                    : null,              ),
               const SizedBox(height: 16),
             ],
             LqNewPasswordField(
@@ -1780,11 +2100,7 @@ class _SimpleFormPage extends StatelessWidget {
 }
 
 class VisitedPlacesScreen extends StatefulWidget {
-  const VisitedPlacesScreen({
-    super.key,
-    required this.userId,
-    this.user,
-  });
+  const VisitedPlacesScreen({super.key, required this.userId, this.user});
   final String userId;
   final AppUser? user;
 
@@ -1845,8 +2161,8 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(
+            children: const [
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1864,144 +2180,6 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                     ),
                   ],
                 ),
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: LqColors.muted),
-                tooltip: 'Tracker Options & Simulation',
-                onSelected: (value) async {
-                  if (value == 'simulate_chinahouse') {
-                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          'Location history logging is paused in Settings.',
-                          error: true,
-                        );
-                      }
-                      return;
-                    }
-                    final ok = await LocationTrackerService.instance.simulateArrival(
-                      businessId: 'demo_biz_chinahouse_penang',
-                      userId: widget.userId,
-                    );
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok
-                            ? 'Simulated arrival at ChinaHouse Cafe! Visit recorded.'
-                            : 'Already dwelling at or cooldown active for ChinaHouse.',
-                      );
-                    }
-                  } else if (value == 'simulate_tohsoon') {
-                    if (!LocationTrackerService.instance.isLocationHistoryEnabled) {
-                      if (context.mounted) {
-                        showLqMessage(
-                          context,
-                          'Location history logging is paused in Settings.',
-                          error: true,
-                        );
-                      }
-                      return;
-                    }
-                    final ok = await LocationTrackerService.instance.simulateArrival(
-                      businessId: 'demo_biz_toh_soon_penang',
-                      userId: widget.userId,
-                    );
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok
-                            ? 'Simulated arrival at Toh Soon Cafe! Visit recorded.'
-                            : 'Already dwelling at or cooldown active for Toh Soon.',
-                      );
-                    }
-                  } else if (value == 'resume_tracking') {
-                    final ok = await LocationTrackerService.instance.startTracking(userId: widget.userId);
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        ok ? 'Automatic tracking active.' : 'Could not start tracking (check GPS permission or Settings).',
-                      );
-                    }
-                  } else if (value == 'open_settings') {
-                    final targetUser = widget.user ??
-                        AppUser(
-                          id: widget.userId,
-                          email: '',
-                          displayName: 'Explorer',
-                          username: '@explorer',
-                          role: AccountRole.tourist,
-                        );
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SettingsScreen(user: targetUser),
-                      ),
-                    );
-                  } else if (value == 'clean_duplicates') {
-                    final removed = await UserRepository.instance.cleanDuplicateVisitedPlaces(widget.userId);
-                    if (context.mounted) {
-                      showLqMessage(
-                        context,
-                        removed > 0
-                            ? 'Removed $removed duplicate record(s).'
-                            : 'No duplicate records found.',
-                      );
-                    }
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'simulate_chinahouse',
-                    child: Row(
-                      children: [
-                        Icon(Icons.coffee, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Simulate Arrival: ChinaHouse'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'simulate_tohsoon',
-                    child: Row(
-                      children: [
-                        Icon(Icons.breakfast_dining, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Simulate Arrival: Toh Soon'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'resume_tracking',
-                    child: Row(
-                      children: [
-                        Icon(Icons.my_location, size: 18, color: LqColors.muted),
-                        SizedBox(width: 8),
-                        Text('Re-check GPS Tracking'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'clean_duplicates',
-                    child: Row(
-                      children: [
-                        Icon(Icons.cleaning_services_outlined, size: 18, color: LqColors.primary),
-                        SizedBox(width: 8),
-                        Text('Clean Duplicate Records'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'open_settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.tune, size: 18, color: LqColors.muted),
-                        SizedBox(width: 8),
-                        Text('Location History Settings'),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
@@ -2030,13 +2208,16 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                 final seenKeys = <String>{};
                 for (final doc in rawDocs) {
                   final data = doc.data();
-                  final name = (data['name'] as String? ?? '').trim().toLowerCase();
+                  final name = (data['name'] as String? ?? '')
+                      .trim()
+                      .toLowerCase();
                   final bizId = (data['businessId'] as String? ?? '').trim();
                   final date = (data['visitedAt'] as Timestamp?)?.toDate();
                   final timeKey = date != null
                       ? '${date.year}-${date.month}-${date.day}_${date.hour}:${date.minute}'
                       : doc.id;
-                  final dedupeKey = '${bizId.isNotEmpty ? bizId : name}_$timeKey';
+                  final dedupeKey =
+                      '${bizId.isNotEmpty ? bizId : name}_$timeKey';
 
                   if (!seenKeys.contains(dedupeKey)) {
                     seenKeys.add(dedupeKey);
@@ -2165,7 +2346,9 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                                   children: [
                                     if (businessId.isNotEmpty) ...[
                                       InkWell(
-                                        key: Key('visited_place_review_${docs[index].id}'),
+                                        key: Key(
+                                          'visited_place_review_${docs[index].id}',
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
                                         onTap: () => Navigator.push(
                                           context,
@@ -2173,7 +2356,9 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                                             builder: (_) => WriteReviewScreen(
                                               userId: widget.userId,
                                               businessId: businessId,
-                                              businessName: data['name'] as String? ?? 'this business',
+                                              businessName:
+                                                  data['name'] as String? ??
+                                                  'this business',
                                             ),
                                           ),
                                         ),
@@ -2189,17 +2374,28 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
                                       const SizedBox(width: 4),
                                     ],
                                     InkWell(
-                                      key: Key('visited_place_delete_${docs[index].id}'),
+                                      key: Key(
+                                        'visited_place_delete_${docs[index].id}',
+                                      ),
                                       borderRadius: BorderRadius.circular(12),
                                       onTap: () async {
-                                        final placeName = data['name'] as String? ?? 'Visited place';
+                                        final placeName =
+                                            data['name'] as String? ??
+                                            'Visited place';
                                         await docs[index].reference.delete();
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
                                             SnackBar(
-                                              content: Text('Removed $placeName from history'),
-                                              behavior: SnackBarBehavior.floating,
-                                              duration: const Duration(seconds: 2),
+                                              content: Text(
+                                                'Removed $placeName from history',
+                                              ),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              duration: const Duration(
+                                                seconds: 2,
+                                              ),
                                             ),
                                           );
                                         }
@@ -2231,11 +2427,7 @@ class _VisitedPlacesScreenState extends State<VisitedPlacesScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.shield_outlined,
-                  size: 14,
-                  color: Color(0xFF8A94A6),
-                ),
+                Icon(Icons.shield_outlined, size: 14, color: Color(0xFF8A94A6)),
                 SizedBox(width: 6),
                 Text(
                   'Location history is private to you.',
@@ -2399,16 +2591,20 @@ class NotificationsScreen extends StatelessWidget {
       child: StreamBuilder<List<ChatConversation>>(
         stream: DirectChatService.instance.streamConversations(user.id),
         builder: (context, chatSnap) {
-          final conversations = (chatSnap.data ?? [])
-              .where((c) => c.lastMessage.isNotEmpty)
-              .toList()
-            ..sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
+          final conversations =
+              (chatSnap.data ?? [])
+                  .where((c) => c.lastMessage.isNotEmpty)
+                  .toList()
+                ..sort(
+                  (a, b) => b.lastMessageTime.compareTo(a.lastMessageTime),
+                );
 
           return StreamBuilder<List<FriendRequest>>(
             stream: SocialService.instance.streamFriendRequests(user.id),
             builder: (context, reqSnap) {
               final requests = reqSnap.data ?? [];
-              final bool hasItems = conversations.isNotEmpty || requests.isNotEmpty;
+              final bool hasItems =
+                  conversations.isNotEmpty || requests.isNotEmpty;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
@@ -2439,8 +2635,12 @@ class NotificationsScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       ...requests.map((req) {
                         final rawUser = req.fromUsername;
-                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
-                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        final cleanUser = rawUser.startsWith('@')
+                            ? rawUser.substring(1)
+                            : rawUser;
+                        final userLabel = cleanUser.isNotEmpty
+                            ? '@$cleanUser'
+                            : '';
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.all(12),
@@ -2474,7 +2674,10 @@ class NotificationsScreen extends StatelessWidget {
                                     const SizedBox(height: 2),
                                     const Text(
                                       'Sent you a friend request',
-                                      style: TextStyle(fontSize: 12, color: LqColors.muted),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: LqColors.muted,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -2486,39 +2689,66 @@ class NotificationsScreen extends StatelessWidget {
                                   FilledButton(
                                     style: FilledButton.styleFrom(
                                       backgroundColor: LqColors.primary,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
                                       minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     onPressed: () async {
-                                      await SocialService.instance.acceptFriendRequest(
-                                        currentUser: user,
-                                        request: req,
-                                      );
+                                      await SocialService.instance
+                                          .acceptFriendRequest(
+                                            currentUser: user,
+                                            request: req,
+                                          );
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Connected with ${req.fromDisplayName}!')),
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Connected with ${req.fromDisplayName}!',
+                                            ),
+                                          ),
                                         );
                                       }
                                     },
-                                    child: const Text('Accept', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                    child: const Text(
+                                      'Accept',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 6),
                                   OutlinedButton(
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: LqColors.muted,
-                                      side: const BorderSide(color: LqColors.line),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      side: const BorderSide(
+                                        color: LqColors.line,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
                                       minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     onPressed: () async {
-                                      await SocialService.instance.rejectFriendRequest(
-                                        currentUserId: user.id,
-                                        requestId: req.id,
-                                      );
+                                      await SocialService.instance
+                                          .rejectFriendRequest(
+                                            currentUserId: user.id,
+                                            requestId: req.id,
+                                          );
                                     },
-                                    child: const Text('Decline', style: TextStyle(fontSize: 12)),
+                                    child: const Text(
+                                      'Decline',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -2543,17 +2773,25 @@ class NotificationsScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       ...conversations.map((conv) {
                         final rawUser = conv.otherUsername;
-                        final cleanUser = rawUser.startsWith('@') ? rawUser.substring(1) : rawUser;
-                        final userLabel = cleanUser.isNotEmpty ? '@$cleanUser' : '';
+                        final cleanUser = rawUser.startsWith('@')
+                            ? rawUser.substring(1)
+                            : rawUser;
+                        final userLabel = cleanUser.isNotEmpty
+                            ? '@$cleanUser'
+                            : '';
                         final hasUnread = conv.unreadCount > 0;
 
                         return Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           decoration: BoxDecoration(
-                            color: hasUnread ? LqColors.primarySoft.withValues(alpha: 0.3) : LqColors.surface,
+                            color: hasUnread
+                                ? LqColors.primarySoft.withValues(alpha: 0.3)
+                                : LqColors.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: hasUnread ? LqColors.primary.withValues(alpha: 0.4) : LqColors.line,
+                              color: hasUnread
+                                  ? LqColors.primary.withValues(alpha: 0.4)
+                                  : LqColors.line,
                             ),
                           ),
                           child: InkWell(
@@ -2583,7 +2821,9 @@ class NotificationsScreen extends StatelessWidget {
                                   Stack(
                                     children: [
                                       LqAvatar(
-                                        initials: initialsFor(conv.otherDisplayName),
+                                        initials: initialsFor(
+                                          conv.otherDisplayName,
+                                        ),
                                         photoUrl: conv.otherPhotoUrl,
                                         radius: 22,
                                       ),
@@ -2605,7 +2845,8 @@ class NotificationsScreen extends StatelessWidget {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -2615,7 +2856,9 @@ class NotificationsScreen extends StatelessWidget {
                                                     ? '${conv.otherDisplayName} ($userLabel)'
                                                     : conv.otherDisplayName,
                                                 style: TextStyle(
-                                                  fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w700,
+                                                  fontWeight: hasUnread
+                                                      ? FontWeight.w800
+                                                      : FontWeight.w700,
                                                   fontSize: 14,
                                                   color: LqColors.ink,
                                                 ),
@@ -2627,8 +2870,12 @@ class NotificationsScreen extends StatelessWidget {
                                               _timeAgo(conv.lastMessageTime),
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w500,
-                                                color: hasUnread ? LqColors.primary : LqColors.muted,
+                                                fontWeight: hasUnread
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
+                                                color: hasUnread
+                                                    ? LqColors.primary
+                                                    : LqColors.muted,
                                               ),
                                             ),
                                           ],
@@ -2641,8 +2888,12 @@ class NotificationsScreen extends StatelessWidget {
                                                 conv.lastMessage,
                                                 style: TextStyle(
                                                   fontSize: 13,
-                                                  color: hasUnread ? LqColors.ink : LqColors.muted,
-                                                  fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                                                  color: hasUnread
+                                                      ? LqColors.ink
+                                                      : LqColors.muted,
+                                                  fontWeight: hasUnread
+                                                      ? FontWeight.w600
+                                                      : FontWeight.normal,
                                                 ),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
@@ -2650,10 +2901,15 @@ class NotificationsScreen extends StatelessWidget {
                                             ),
                                             if (hasUnread)
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 2,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: LqColors.primary,
-                                                  borderRadius: BorderRadius.circular(10),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
                                                 ),
                                                 child: Text(
                                                   '${conv.unreadCount}',
@@ -2692,14 +2948,20 @@ class NotificationsScreen extends StatelessWidget {
                             const SizedBox(height: 14),
                             const Text(
                               'You’re all caught up',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Text(
                               user.role == AccountRole.merchant
                                   ? 'Campaign and voucher activity will appear here.'
                                   : 'Friend messages, requests and activity will appear here.',
-                              style: const TextStyle(color: LqColors.muted, height: 1.45),
+                              style: const TextStyle(
+                                color: LqColors.muted,
+                                height: 1.45,
+                              ),
                             ),
                           ],
                         ),
@@ -2711,7 +2973,9 @@ class NotificationsScreen extends StatelessWidget {
                       icon: Icons.tune,
                       onPressed: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => SettingsScreen(user: user)),
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(user: user),
+                        ),
                       ),
                     ),
                   ],
@@ -2739,9 +3003,9 @@ class PrivacyScreen extends StatelessWidget {
           const LqBackButton(label: 'Back to settings'),
           const SizedBox(height: 14),
           LqTitleBlock(
-            eyebrow:
-            role == AccountRole.merchant ? 'Merchant privacy' : 'Privacy',
-            title: 'Privacy & data',
+            eyebrow: role == AccountRole.merchant
+                ? 'Merchant privacy'
+                : 'Privacy',            title: 'Privacy & data',
             subtitle: role == AccountRole.merchant
                 ? 'Review business data policies, certificate confidentiality, and permissions.'
                 : 'Review personal data, permissions, and account-export options.',
@@ -2819,47 +3083,109 @@ class PrivacyScreen extends StatelessWidget {
     ),
   );
 
-  void _deleteDialog(BuildContext context) {
+  void _deleteDialog(BuildContext context) async {
+    final hasPassword = await AuthService.instance.hasPassword();
     final password = TextEditingController();
+    bool busy = false;
+    String? errorMessage;
+
+    if (!context.mounted) return;
+
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete account?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'This action cannot be undone. Enter your current password to continue.',
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Delete account?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasPassword
+                    ? 'This action cannot be undone. Enter your current password to confirm deletion.'
+                    : 'This action cannot be undone. All your profile data, progress, and vouchers will be permanently removed.',
+              ),
+              if (hasPassword) ...[
+                const SizedBox(height: 16),
+                LqField(
+                  key: const Key('delete_account_password_field'),
+                  controller: password,
+                  label: 'Current password',
+                  obscureText: true,
+                ),
+              ],
+              if (errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  errorMessage!,
+                  style: const TextStyle(color: LqColors.danger, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 16),
-            LqField(
-              key: const Key('delete_account_password_field'),
-              controller: password,
-              label: 'Current password',
-              obscureText: true,
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (hasPassword && password.text.trim().isEmpty) {
+                        setDialogState(() {
+                          errorMessage = 'Enter your current password.';
+                        });
+                        return;
+                      }
+                      setDialogState(() {
+                        busy = true;
+                        errorMessage = null;
+                      });
+                      try {
+                        await AuthService.instance.deleteAccount(
+                          hasPassword ? password.text.trim() : null,
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+                        if (context.mounted) {
+                          Navigator.of(context)
+                              .popUntil((route) => route.isFirst);
+                          showLqMessage(context, 'Account deleted successfully.');
+                        }
+                      } on LocalQuestException catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            busy = false;
+                            errorMessage = error.message;
+                          });
+                        }
+                      } catch (_) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            busy = false;
+                            errorMessage =
+                                'Failed to delete account. Please try again.';
+                          });
+                        }
+                      }
+                    },
+              style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
+              child: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Delete account'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await AuthService.instance.deleteAccount(password.text);
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              } on LocalQuestException catch (error) {
-                if (dialogContext.mounted) {
-                  showLqMessage(dialogContext, error.message, error: true);
-                }
-              }
-            },
-            style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
-            child: const Text('Delete account'),
-          ),
-        ],
       ),
     );
   }

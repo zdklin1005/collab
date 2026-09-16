@@ -64,10 +64,17 @@ import 'live_business_voucher_collection_check.dart';
 import '../../services/map_exp_history_repository.dart';
 import '../../services/map_voucher_history_repository.dart';
 
+import '../../services/external_map_navigation.dart';
+
 class InteractiveMapScreen extends StatefulWidget {
-  const InteractiveMapScreen({super.key, required this.user});
+  const InteractiveMapScreen({
+    super.key,
+    required this.user,
+    this.isActive = true,
+  });
 
   final AppUser user;
+  final bool isActive;
 
   @override
   State<InteractiveMapScreen> createState() => _InteractiveMapScreenState();
@@ -311,10 +318,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   // Temporary claim radius, separate from business discovery.
   static const double _demoBusinessVoucherClaimRadiusMeters = 50;
 
+  late bool _hasBeenActive = widget.isActive;
+
   @override
   void initState() {
     super.initState();
-    if (!MapTestConfig.enabled) {
+    _hasBeenActive = widget.isActive;
+    if (_hasBeenActive && !MapTestConfig.enabled) {
       _startLiveBusinesses();
       _startLiveLandmarks();
       _startLiveBusinessCampaigns();
@@ -325,8 +335,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
 
-    unawaited(_restoreMapStyle());
-    unawaited(_restoreDemoClaims());
+    if (_hasBeenActive) {
+      unawaited(_restoreMapStyle());
+      unawaited(_restoreDemoClaims());
+    }
   }
 
   @override
@@ -337,7 +349,6 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       _stopLiveLocation();
 
       setState(() {
-        _position = null;
         _locationError = null;
       });
     }
@@ -350,13 +361,42 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   void didUpdateWidget(covariant InteractiveMapScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!MapTestConfig.enabled && oldWidget.user.id != widget.user.id) {
+    if (widget.isActive && !_hasBeenActive) {
+      _hasBeenActive = true;
+      if (!MapTestConfig.enabled) {
+        _startLiveBusinesses();
+        _startLiveLandmarks();
+        _startLiveBusinessCampaigns();
+        _startBusinessVoucherHistory();
+      }
+      unawaited(_restoreMapStyle());
+      unawaited(_restoreDemoClaims());
+    } else if (!MapTestConfig.enabled && oldWidget.user.id != widget.user.id) {
       _startBusinessVoucherHistory();
     }
+
+    if (oldWidget.isActive == widget.isActive) return;
+
+    if (!widget.isActive) {
+      _stopLiveLocation();
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.isActive || !_foreground || !_locationAllowed) {
+        return;
+      }
+
+      unawaited(_readPosition());
+    });
   }
 
   bool _isCurrentRequest(int id) {
-    return mounted && _foreground && _locationAllowed && id == _requestId;
+    return mounted &&
+        widget.isActive &&
+        _foreground &&
+        _locationAllowed &&
+        id == _requestId;
   }
 
   void _onAccessChanged(bool allowed) {
@@ -376,7 +416,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       }
     });
 
-    if (allowed && _foreground) {
+    if (allowed && widget.isActive && _foreground) {
       _readPosition();
     }
   }
@@ -920,6 +960,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               isDemo: MapTestConfig.enabled,
               location: location,
               onClose: () => Navigator.of(sheetContext).pop(),
+              onNavigate: () {
+                unawaited(_navigateToLocation(location));
+              },
               voucherSection: business == null
                   ? null
                   : MapTestConfig.enabled
@@ -964,6 +1007,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       return;
     }
     if (!mounted ||
+        !widget.isActive ||
         !_foreground ||
         !_locationAllowed ||
         _locating ||
@@ -974,8 +1018,8 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     final requestId = ++_requestId;
 
     setState(() {
-      _locating = true;
-      _position = null;
+      // Preserve the previous marker while quietly refreshing its position.
+      _locating = _position == null;
       _locationError = null;
     });
 
@@ -2912,8 +2956,20 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       return;
     }
 
+    FirebaseFirestore? firestore;
+    try {
+      firestore = FirebaseFirestore.instance;
+    } catch (_) {
+      firestore = null;
+    }
+
+    if (firestore == null) {
+      _businessVoucherHistory = null;
+      return;
+    }
+
     _businessVoucherHistorySubscription =
-        MapVoucherHistoryRepository(firestore: FirebaseFirestore.instance)
+        MapVoucherHistoryRepository(firestore: firestore)
             .watchClaimedVoucherIds(touristId)
             .listen(
               (snapshot) {
@@ -2947,8 +3003,31 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
             );
   }
 
+  Future<void> _navigateToLocation(MapLocation location) async {
+    final opened = await ExternalMapNavigation.openWalkingDirections(
+      latitude: location.latitude,
+      longitude: location.longitude,
+    );
+
+    if (!mounted || opened) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Google Maps could not be opened. Please try again.'),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_hasBeenActive) {
+      return const SizedBox.shrink();
+    }
+
     final position = _position;
     final point = _displayPoint;
 

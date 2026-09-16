@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:collab/models/localquest_models.dart';
 import 'package:collab/screens/tourist_screens.dart';
+import 'package:collab/screens/daily_check_in_screen.dart';
 import 'package:collab/services/check_in_service.dart';
 import 'package:collab/services/reward_service.dart';
 import 'package:collab/services/review_service.dart';
@@ -209,6 +210,27 @@ void main() {
       // below), so it's intentionally not asserted here.
     });
 
+    testWidgets('My vouchers journey item is displayed with chevron and does not trigger removed popup', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TouristProfileScreen(user: testUser),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('My vouchers'));
+      await tester.pumpAndSettle();
+      expect(find.text('My vouchers'), findsOneWidget);
+      expect(find.text('4 ready to use'), findsOneWidget);
+
+      await tester.tap(find.text('My vouchers'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.textContaining('ready in your passport'), findsNothing);
+    });
+
     testWidgets('Tapping Missions opens the mission list screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -245,6 +267,64 @@ void main() {
       // mounted, via its always-present icon, rather than asserting a
       // specific streak state.
       expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    });
+
+    testWidgets('Reviews & ratings journey item is displayed and navigates to MyReviewsScreen', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TouristProfileScreen(user: testUser),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Reviews & ratings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reviews & ratings'), findsOneWidget);
+      expect(find.text('7 posted'), findsOneWidget);
+
+      await tester.tap(find.text('Reviews & ratings'));
+      await tester.pumpAndSettle();
+      expect(find.text('STORYTELLER'), findsNothing);
+    });
+
+    testWidgets('Daily check-in journey option is present and linked to DailyCheckInScreen', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TouristProfileScreen(user: testUser),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Daily check-in'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Daily check-in'), findsOneWidget);
+      expect(find.text('Keep your streak'), findsOneWidget);
+
+      // Tapping navigates to DailyCheckInScreen
+      await tester.tap(find.text('Daily check-in'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DailyCheckInScreen), findsOneWidget);
+    });
+
+    testWidgets('Vouchers and Reviews stat blocks display counts accurately', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TouristProfileScreen(user: testUser),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('VOUCHERS'), findsOneWidget);
+      expect(find.text('4'), findsWidgets);
+      expect(find.text('REVIEWS'), findsOneWidget);
+      expect(find.text('7'), findsOneWidget);
     });
 
     test('Active mission count correctly filters active status missions dynamically', () {

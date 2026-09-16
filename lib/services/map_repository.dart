@@ -29,13 +29,22 @@ bool isMappableBusiness(Business business) {
 }
 
 class MapRepository {
-  MapRepository({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  MapRepository({FirebaseFirestore? firestore}) : _customFirestore = firestore;
 
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _customFirestore;
+  FirebaseFirestore? get _firestore {
+    if (_customFirestore != null) return _customFirestore;
+    try {
+      return FirebaseFirestore.instance;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Stream<List<Business>> watchActiveBusinesses() {
-    return _firestore
+    final firestore = _firestore;
+    if (firestore == null) return Stream.value(const <Business>[]);
+    return firestore
         .collection('businesses')
         .where('active', isEqualTo: true)
         .snapshots()
@@ -68,7 +77,9 @@ class MapRepository {
   }
 
   Stream<List<MapLocation>> watchActiveLandmarks() {
-    return _firestore
+    final firestore = _firestore;
+    if (firestore == null) return Stream.value(const <MapLocation>[]);
+    return firestore
         .collection('landmarks')
         .where('active', isEqualTo: true)
         .snapshots()
@@ -100,7 +111,9 @@ class MapRepository {
   }
 
   Stream<List<RewardCheckpoint>> watchApprovedRewardCheckpoints() {
-    return _firestore
+    final firestore = _firestore;
+    if (firestore == null) return Stream.value(const <RewardCheckpoint>[]);
+    return firestore
         .collection('rewardCheckpoints')
         .where('active', isEqualTo: true)
         .where('placementApproved', isEqualTo: true)
@@ -130,7 +143,9 @@ class MapRepository {
   }
 
   Stream<List<Campaign>> watchActiveVoucherCampaigns() {
-    return _firestore
+    final firestore = _firestore;
+    if (firestore == null) return Stream.value(const <Campaign>[]);
+    return firestore
         .collection('campaigns')
         .where('type', isEqualTo: 'voucher')
         .snapshots()
@@ -167,7 +182,9 @@ class MapRepository {
   }
 
   Stream<List<Campaign>> watchActiveBusinessCampaigns() {
-    return _firestore.collection('campaigns').snapshots().map((snapshot) {
+    final firestore = _firestore;
+    if (firestore == null) return Stream.value(const <Campaign>[]);
+    return firestore.collection('campaigns').snapshots().map((snapshot) {
       final campaigns = <Campaign>[];
 
       for (final document in snapshot.docs) {

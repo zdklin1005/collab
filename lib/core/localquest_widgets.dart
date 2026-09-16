@@ -565,6 +565,27 @@ class LqGoogleLogo extends StatelessWidget {
   }
 }
 
+class LqSpotifyLogo extends StatelessWidget {
+  const LqSpotifyLogo({super.key, this.size = 20});
+  final double size;
+
+  static const String spotifySvg = '''
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="12" fill="#1DB954"/>
+  <path d="M17.9 10.39c-3.6-2.14-9.52-2.34-12.98-1.29-.55.17-1.14-.14-1.3-.69-.17-.55.14-1.14.69-1.3 4-1.21 10.54-.98 14.7 1.49.5.3.66.94.36 1.44-.29.49-.93.65-1.47.35zm-.13 3.25c-.26.42-.81.55-1.23.29-3.03-1.86-7.65-2.4-11.23-1.31-.48.14-.99-.13-1.13-.61-.14-.48.13-.99.61-1.13 4.1-1.24 9.2-.64 12.69 1.51.42.27.56.81.29 1.25zm-1.42 3.15c-.21.35-.67.46-1.02.25-2.65-1.62-5.98-1.98-9.91-1.09-.4.09-.8-.16-.89-.56-.09-.4.16-.8.56-.89 4.31-.98 8-.57 10.99 1.26.35.21.46.67.27 1.03z" fill="#000000"/>
+</svg>
+''';
+
+  @override
+  Widget build(BuildContext context) {
+    return SvgPicture.string(
+      spotifySvg,
+      width: size,
+      height: size,
+    );
+  }
+}
+
 class LqBackButton extends StatelessWidget {
   const LqBackButton({super.key, this.label = 'Back'});
   final String label;

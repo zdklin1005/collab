@@ -19,20 +19,29 @@ class LiveMapVoucherClaimService {
     FirebaseFirestore? firestore,
     String? Function()? currentUserId,
     DateTime Function()? clock,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _currentUserId =
-           currentUserId ?? (() => FirebaseAuth.instance.currentUser?.uid),
+  }) : _customFirestore = firestore,
+       _currentUserId = currentUserId,
        _clock = clock ?? DateTime.now;
 
-  final FirebaseFirestore _firestore;
-  final String? Function() _currentUserId;
+  final FirebaseFirestore? _customFirestore;
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
+  final String? Function()? _currentUserId;
   final DateTime Function() _clock;
+
+  String? _resolveCurrentUserId() {
+    if (_currentUserId != null) return _currentUserId();
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<LiveMapVoucherClaimResult> collect({
     required String uid,
     required RewardMarker reward,
   }) async {
-    if (_currentUserId() != uid) {
+    if (_resolveCurrentUserId() != uid) {
       throw StateError('The signed-in account changed.');
     }
 
@@ -55,7 +64,7 @@ class LiveMapVoucherClaimService {
         .doc(voucherId);
 
     return _firestore.runTransaction((transaction) async {
-      if (_currentUserId() != uid) {
+      if (_resolveCurrentUserId() != uid) {
         throw StateError('The signed-in account changed.');
       }
 

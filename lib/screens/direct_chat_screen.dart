@@ -580,42 +580,62 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       onTap: _showFriendDetails,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                        child: Row(
-                          children: [
-                            LqAvatar(
-                              initials: initialsFor(widget.targetDisplayName),
-                              photoUrl: widget.targetPhotoUrl,
-                              radius: 18,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    widget.targetDisplayName,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      color: LqColors.ink,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                        child: StreamBuilder<AppUser>(
+                          stream: UserRepository.instance.watch(widget.targetUserId),
+                          builder: (context, snap) {
+                            final liveUser = snap.data;
+                            final photo = (liveUser?.photoUrl != null && liveUser!.photoUrl!.isNotEmpty)
+                                ? liveUser.photoUrl
+                                : widget.targetPhotoUrl;
+                            final name = (liveUser != null &&
+                                    liveUser.displayName.isNotEmpty &&
+                                    liveUser.displayName != 'LocalQuest Explorer')
+                                ? liveUser.displayName
+                                : widget.targetDisplayName;
+                            final uname = (liveUser != null &&
+                                    liveUser.username.isNotEmpty &&
+                                    liveUser.username != '@explorer')
+                                ? liveUser.username
+                                : widget.targetUsername;
+
+                            return Row(
+                              children: [
+                                LqAvatar(
+                                  initials: initialsFor(name),
+                                  photoUrl: photo,
+                                  radius: 18,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: LqColors.ink,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        uname,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: LqColors.muted,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    widget.targetUsername,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: LqColors.muted,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ),
