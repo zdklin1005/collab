@@ -37,6 +37,16 @@ class RewardService {
   RewardService._();
   static final instance = RewardService._();
 
+  /// Creates a RewardService instance bound to a specific Firestore
+  /// instance, rather than the shared singleton's db — used by
+  /// MapExpClaimStore so map-EXP awards run against the exact Firestore
+  /// instance the surrounding transaction is on.
+  factory RewardService.withFirestore(FirebaseFirestore firestore) {
+    final service = RewardService._();
+    service.db = firestore;
+    return service;
+  }
+
   FirebaseFirestore? _db;
   FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
   set db(FirebaseFirestore customDb) => _db = customDb;

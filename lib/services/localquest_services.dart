@@ -1537,12 +1537,6 @@ class MerchantRepository {
     await batch.commit();
   }
 
-  Future<void> markClaimedVoucherRedeemed(String userId, String voucherId) {
-    return db
-        .collection('users').doc(userId).collection('claimedVouchers').doc(voucherId)
-        .update({'redeemed': true, 'redeemedAt': FieldValue.serverTimestamp()});
-  }
-
   /// Looks up a claimed campaign voucher by its code. Any merchant can
   /// run this query, but the security rule only lets them actually READ
   /// the matching document if they own the business it belongs to —
