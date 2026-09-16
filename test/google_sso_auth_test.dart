@@ -56,7 +56,7 @@ void main() {
       expect(googleBtn, findsOneWidget);
     });
 
-    testWidgets('SignupScreen step 2 displays dashed divider and Google button for Tourist', (tester) async {
+    testWidgets('SignupScreen step 2 does not display standalone Google signup button for Tourist', (tester) async {
       await tester.pumpWidget(testApp(const SignupScreen(role: AccountRole.tourist)));
       await tester.pumpAndSettle();
 
@@ -64,30 +64,23 @@ void main() {
       final continueBtn = find.widgetWithText(LqButton, 'Continue');
       expect(continueBtn, findsOneWidget);
 
-      // Dashed divider below continue
-      final dashedDividers = find.byType(LqDashedDivider);
-      expect(dashedDividers, findsWidgets);
-
-      // Google signup button
+      // Standalone Google signup button should NOT exist
       final googleBtn = find.widgetWithText(LqGoogleButton, 'Sign up with Google');
-      expect(googleBtn, findsOneWidget);
+      expect(googleBtn, findsNothing);
     });
 
-    testWidgets('SignupScreen step 2 displays dashed divider and Google button for Merchant', (tester) async {
+    testWidgets('SignupScreen step 2 does not display standalone Google signup button for Merchant', (tester) async {
       await tester.pumpWidget(testApp(const SignupScreen(role: AccountRole.merchant)));
       await tester.pumpAndSettle();
 
       final continueBtn = find.widgetWithText(LqButton, 'Continue');
       expect(continueBtn, findsOneWidget);
 
-      final dashedDividers = find.byType(LqDashedDivider);
-      expect(dashedDividers, findsWidgets);
-
       final googleBtn = find.widgetWithText(LqGoogleButton, 'Sign up with Google');
-      expect(googleBtn, findsOneWidget);
+      expect(googleBtn, findsNothing);
     });
 
-    testWidgets('SignupScreen step 3 displays dashed divider and Google button for Tourist', (tester) async {
+    testWidgets('SignupScreen step 3 does not display standalone Google signup button for Tourist', (tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -117,14 +110,11 @@ void main() {
       final createAccountBtn = find.widgetWithText(LqButton, 'Create account');
       expect(createAccountBtn, findsOneWidget);
 
-      final dashedDividers = find.byType(LqDashedDivider);
-      expect(dashedDividers, findsWidgets);
-
       final googleBtn = find.widgetWithText(LqGoogleButton, 'Sign up with Google');
-      expect(googleBtn, findsOneWidget);
+      expect(googleBtn, findsNothing);
     });
 
-    testWidgets('SignupScreen step 3 displays dashed divider and Google button for Merchant', (tester) async {
+    testWidgets('SignupScreen step 3 does not display standalone Google signup button for Merchant', (tester) async {
       tester.view.physicalSize = const Size(1080, 3200);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -179,11 +169,8 @@ void main() {
       final createAccountBtn = find.widgetWithText(LqButton, 'Create account');
       expect(createAccountBtn, findsOneWidget);
 
-      final dashedDividers = find.byType(LqDashedDivider);
-      expect(dashedDividers, findsWidgets);
-
       final googleBtn = find.widgetWithText(LqGoogleButton, 'Sign up with Google');
-      expect(googleBtn, findsOneWidget);
+      expect(googleBtn, findsNothing);
     });
   });
 
@@ -262,71 +249,41 @@ void main() {
       );
     });
 
-    testWidgets('SignupScreen step 2 triggers Google Sign-up with entered profile fields', (tester) async {
-      Map<String, dynamic>? capturedData;
+    testWidgets('LoginScreen redirects unregistered Google user to SignupScreen with details prefilled', (tester) async {
       AuthService.instance.mockSignInWithGoogle = ({
         required AccountRole expectedRole,
         Map<String, dynamic>? additionalData,
       }) async {
-        capturedData = additionalData;
-        expect(expectedRole, AccountRole.tourist);
-        return testUser;
-      };
-
-      await tester.pumpWidget(testApp(const SignupScreen(role: AccountRole.tourist)));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.widgetWithText(LqField, 'Full name'), 'Alex Smith');
-      await tester.enterText(find.widgetWithText(LqField, 'Username'), 'alexsmith');
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.enterText(find.widgetWithText(LqField, 'Phone number'), '0198887777');
-      await tester.pumpAndSettle();
-
-      final googleBtn = find.byKey(const Key('signup_google_btn_step2'));
-      await tester.ensureVisible(googleBtn);
-      await tester.tap(googleBtn);
-      await tester.pumpAndSettle();
-
-      expect(capturedData, isNotNull);
-      expect(capturedData!['displayName'], 'Alex Smith');
-      expect(capturedData!['username'], 'alexsmith');
-      expect(capturedData!['phone'], '0198887777');
-    });
-
-    testWidgets('SignupScreen Google sign-up brings user back to LoginScreen with email prefilled', (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      AuthService.instance.mockSignInWithGoogle = ({
-        required AccountRole expectedRole,
-        Map<String, dynamic>? additionalData,
-      }) async {
-        return testUser;
+        throw const UnregisteredGoogleAccountException(
+          email: 'alex@localquest.test',
+          displayName: 'Alex Smith',
+          role: AccountRole.tourist,
+        );
       };
 
       await tester.pumpWidget(testApp(const LoginScreen(role: AccountRole.tourist)));
       await tester.pumpAndSettle();
 
-      // Tap Create an account link to navigate to SignupScreen
-      final createAccountLink = find.text('Create an account');
-      await tester.ensureVisible(createAccountLink);
-      await tester.tap(createAccountLink);
-      await tester.pumpAndSettle();
-
-      // We are now on SignupScreen
-      expect(find.text('Tell us about you.'), findsOneWidget);
-
-      // Tap Sign up with Google on step 2
-      final googleBtn = find.byKey(const Key('signup_google_btn_step2'));
+      final googleBtn = find.widgetWithText(LqGoogleButton, 'Sign in with Google');
       await tester.ensureVisible(googleBtn);
       await tester.tap(googleBtn);
       await tester.pumpAndSettle();
 
-      // User should be brought back to LoginScreen
-      expect(find.text('Sign in'), findsOneWidget);
-      expect(find.text(testUser.email), findsOneWidget);
+      // Should be redirected to SignupScreen
+      expect(find.text('Tell us about you.'), findsOneWidget);
+      expect(find.text('Alex Smith'), findsOneWidget);
+      expect(
+        find.text('No account found for this Google email. Complete your registration to continue.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('SignupScreen does not have standalone Sign up with Google buttons', (tester) async {
+      await tester.pumpWidget(testApp(const SignupScreen(role: AccountRole.tourist)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('signup_google_btn_step2')), findsNothing);
+      expect(find.text('Sign up with Google'), findsNothing);
     });
   });
 

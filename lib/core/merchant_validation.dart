@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:collab/core/input_validators.dart';
 
 class MerchantValidation {
   static String? text(String? value, String label, int min, int max) {
@@ -35,9 +36,7 @@ class MerchantValidation {
   }
 
   static String? phone(String? value) =>
-      RegExp(r'^\+?[0-9][0-9 ()-]{7,18}$').hasMatch((value ?? '').trim())
-      ? null
-      : 'Enter a valid contact number including area code.';
+      LqInputValidators.validateMalaysianPhone(value);
 
   static String? registration(String? value) {
     final v = (value ?? '').trim();

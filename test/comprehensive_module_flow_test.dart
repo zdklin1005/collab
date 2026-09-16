@@ -246,7 +246,7 @@ void main() {
       expect(find.text('Kenny Yeoh'), findsOneWidget);
       expect(find.text('@kenny_yeoh'), findsOneWidget);
       expect(find.text('EXPLORER · LEVEL 3'), findsOneWidget);
-      expect(find.text('420/3,000XP'), findsOneWidget);
+      expect(find.text('420/1,200XP'), findsOneWidget);
       expect(find.text('VOUCHERS'), findsOneWidget);
       expect(find.text('REVIEWS'), findsOneWidget);
 

@@ -91,6 +91,20 @@ class AccountIdentifierCache {
   }
 }
 
+class UnregisteredGoogleAccountException implements Exception {
+  final String email;
+  final String displayName;
+  final AccountRole role;
+  const UnregisteredGoogleAccountException({
+    required this.email,
+    required this.displayName,
+    required this.role,
+  });
+
+  @override
+  String toString() => 'UnregisteredGoogleAccountException: $email ($role)';
+}
+
 class AuthService {
   AuthService._();
   static final instance = AuthService._();
@@ -118,6 +132,9 @@ class AuthService {
   Future<bool> Function()? mockLinkGoogleAccount;
   Future<void> Function()? mockUnlinkGoogleAccount;
   Future<bool> Function()? mockHasPassword;
+
+  // TEMPORARILY DISABLED: set to false to re-enable strict email verification gating
+  bool bypassEmailVerification = true;
 
   final LoginThrottle throttle = LoginThrottle();
 
@@ -271,6 +288,19 @@ class AuthService {
         password: password,
       );
       final user = credential.user!;
+      try {
+        await user.reload();
+      } catch (_) {}
+      final freshUser = auth.currentUser ?? user;
+      if (!bypassEmailVerification && !freshUser.emailVerified) {
+        try {
+          await freshUser.sendEmailVerification();
+        } catch (_) {}
+        await auth.signOut();
+        throw const LocalQuestException(
+          'Please verify your email address before signing in. A verification link has been sent to your email.',
+        );
+      }
       BiometricAuthService.instance.markSessionAuthenticated(user.uid);
       final profileRef = db.collection('users').doc(user.uid);
       var doc = await profileRef.get();
@@ -351,6 +381,10 @@ class AuthService {
       if (mockGoogleAuthHandler != null) {
         credential = await mockGoogleAuthHandler!();
       } else {
+        // Clear any previous Google session so the user is always prompted to pick an account
+        try {
+          await googleSignIn.signOut();
+        } catch (_) {}
         final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
         if (googleUser == null) {
           // User canceled the Google sign-in dialog
@@ -375,137 +409,46 @@ class AuthService {
       var doc = await profileRef.get();
 
       if (!doc.exists) {
-        // Handle new account creation
-        if (expectedRole == AccountRole.merchant) {
-          final businessName = additionalData?['businessName'] as String?;
-          final category = additionalData?['category'] as String?;
-          final address = additionalData?['address'] as String?;
-          final phone = additionalData?['phone'] as String?;
-
-          if (businessName == null ||
-              businessName.trim().isEmpty ||
-              category == null ||
-              category.trim().isEmpty ||
-              address == null ||
-              address.trim().isEmpty) {
-            await auth.signOut();
-            throw const LocalQuestException(
-              'No merchant account found for this Google account. Please create an account first.',
-            );
-          }
-
-          final rawMerchant = businessName
-              .toLowerCase()
-              .replaceAll(RegExp(r'[^a-z0-9]'), '');
-          final email =
-              (user.email ?? additionalData?['email'] as String? ?? '')
-                  .trim()
-                  .toLowerCase();
-          final area = (additionalData?['area'] as String? ?? '').trim();
-          final postcode =
-              (additionalData?['postcode'] as String? ?? '').trim();
-          final state = (additionalData?['state'] as String? ?? '').trim();
-          final latitude = additionalData?['latitude'] as double?;
-          final longitude = additionalData?['longitude'] as double?;
-          final dietaryStatus = additionalData?['dietaryStatus'] as String?;
-
-          final business = db.collection('businesses').doc();
-          final batch = db.batch();
-          batch.set(profileRef, {
-            'email': email,
-            'displayName': businessName.trim(),
-            'username': '@$rawMerchant',
-            'usernameLower': rawMerchant,
-            'phone': phone?.trim() ?? '',
-            'role': AccountRole.merchant.value,
-            'avatarUrl': user.photoURL ?? '',
-            'preferences': {
-              'campaignNotifications': true,
-              'claimNotifications': true,
-            },
-            'googleLinked': true,
-            'googleEmail': email,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-          batch.set(business, {
-            'ownerId': user.uid,
-            'name': businessName.trim(),
-            'category': category.trim(),
-            'address': address.trim(),
-            'area': area,
-            'postcode': postcode,
-            'state': state,
-            'phone': phone?.trim() ?? '',
-            'registrationNumber': '',
-            'active': true,
-            'latitude': latitude,
-            'longitude': longitude,
-            'dietaryStatus': dietaryStatus?.trim(),
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-          await batch.commit();
-          doc = await profileRef.get();
-        } else {
-          // Tourist account
-          final email =
-              (user.email ?? additionalData?['email'] as String? ?? '')
-                  .trim()
-                  .toLowerCase();
-          final rawDisplayName =
-              (additionalData?['displayName'] as String?)?.trim();
-          final displayName = (rawDisplayName != null &&
-                  rawDisplayName.isNotEmpty)
-              ? rawDisplayName
-              : (user.displayName?.trim().isNotEmpty == true
-                  ? user.displayName!.trim()
-                  : (email.isNotEmpty ? email.split('@').first : 'Explorer'));
-
-          final customUsername =
-              (additionalData?['username'] as String?)?.trim();
-          final rawUsername = (customUsername != null &&
-                  customUsername.isNotEmpty)
-              ? customUsername.replaceFirst(RegExp(r'^@'), '')
-              : displayName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-          final cleanTouristUser = rawUsername.isEmpty
-              ? 'user${user.uid.length >= 6 ? user.uid.substring(0, 6) : user.uid}'
-              : rawUsername;
-
-          final phone = (additionalData?['phone'] as String? ?? '').trim();
-          final birthday = additionalData?['birthday'] as DateTime?;
-
-          await profileRef.set({
-            'email': email,
-            'displayName': displayName,
-            'username': _username(cleanTouristUser),
-            'usernameLower': cleanTouristUser.toLowerCase(),
-            'phone': phone,
-            'birthday':
-                birthday == null ? null : Timestamp.fromDate(birthday),
-            'role': AccountRole.tourist.value,
-            'avatarUrl': user.photoURL ?? '',
-            'exp': 0,
-            'level': 1,
-            'voucherCount': 0,
-            'reviewCount': 0,
-            'preferences': {
-              'tripNotifications': true,
-              'locationHistory': true,
-              'partnerOffers': true,
-            },
-            'googleLinked': true,
-            'googleEmail': email,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-          doc = await profileRef.get();
+        final googleEmail = (user.email ?? '').trim().toLowerCase();
+        if (googleEmail.isNotEmpty) {
+          try {
+            final query = await db
+                .collection('users')
+                .where('email', isEqualTo: googleEmail)
+                .limit(1)
+                .get();
+            if (query.docs.isNotEmpty) {
+              doc = query.docs.first;
+            }
+          } catch (_) {}
         }
+      }
+
+      if (!doc.exists) {
+        final googleEmail = (user.email ?? '').trim().toLowerCase();
+        final googleName = (user.displayName ?? '').trim();
+        // Delete the temporary incomplete Auth user so the user can complete
+        // registration on the signup screen without an "email-already-in-use" error.
+        try {
+          await user.delete();
+        } catch (_) {}
+        await auth.signOut();
+        try {
+          await googleSignIn.signOut();
+        } catch (_) {}
+        throw UnregisteredGoogleAccountException(
+          email: googleEmail,
+          displayName: googleName,
+          role: expectedRole,
+        );
       }
 
       final profile = AppUser.fromDoc(doc);
       if (profile.role != expectedRole) {
         await auth.signOut();
+        try {
+          await googleSignIn.signOut();
+        } catch (_) {}
         throw LocalQuestException(
           'This account is registered as a ${profile.role.label}. Change the selected account type.',
         );
@@ -531,11 +474,25 @@ class AuthService {
         }, SetOptions(merge: true));
       } catch (_) {}
       return profile;
+    } on UnregisteredGoogleAccountException {
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
+      rethrow;
     } on FirebaseAuthException catch (error) {
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
       throw LocalQuestException(_authMessage(error));
     } on LocalQuestException {
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
       rethrow;
     } catch (error) {
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
       throw LocalQuestException(error.toString());
     }
   }
@@ -589,7 +546,7 @@ class AuthService {
       BiometricAuthService.instance.markJustAuthenticated();
       BiometricAuthService.instance.markSessionAuthenticated(user.uid);
     } on FirebaseAuthException catch (error) {
-      throw LocalQuestException(_authMessage(error));
+      throw LocalQuestException(_registerAuthMessage(error));
     } on FirebaseException catch (error) {
       await _discardIncompleteAccount();
       throw LocalQuestException(_databaseMessage(error));
@@ -669,7 +626,7 @@ class AuthService {
       BiometricAuthService.instance.markJustAuthenticated();
       BiometricAuthService.instance.markSessionAuthenticated(user.uid);
     } on FirebaseAuthException catch (error) {
-      throw LocalQuestException(_authMessage(error));
+      throw LocalQuestException(_registerAuthMessage(error));
     } on FirebaseException catch (error) {
       await _discardIncompleteAccount();
       throw LocalQuestException(_databaseMessage(error));
@@ -689,9 +646,7 @@ class AuthService {
       final uid = auth.currentUser?.uid;
       BiometricAuthService.instance.clearSessionAuthentication(uid);
       try {
-        if (await googleSignIn.isSignedIn()) {
-          await googleSignIn.signOut();
-        }
+        await googleSignIn.signOut();
       } catch (_) {}
       await auth.signOut();
     } catch (_) {}
@@ -904,14 +859,59 @@ class AuthService {
     }
   }
 
-  Future<void> deleteAccount(String currentPassword) async {
-    final user = auth.currentUser!;
+  /// Syncs the verified email from FirebaseAuth to Firestore if it changed.
+  Future<String?> syncCurrentUserEmail([String? userId]) async {
     try {
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: currentPassword,
-      );
-      await user.reauthenticateWithCredential(credential);
+      final user = auth.currentUser;
+      if (user == null) return null;
+      await user.reload();
+      final refreshed = auth.currentUser;
+      final freshEmail = refreshed?.email?.trim().toLowerCase();
+      final targetUid = userId ?? refreshed?.uid;
+      if (targetUid != null && freshEmail != null && freshEmail.isNotEmpty) {
+        await db.collection('users').doc(targetUid).update({
+          'email': freshEmail,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        await AccountIdentifierCache.cache(username: freshEmail, email: freshEmail);
+      }
+      return freshEmail;
+    } catch (_) {
+      return auth.currentUser?.email;
+    }
+  }
+
+  Future<void> deleteAccount([String? currentPassword]) async {
+    final user = auth.currentUser;
+    if (user == null) return;
+    try {
+      final hasPass = await hasPassword();
+      if (hasPass) {
+        if (currentPassword == null || currentPassword.trim().isEmpty) {
+          throw const LocalQuestException('Please enter your current password.');
+        }
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: currentPassword.trim(),
+        );
+        await user.reauthenticateWithCredential(credential);
+      } else {
+        // User is authenticated via Google or OAuth
+        try {
+          if (await googleSignIn.isSignedIn()) {
+            final googleUser = await googleSignIn.signIn();
+            if (googleUser != null) {
+              final googleAuth = await googleUser.authentication;
+              final authCred = GoogleAuthProvider.credential(
+                accessToken: googleAuth.accessToken,
+                idToken: googleAuth.idToken,
+              );
+              await user.reauthenticateWithCredential(authCred);
+            }
+          }
+        } catch (_) {}
+      }
+
       final businesses = await db
           .collection('businesses')
           .where('ownerId', isEqualTo: user.uid)
@@ -937,7 +937,12 @@ class AuthService {
       }
       batch.delete(db.collection('users').doc(user.uid));
       await batch.commit();
+      BiometricAuthService.instance.clearSessionAuthentication(user.uid);
+      try {
+        await BiometricAuthService.instance.clearLastUser();
+      } catch (_) {}
       await user.delete();
+      await signOut();
     } on FirebaseAuthException catch (error) {
       throw LocalQuestException(_authMessage(error));
     } on FirebaseException catch (error) {
@@ -965,11 +970,21 @@ class AuthService {
     return '@$cleaned';
   }
 
+  String _registerAuthMessage(FirebaseAuthException error) => switch (error.code) {
+    'email-already-in-use' =>
+      'An account already uses this email address. If you tried signing in with Google earlier, tap "Sign in with Google" on the login screen to complete registration.',
+    'invalid-email' => 'Please enter a valid email address.',
+    'weak-password' => 'Use a stronger password with at least 8 characters.',
+    'operation-not-allowed' =>
+      'Email registration is currently disabled in Firebase Console.',
+    _ => error.message ?? 'Registration failed. Please check your details and try again.',
+  };
+
   String _authMessage(FirebaseAuthException error) => switch (error.code) {
     'invalid-credential' ||
     'wrong-password' ||
-    'user-not-found' ||
-    'invalid-email' => 'Incorrect email, username, or password.',
+    'user-not-found' => 'Incorrect email, username, or password.',
+    'invalid-email' => 'Please enter a valid email address.',
     'email-already-in-use' => 'An account already uses this email address.',
     'weak-password' => 'Use a stronger password with at least 8 characters.',
     'too-many-requests' =>

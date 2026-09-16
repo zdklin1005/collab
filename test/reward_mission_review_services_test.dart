@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:collab/models/localquest_models.dart';
 import 'package:collab/screens/tourist_screens.dart';
+import 'package:collab/screens/daily_check_in_screen.dart';
 import 'package:collab/services/check_in_service.dart';
 import 'package:collab/services/reward_service.dart';
 import 'package:collab/services/review_service.dart';
@@ -220,7 +221,8 @@ void main() {
       expect(find.text('4 ready to use'), findsOneWidget);
 
       await tester.tap(find.text('My vouchers'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.textContaining('ready in your passport'), findsNothing);
     });
 
@@ -264,7 +266,7 @@ void main() {
       expect(find.text('STORYTELLER'), findsNothing);
     });
 
-    testWidgets('Daily check-in journey option remains present but unlinked without standalone UI', (tester) async {
+    testWidgets('Daily check-in journey option is present and linked to DailyCheckInScreen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -280,10 +282,10 @@ void main() {
       expect(find.text('Daily check-in'), findsOneWidget);
       expect(find.text('Keep your streak'), findsOneWidget);
 
-      // Tapping does nothing because standalone UI is not linked
+      // Tapping navigates to DailyCheckInScreen
       await tester.tap(find.text('Daily check-in'));
       await tester.pumpAndSettle();
-      expect(find.byType(TouristProfileScreen), findsOneWidget);
+      expect(find.byType(DailyCheckInScreen), findsOneWidget);
     });
 
     testWidgets('Vouchers and Reviews stat blocks display counts accurately', (tester) async {

@@ -50,6 +50,12 @@ class AuthGate extends StatelessWidget {
       }
       final firebaseUser = authSnapshot.data;
       if (firebaseUser == null) return const AccountTypeScreen();
+      if (!AuthService.instance.bypassEmailVerification && !firebaseUser.emailVerified) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          AuthService.instance.signOut();
+        });
+        return const AccountTypeScreen();
+      }
       return StreamBuilder<AppUser>(
         stream: UserRepository.instance.watch(firebaseUser.uid),
         builder: (context, profileSnapshot) {

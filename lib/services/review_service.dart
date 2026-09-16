@@ -96,6 +96,45 @@ class ReviewService {
   /// team doesn't want reviews to grant EXP.
   static const int _reviewExpReward = 15;
 
+  /// Computes a storyteller tier badge based on the user's review count
+  /// and dynamically scales against the total reviews posted on the platform.
+  static String storytellerBadgeForReviews(int userReviews, [int? totalAppReviews]) {
+    if (userReviews <= 0) return 'Top storyteller';
+
+    // Baseline curve when the platform review count is low or unspecified
+    if (totalAppReviews == null || totalAppReviews <= 15) {
+      if (userReviews >= 10) return 'Top 1% storyteller';
+      if (userReviews >= 6) return 'Top 3% storyteller';
+      if (userReviews >= 3) return 'Top 8% storyteller';
+      if (userReviews == 2) return 'Top 15% storyteller';
+      return 'Top 25% storyteller';
+    }
+
+    // Dynamic percentile scaling as platform review volume scales to hundreds or thousands:
+    final top1Threshold = (totalAppReviews * 0.08).clamp(8, 40).round();
+    final top3Threshold = (totalAppReviews * 0.04).clamp(5, 25).round();
+    final top8Threshold = (totalAppReviews * 0.02).clamp(3, 12).round();
+    final top15Threshold = (totalAppReviews * 0.01).clamp(2, 6).round();
+
+    if (userReviews >= top1Threshold) return 'Top 1% storyteller';
+    if (userReviews >= top3Threshold) return 'Top 3% storyteller';
+    if (userReviews >= top8Threshold) return 'Top 8% storyteller';
+    if (userReviews >= top15Threshold) return 'Top 15% storyteller';
+    return 'Top 25% storyteller';
+  }
+
+  /// Live stream of total reviews posted across all businesses on the platform.
+  Stream<int> watchTotalAppReviewCount() {
+    try {
+      return db
+          .collectionGroup('reviews')
+          .snapshots()
+          .map((snap) => snap.docs.length);
+    } catch (_) {
+      return Stream.value(0);
+    }
+  }
+
   CollectionReference<Map<String, dynamic>> _reviewsRef(String businessId) =>
       db.collection('businesses').doc(businessId).collection('reviews');
 

@@ -450,6 +450,23 @@ class _LoginScreenState extends State<LoginScreen> {
         showLqMessage(context, 'Welcome back to LocalQuest!');
         Navigator.popUntil(context, (route) => route.isFirst);
       }
+    } on UnregisteredGoogleAccountException catch (unregistered) {
+      if (mounted) {
+        showLqMessage(
+          context,
+          'No account found for this Google email. Complete your registration to continue.',
+        );
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SignupScreen(
+              role: widget.role,
+              initialEmail: unregistered.email,
+              initialName: unregistered.displayName,
+            ),
+          ),
+        );
+      }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {
@@ -459,8 +476,15 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key, required this.role});
+  const SignupScreen({
+    super.key,
+    required this.role,
+    this.initialEmail,
+    this.initialName,
+  });
   final AccountRole role;
+  final String? initialEmail;
+  final String? initialName;
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -482,9 +506,20 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirm = TextEditingController();
   int _step = 2;
   bool _busy = false;
-  bool _googleBusy = false;
+  bool _submittedStep2 = false;
   LqLocation? _businessLocation;
   String? _dietaryStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialName != null && widget.initialName!.trim().isNotEmpty) {
+      _name.text = widget.initialName!.trim();
+    }
+    if (widget.initialEmail != null && widget.initialEmail!.trim().isNotEmpty) {
+      _email.text = widget.initialEmail!.trim();
+    }
+  }
 
   Timer? _usernameDebounce;
   bool _isCheckingUsername = false;
@@ -800,19 +835,15 @@ class _SignupScreenState extends State<SignupScreen> {
         controller: _phone,
         label: merchant ? 'Business phone' : 'Phone number',
         keyboardType: TextInputType.phone,
-        validator: _required,
+        validator: (v) {
+          if (!_submittedStep2 && (v == null || v.trim().isEmpty)) {
+            return null;
+          }
+          return LqInputValidators.validateMalaysianPhone(v);
+        },
       ),
       const SizedBox(height: 24),
       LqButton(label: 'Continue', onPressed: _next),
-      const SizedBox(height: 16),
-      const LqDashedDivider(color: LqColors.line),
-      const SizedBox(height: 16),
-      LqGoogleButton(
-        key: const Key('signup_google_btn_step2'),
-        label: 'Sign up with Google',
-        busy: _googleBusy,
-        onPressed: _signUpWithGoogle,
-      ),
     ],
   );
 
@@ -861,15 +892,6 @@ class _SignupScreenState extends State<SignupScreen> {
         icon: Icons.person_add_alt_1,
         onPressed: _create,
       ),
-      const SizedBox(height: 16),
-      const LqDashedDivider(color: LqColors.line),
-      const SizedBox(height: 16),
-      LqGoogleButton(
-        key: const Key('signup_google_btn_step3'),
-        label: 'Sign up with Google',
-        busy: _googleBusy,
-        onPressed: _signUpWithGoogle,
-      ),
       const SizedBox(height: 8),
       TextButton(
         onPressed: () => setState(() => _step = 2),
@@ -882,6 +904,7 @@ class _SignupScreenState extends State<SignupScreen> {
       value == null || value.trim().isEmpty ? 'This field is required.' : null;
 
   void _next() {
+    setState(() => _submittedStep2 = true);
     if (_form.currentState!.validate()) setState(() => _step = 3);
   }
 
@@ -954,106 +977,6 @@ class _SignupScreenState extends State<SignupScreen> {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _signUpWithGoogle() async {
-    if (merchant) {
-      if (_name.text.trim().isEmpty ||
-          _category.text.trim().isEmpty ||
-          _address.text.trim().isEmpty ||
-          _phone.text.trim().isEmpty) {
-        if (_step == 3) {
-          setState(() => _step = 2);
-        }
-        _form.currentState?.validate();
-        showLqMessage(
-          context,
-          'Please fill in your business details first.',
-          error: true,
-        );
-        return;
-      }
-      if (lqIsDietaryCategory(_category.text) &&
-          (_dietaryStatus == null || _dietaryStatus!.trim().isEmpty)) {
-        if (_step == 3) {
-          setState(() => _step = 2);
-        }
-        _form.currentState?.validate();
-        showLqMessage(
-          context,
-          'Choose a Halal & dietary certification.',
-          error: true,
-        );
-        return;
-      }
-    }
-
-    setState(() => _googleBusy = true);
-    try {
-      final additionalData = <String, dynamic>{
-        if (merchant) ...{
-          'businessName': _name.text.trim(),
-          'category': _category.text.trim(),
-          'address': _address.text.trim(),
-          'area': _city.text.trim(),
-          'postcode': _postcode.text.trim(),
-          'state': _state.text.trim(),
-          'phone': _phone.text.trim(),
-          'latitude': _businessLocation?.latitude,
-          'longitude': _businessLocation?.longitude,
-          'dietaryStatus': lqIsDietaryCategory(_category.text)
-              ? _dietaryStatus
-              : null,
-        } else ...{
-          if (_name.text.trim().isNotEmpty) 'displayName': _name.text.trim(),
-          if (_username.text.trim().isNotEmpty) 'username': _username.text.trim(),
-          if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
-          if (_birthday.text.trim().isNotEmpty)
-            'birthday': _parseDate(_birthday.text),
-        },
-      };
-
-      final profile = await AuthService.instance.signInWithGoogle(
-        expectedRole: widget.role,
-        additionalData: additionalData,
-      );
-
-      if (profile == null) return;
-
-      BiometricAuthService.instance.markJustAuthenticated();
-      await BiometricAuthService.instance.saveLastUser(
-        email: profile.email,
-        role: widget.role.name,
-        username: profile.username,
-      );
-      await AccountIdentifierCache.cache(
-        username: profile.username,
-        email: profile.email,
-      );
-
-      final registeredEmail = profile.email;
-      await AuthService.instance.signOut();
-      if (mounted) {
-        showLqMessage(
-          context,
-          'Account created successfully! Please sign in.',
-        );
-        if (Navigator.canPop(context)) {
-          Navigator.pop(context, registeredEmail);
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => LoginScreen(role: widget.role),
-            ),
-          );
-        }
-      }
-    } on LocalQuestException catch (error) {
-      if (mounted) showLqMessage(context, error.message, error: true);
-    } finally {
-      if (mounted) setState(() => _googleBusy = false);
     }
   }
 

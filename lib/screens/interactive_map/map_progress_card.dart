@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/localquest_theme.dart';
 import '../../models/localquest_models.dart';
+import '../../services/reward_service.dart';
 
 class MapProgressCard extends StatelessWidget {
   const MapProgressCard({
@@ -14,9 +15,7 @@ class MapProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Temporary target until the shared levelling rules are confirmed.
-    const targetExp = 3000;
-    final progress = (user.exp / targetExp).clamp(0.0, 1.0);
+    final levelProgress = RewardService.instance.getLevelProgress(user.exp, user.level);
     final numberFormat = NumberFormat('#,##0');
 
     return Container(
@@ -43,7 +42,7 @@ class MapProgressCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
             ),
             child: Text(
-              '${user.level}',
+              '${levelProgress.currentLevel}',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 26,
@@ -57,7 +56,7 @@ class MapProgressCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'LEVEL ${user.level} · EXPLORER',
+                  'LEVEL ${levelProgress.currentLevel} · EXPLORER',
                   style: const TextStyle(
                     color: LqColors.muted,
                     fontWeight: FontWeight.w700,
@@ -67,7 +66,7 @@ class MapProgressCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${numberFormat.format(user.exp)} / '
-                  '${numberFormat.format(targetExp)} EXP',
+                  '${numberFormat.format(levelProgress.nextLevelExp)} EXP',
                   style: const TextStyle(
                     color: LqColors.primary,
                     fontWeight: FontWeight.w700,
@@ -76,7 +75,7 @@ class MapProgressCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
-                  value: progress,
+                  value: levelProgress.progress,
                   minHeight: 8,
                   borderRadius: BorderRadius.circular(12),
                   color: LqColors.primary,

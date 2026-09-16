@@ -265,7 +265,7 @@ void main() {
     await tester.pumpWidget(app(const TouristProfileScreen(user: tourist)));
 
     expect(find.text('Test Tourist'), findsOneWidget);
-    expect(find.text('1250/3,000XP'), findsOneWidget);
+    expect(find.text('1,250/600XP'), findsOneWidget);
     expect(find.text('My vouchers'), findsOneWidget);
     expect(find.text('Reviews & ratings'), findsOneWidget);
     expect(find.text('Missions'), findsOneWidget);

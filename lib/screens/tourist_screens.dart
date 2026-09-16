@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../core/password_field.dart';
 import '../core/password_policy.dart';
@@ -174,7 +173,8 @@ class TouristProfileScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => StreamBuilder<List<Map<String, dynamic>>>(
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
     stream: MerchantRepository.instance.touristClaimedVouchers(user.id),
     builder: (context, claimedSnap) {
       return StreamBuilder<List<Map<String, dynamic>>>(
@@ -183,24 +183,32 @@ class TouristProfileScreen extends StatelessWidget {
           return StreamBuilder<List<Review>>(
             stream: ReviewService.instance.watchReviewsForUser(user.id),
             builder: (context, reviewSnap) {
-              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
-                stream: _userDocStream(user.id),
-                builder: (context, userDocSnap) {
+              return StreamBuilder<int>(
+                stream: ReviewService.instance.watchTotalAppReviewCount(),
+                builder: (context, totalAppReviewsSnap) {
+                  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
+                    stream: _userDocStream(user.id),
+                    builder: (context, userDocSnap) {
                   final claimed = claimedSnap.data ?? const <Map<String, dynamic>>[];
                   final ach = achSnap.data ?? const <Map<String, dynamic>>[];
                   final unredeemedClaimed = claimed.where((v) => v['redeemed'] != true).length;
                   final unredeemedAch = ach.where((v) => v['redeemed'] != true).length;
-                  final activeVoucherCount = (claimedSnap.hasData || achSnap.hasData)
-                      ? (unredeemedClaimed + unredeemedAch)
+                  final streamVouchers = unredeemedClaimed + unredeemedAch;
+                  final activeVoucherCount = streamVouchers > 0
+                      ? streamVouchers
                       : user.voucherCount;
 
                   final reviews = reviewSnap.data;
-                  final activeReviewCount = reviewSnap.hasData
-                      ? reviews!.length
-                      : user.reviewCount;
+                  final activeReviewCount =
+                      (reviews != null && reviews.isNotEmpty)
+                          ? reviews.length
+                          : user.reviewCount;
 
                   final userData = userDocSnap.data?.data() ?? const <String, dynamic>{};
                   final streakCount = (userData['streakCount'] as num?)?.toInt() ?? 0;
+                  final activeExp = (userData['exp'] as num?)?.toInt() ?? user.exp;
+                  final activeLevel = (userData['level'] as num?)?.toInt() ?? user.level;
+                  final levelProgress = RewardService.instance.getLevelProgress(activeExp, activeLevel);
 
                   return SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(16, 42, 16, 116),
@@ -332,12 +340,12 @@ class TouristProfileScreen extends StatelessWidget {
                                                     child: FittedBox(
                                                       fit: BoxFit.scaleDown,
                                                       alignment: Alignment.centerLeft,
-                                                      child: LqTierBadge(level: user.level),
+                                                      child: LqTierBadge(level: levelProgress.currentLevel),
                                                     ),
                                                   ),
                                                   const SizedBox(width: 6),
                                                   Text(
-                                                    '${user.exp}/3,000XP',
+                                                    levelProgress.expLabel,
                                                     style: monoLabel.copyWith(
                                                       color: const Color(0xFF466294),
                                                       fontWeight: FontWeight.w700,
@@ -349,7 +357,7 @@ class TouristProfileScreen extends StatelessWidget {
                                               ),
                                               const SizedBox(height: 8),
                                               LinearProgressIndicator(
-                                                value: ((user.exp % 3000) / 3000).clamp(0, 1),
+                                                value: levelProgress.progress,
                                                 minHeight: 7,
                                                 borderRadius: BorderRadius.circular(20),
                                               ),
@@ -396,9 +404,10 @@ class TouristProfileScreen extends StatelessWidget {
                                     child: _Stat(
                                       label: 'Reviews',
                                       value: '$activeReviewCount',
-                                      badgeText: activeReviewCount > 0
-                                          ? 'Top 8% storyteller'
-                                          : 'Top storyteller',
+                                      badgeText: ReviewService.storytellerBadgeForReviews(
+                                        activeReviewCount,
+                                        totalAppReviewsSnap.data,
+                                      ),
                                       icon: Icons.star_border,
                                       onTap: () => Navigator.push(
                                         context,
@@ -529,6 +538,9 @@ class TouristProfileScreen extends StatelessWidget {
       );
     },
   );
+},
+);
+}
 }
 
 class _Stat extends StatelessWidget {
@@ -633,38 +645,49 @@ class SettingsScreen extends StatelessWidget {
   final Future<void> Function()? onSignOut;
 
   @override
-  Widget build(BuildContext context) => LqPage(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 28, 16, 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const LqBackButton(label: 'Profile'),
-          const LqTitleBlock(eyebrow: 'Profile', title: 'Settings'),
-          const SizedBox(height: 26),
-          _section('Personal details', [
-            _SettingTile(
-              icon: Icons.email_outlined,
-              title: 'Email address',
-              subtitle: user.email,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const EmailAddressScreen()),
-              ),
-            ),
-            _SettingTile(
-              icon: Icons.lock_outline,
-              title: 'Password & security',
-              subtitle: 'Protect your LocalQuest account',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const PasswordSecurityScreen(),
+  Widget build(BuildContext context) => StreamBuilder<AppUser>(
+    stream: UserRepository.instance.watch(user.id),
+    initialData: user,
+    builder: (context, snapshot) {
+      final currentUser = snapshot.data ?? user;
+      return LqPage(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 28, 16, 30),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const LqBackButton(label: 'Profile'),
+              const LqTitleBlock(eyebrow: 'Profile', title: 'Settings'),
+              const SizedBox(height: 26),
+              _section('Personal details', [
+                _SettingTile(
+                  icon: Icons.email_outlined,
+                  title: 'Email address',
+                  subtitle: currentUser.email,
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            EmailAddressScreen(currentEmail: currentUser.email),
+                      ),
+                    );
+                    await AuthService.instance.syncCurrentUserEmail(currentUser.id);
+                  },
                 ),
-              ),
-            ),
-            _BiometricSettingTile(userId: user.id),
-          ]),
+                _SettingTile(
+                  icon: Icons.lock_outline,
+                  title: 'Password & security',
+                  subtitle: 'Protect your LocalQuest account',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PasswordSecurityScreen(),
+                    ),
+                  ),
+                ),
+                _BiometricSettingTile(userId: currentUser.id),
+              ]),
           const SizedBox(height: 24),
           _section(
             'Preferences',
@@ -751,6 +774,8 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     ),
+  );
+    },
   );
 
   Widget _section(String label, List<Widget> children) => Column(
@@ -1336,6 +1361,7 @@ class AccountDetailsScreen extends StatefulWidget {
 }
 
 class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
+  final _formKey = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.user.displayName);
   late final _username = TextEditingController(text: widget.user.username);
   late final _phone = TextEditingController(text: widget.user.phone);
@@ -1409,45 +1435,53 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
           const SizedBox(height: 20),
           // Form card with dashed border matching Photo 2
           LqCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LqField(
-                  controller: _name,
-                  label: 'Display name',
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-                LqField(
-                  controller: _username,
-                  label: 'Username',
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-                LqField(
-                  controller: _phone,
-                  label: 'Phone number',
-                  keyboardType: TextInputType.phone,
-                ),
-                const SizedBox(height: 16),
-                LqField(
-                  controller: _birthday,
-                  label: 'Birthday',
-                  hint: 'Choose date',
-                  readOnly: true,
-                  suffixIcon: Icons.calendar_month_outlined,
-                  onTap: _pickBirthday,
-                ),
-                const SizedBox(height: 24),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: LqButton.pill(
-                    label: 'Save changes',
-                    busy: _busy,
-                    onPressed: _save,
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LqField(
+                    controller: _name,
+                    label: 'Display name',
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'Display name is required.'
+                        : null,
+                    onChanged: (_) => setState(() {}),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _username,
+                    label: 'Username',
+                    validator: LqInputValidators.validateUsernameFormat,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _phone,
+                    label: 'Phone number',
+                    keyboardType: TextInputType.phone,
+                    validator: LqInputValidators.validateMalaysianPhone,
+                  ),
+                  const SizedBox(height: 16),
+                  LqField(
+                    controller: _birthday,
+                    label: 'Birthday',
+                    hint: 'Choose date',
+                    readOnly: true,
+                    suffixIcon: Icons.calendar_month_outlined,
+                    onTap: _pickBirthday,
+                  ),
+                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: LqButton.pill(
+                      label: 'Save changes',
+                      busy: _busy,
+                      onPressed: _save,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1456,6 +1490,7 @@ class _AccountDetailsScreenState extends State<AccountDetailsScreen> {
   );
 
   Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     DateTime? birthday = _selectedBirthday;
     if (birthday == null && _birthday.text.isNotEmpty) {
@@ -1516,17 +1551,68 @@ class EmailAddressScreen extends StatefulWidget {
   State<EmailAddressScreen> createState() => _EmailAddressScreenState();
 }
 
-class _EmailAddressScreenState extends State<EmailAddressScreen> {
+class _EmailAddressScreenState extends State<EmailAddressScreen>
+    with WidgetsBindingObserver {
   final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  late String _currentEmail;
   bool _busy = false;
+  bool _checkingStatus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    String? initial;
+    try {
+      initial = widget.currentEmail ?? AuthService.instance.auth.currentUser?.email;
+    } catch (_) {
+      initial = widget.currentEmail;
+    }
+    _currentEmail = initial ?? '';
+    WidgetsBinding.instance.addObserver(this);
+    try {
+      if (AuthService.instance.auth.currentUser != null) {
+        _checkVerification(quiet: true);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkVerification(quiet: true);
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkVerification({bool quiet = false}) async {
+    if (_checkingStatus) return;
+    setState(() => _checkingStatus = true);
+    try {
+      final fresh = await AuthService.instance.syncCurrentUserEmail();
+      if (fresh != null && fresh.isNotEmpty && fresh != _currentEmail) {
+        if (mounted) {
+          setState(() => _currentEmail = fresh);
+          showLqMessage(context, 'Email address updated to $_currentEmail.');
+        }
+      } else if (!quiet && mounted) {
+        showLqMessage(
+          context,
+          'Email not changed yet. Please click the verification link sent to your new email.',
+        );
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _checkingStatus = false);
+    }
   }
 
   @override
@@ -1542,8 +1628,8 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
         child: Column(
           children: [
             TextFormField(
-              initialValue:
-                  widget.currentEmail ?? FirebaseAuth.instance.currentUser?.email,
+              key: ValueKey(_currentEmail),
+              initialValue: _currentEmail,
               enabled: false,
               decoration: const InputDecoration(labelText: 'Current email'),
             ),
@@ -1569,7 +1655,25 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
               'We’ll send a verification link before your email address changes.',
               style: TextStyle(color: LqColors.muted, fontSize: 12),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _checkingStatus ? null : () => _checkVerification(quiet: false),
+                icon: _checkingStatus
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 16),
+                label: const Text(
+                  'Already verified? Check status',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerRight,
               child: LqButton.pill(
@@ -1592,7 +1696,12 @@ class _EmailAddressScreenState extends State<EmailAddressScreen> {
         currentPassword: _password.text,
         newEmail: _email.text,
       );
-      if (mounted) showLqMessage(context, 'Verification email sent.');
+      if (mounted) {
+        showLqMessage(
+          context,
+          'Verification email sent. Click the link in your email, then return here to check status.',
+        );
+      }
     } on LocalQuestException catch (error) {
       if (mounted) showLqMessage(context, error.message, error: true);
     } finally {
@@ -2670,47 +2779,109 @@ class PrivacyScreen extends StatelessWidget {
     ),
   );
 
-  void _deleteDialog(BuildContext context) {
+  void _deleteDialog(BuildContext context) async {
+    final hasPassword = await AuthService.instance.hasPassword();
     final password = TextEditingController();
+    bool busy = false;
+    String? errorMessage;
+
+    if (!context.mounted) return;
+
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete account?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'This action cannot be undone. Enter your current password to continue.',
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Delete account?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasPassword
+                    ? 'This action cannot be undone. Enter your current password to confirm deletion.'
+                    : 'This action cannot be undone. All your profile data, progress, and vouchers will be permanently removed.',
+              ),
+              if (hasPassword) ...[
+                const SizedBox(height: 16),
+                LqField(
+                  key: const Key('delete_account_password_field'),
+                  controller: password,
+                  label: 'Current password',
+                  obscureText: true,
+                ),
+              ],
+              if (errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  errorMessage!,
+                  style: const TextStyle(color: LqColors.danger, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 16),
-            LqField(
-              key: const Key('delete_account_password_field'),
-              controller: password,
-              label: 'Current password',
-              obscureText: true,
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (hasPassword && password.text.trim().isEmpty) {
+                        setDialogState(() {
+                          errorMessage = 'Enter your current password.';
+                        });
+                        return;
+                      }
+                      setDialogState(() {
+                        busy = true;
+                        errorMessage = null;
+                      });
+                      try {
+                        await AuthService.instance.deleteAccount(
+                          hasPassword ? password.text.trim() : null,
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+                        if (context.mounted) {
+                          Navigator.of(context)
+                              .popUntil((route) => route.isFirst);
+                          showLqMessage(context, 'Account deleted successfully.');
+                        }
+                      } on LocalQuestException catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            busy = false;
+                            errorMessage = error.message;
+                          });
+                        }
+                      } catch (_) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            busy = false;
+                            errorMessage =
+                                'Failed to delete account. Please try again.';
+                          });
+                        }
+                      }
+                    },
+              style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
+              child: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Delete account'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await AuthService.instance.deleteAccount(password.text);
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              } on LocalQuestException catch (error) {
-                if (dialogContext.mounted) {
-                  showLqMessage(dialogContext, error.message, error: true);
-                }
-              }
-            },
-            style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
-            child: const Text('Delete account'),
-          ),
-        ],
       ),
     );
   }

@@ -394,153 +394,6 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
     }
   }
 
-  Future<void> _showApiKeyDialog() async {
-    final currentKey = await _aiService.getEffectiveApiKey() ?? '';
-    if (!mounted) return;
-    final keyController = TextEditingController(text: currentKey);
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.key, color: LqColors.primary, size: 22),
-            SizedBox(width: 8),
-            Text('Gemini AI Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _hasApiKey ? const Color(0xFFE8F5E9) : const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _hasApiKey ? Icons.check_circle : Icons.offline_bolt_outlined,
-                    size: 18,
-                    color: _hasApiKey ? const Color(0xFF2E7D32) : const Color(0xFF6B7280),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _hasApiKey
-                              ? (_aiService.lastSuccessfulModel != null
-                                  ? 'Active Gemini: ${_aiService.lastSuccessfulModel}'
-                                  : 'Gemini Multi-Model Auto Failover')
-                              : 'Penang Local Expert Engine (Offline Ready)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: _hasApiKey ? const Color(0xFF1B5E20) : const Color(0xFF374151),
-                          ),
-                        ),
-                        if (_hasApiKey) ...[
-                          const SizedBox(height: 2),
-                          const Text(
-                            'All Gemini models supported (3.8-flash, 3.1-flash, 2.5-flash, 2.0-flash, 1.5-flash, pro & lite). Seamlessly auto-switches if daily limits (RPD) or RPM quotas occur.',
-                            style: TextStyle(fontSize: 10, color: Color(0xFF2E7D32)),
-                          ),
-                          if (_aiService.rateLimitedModels.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Rate-limited (switched over): ${_aiService.rateLimitedModels.join(", ")}',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFFE65100),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Enter your Google Gemini API Key from Google AI Studio to unlock generative live chat:',
-              style: TextStyle(fontSize: 12, color: LqColors.muted),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: keyController,
-              obscureText: true,
-              decoration: InputDecoration(
-                hintText: 'AIzaSy...',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Multi-model auto-switching ensures uninterrupted chat even when individual model rate limits (RPD) are reached on the free tier.',
-              style: TextStyle(fontSize: 11, color: LqColors.muted),
-            ),
-          ],
-        ),
-        actions: [
-          if (_hasApiKey && _aiService.rateLimitedModels.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                _aiService.resetRateLimits();
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) showLqMessage(context, 'Rate limits reset. All Gemini models re-enabled.');
-              },
-              child: const Text('Reset Limits', style: TextStyle(color: Color(0xFFE65100))),
-            ),
-          if (currentKey.isNotEmpty)
-            TextButton(
-              onPressed: () async {
-                await _aiService.saveCustomApiKey('');
-                await _checkApiKey();
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) showLqMessage(context, 'Gemini API key cleared.');
-              },
-              child: const Text('Clear Key', style: TextStyle(color: Colors.red)),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newKey = keyController.text.trim();
-              await _aiService.saveCustomApiKey(newKey);
-              await _checkApiKey();
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) {
-                showLqMessage(
-                  context,
-                  newKey.isNotEmpty
-                      ? 'Gemini API key saved! Live AI active.'
-                      : 'Switched to Penang Local Expert Engine.',
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: LqColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -572,32 +425,28 @@ class _AiAssistantSheetState extends State<AiAssistantSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                InkWell(
-                  onTap: _showApiKeyDialog,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [LqColors.primary, Color(0xFF6C5CE7)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [LqColors.primary, Color(0xFF6C5CE7)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: LqColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: LqColors.primary.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    color: Colors.white,
+                    size: 24,
                   ),
                 ),
                 const SizedBox(width: 12),

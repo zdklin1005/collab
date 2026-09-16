@@ -10,6 +10,31 @@ class LqInputValidators {
 
   static final RegExp malaysianPostcodePattern = RegExp(r'\b\d{5}\b');
 
+  static final RegExp malaysianPhonePattern = RegExp(
+    r'^(\+?60|0)(1[0-46-9][0-9]{7}|11[0-9]{8}|[3-9][0-9]{7,8})$',
+  );
+
+  /// Validates Malaysian phone numbers without dashes or spaces
+  static String? validateMalaysianPhone(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required.';
+    }
+    final clean = value.trim();
+    if (clean.contains('-') ||
+        clean.contains(' ') ||
+        clean.contains('(') ||
+        clean.contains(')')) {
+      return 'Enter phone number without dashes or spaces (e.g. 0123456789).';
+    }
+    if (!RegExp(r'^\+?[0-9]+$').hasMatch(clean)) {
+      return 'Phone number must contain digits only.';
+    }
+    if (!malaysianPhonePattern.hasMatch(clean)) {
+      return 'Enter a valid Malaysian phone number (e.g. 0123456789 or 01112345678).';
+    }
+    return null;
+  }
+
   /// Validates format of username (without leading '@')
   static String? validateUsernameFormat(String? value) {
     if (value == null || value.trim().isEmpty) {
