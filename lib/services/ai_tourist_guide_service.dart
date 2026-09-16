@@ -538,7 +538,7 @@ CORE GROUNDING & PERSONALIZATION RULES:
                         .replaceAll('**', '')
                         .replaceAll('* ', '• ')
                         .trim();
-                    return cleaned;
+                    return sanitizeTechnicalInformation(cleaned);
                   }
                 }
               }
@@ -579,17 +579,49 @@ CORE GROUNDING & PERSONALIZATION RULES:
     final region = detectPenangRegion(userLat, userLng);
 
     // Intelligent Penang Local Knowledge & Recommendation Engine
-    return _generateLocalContextRecommendation(
-      userPrompt: userPrompt,
-      userLat: userLat,
-      userLng: userLng,
-      nearbyBusinesses: nearbyBusinesses,
-      activeVouchers: activeVouchers,
-      userProfile: userProfile,
-      visitedPlacesHistory: visitedPlacesHistory,
-      detectedRegion: region.detectedRegion,
-      regionalTransitTip: region.regionalTransitTip,
+    return sanitizeTechnicalInformation(
+      _generateLocalContextRecommendation(
+        userPrompt: userPrompt,
+        userLat: userLat,
+        userLng: userLng,
+        nearbyBusinesses: nearbyBusinesses,
+        activeVouchers: activeVouchers,
+        userProfile: userProfile,
+        visitedPlacesHistory: visitedPlacesHistory,
+        detectedRegion: region.detectedRegion,
+        regionalTransitTip: region.regionalTransitTip,
+      ),
     );
+  }
+
+  /// Strips raw GPS coordinates, decimal coordinate pairs, and developer jargon
+  /// so AI output remains friendly, accessible, and free of overly technical details.
+  static String sanitizeTechnicalInformation(String raw) {
+    var text = raw;
+    // Strip "(near coordinates X, Y)" or "(coordinates: X, Y)" or "(near X, Y)"
+    text = text.replaceAll(
+      RegExp(r'\s*\((?:near\s+)?(?:coordinates?|gps)?\s*[:=]?\s*[-+]?\d*\.?\d+\s*,\s*[-+]?\d*\.?\d+\s*\)', caseSensitive: false),
+      '',
+    );
+    // Strip any other coordinate patterns like "(near coordinates ...)"
+    text = text.replaceAll(
+      RegExp(r'\s*\((?:near\s+)?coordinates\s*[^)]+\)', caseSensitive: false),
+      '',
+    );
+    // Strip standalone coordinate brackets e.g. "(5.3959, 100.4054)" or "5.3959, 100.4054"
+    text = text.replaceAll(
+      RegExp(r'\(?\b[0-9]{1,2}\.[0-9]{3,},\s*[0-9]{2,3}\.[0-9]{3,}\b\)?'),
+      '',
+    );
+    // Strip explicit latitude / longitude labels and values
+    text = text.replaceAll(
+      RegExp(r'\b(?:lat(?:itude)?|lng|long(?:itude)?)\s*[:=]?\s*[-+]?\d*\.?\d+\b', caseSensitive: false),
+      '',
+    );
+    // Clean up leftover empty parentheses and double spaces
+    text = text.replaceAll(RegExp(r'\(\s*\)'), '');
+    text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+    return text.trim();
   }
 
   /// High-quality, context-aware Penang tour recommendation engine
@@ -618,7 +650,7 @@ CORE GROUNDING & PERSONALIZATION RULES:
       final mainlandNote = isMainland
           ? 'You are on the PENANG MAINLAND in Seberang Perai, approximately 15 to 25 km from George Town across the Penang Strait. To visit Penang Island, you can cross via the Penang Bridge (15-20 min drive) or the Butterworth Fast Ferry.\n\n'
           : '';
-      return '📍 You are currently in $detectedRegion (near coordinates ${userLat.toStringAsFixed(4)}, ${userLng.toStringAsFixed(4)}).\n\n'
+      return '📍 You are currently in $detectedRegion.\n\n'
           '$mainlandNote'
           'Explore nearby local spots or let me know what you are looking for (food, kopitiam, or vouchers)!'
           '${regionalTransitTip != null && regionalTransitTip.isNotEmpty ? "\n\n🗺️ Transit Tip:\n$regionalTransitTip" : ""}';

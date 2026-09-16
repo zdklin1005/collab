@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'voucher_code.dart';
 import '../models/localquest_models.dart';
 
+import 'exp_progress.dart';
+import 'exp_award_service.dart';
+
 /// Result of awarding EXP to a tourist, including whether they leveled up
 /// and how many vouchers were awarded as a result.
 class ExpAwardResult {
@@ -153,7 +156,6 @@ class RewardService {
     });
     await batch.commit();
   }
-
   /// Live list of achievement vouchers (from level-ups / voucher-type
   /// missions) awarded to [uid]. Raw maps, not a dedicated model — see
   /// the class doc on awardVoucher() for why these are placeholders.
@@ -185,5 +187,31 @@ class RewardService {
         .limit(1)
         .get();
     return snap.docs.isEmpty ? null : snap.docs.first;
+  }
+
+  static String mapExpAwardIdFor(String rewardId) {
+    return ExpAwardService.awardIdFor(source: 'map_exp', sourceId: rewardId);
+  }
+
+  /// Used only within a validated map-claim transaction.
+  ///
+  /// The transaction must belong to this service's Firestore instance.
+  /// Finish other transaction reads before calling this method.
+  /// Do not call awardExp() afterward: that would award EXP twice.
+  ///
+  /// This does not issue the teammate's separate level-up reward.
+  Future<ExpAwardReceipt> awardMapExpInTransaction(
+      Transaction transaction, {
+        required String uid,
+        required String rewardId,
+        required int amount,
+      }) {
+    return ExpAwardService(firestore: db).awardInTransaction(
+      transaction,
+      uid: uid,
+      source: 'map_exp',
+      sourceId: rewardId,
+      amount: amount,
+    );
   }
 }

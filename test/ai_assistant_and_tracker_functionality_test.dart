@@ -309,8 +309,8 @@ void main() {
       // Clean interface without obtrusive tracker active card
       expect(find.text('Automatic Visit Tracking Active'), findsNothing);
 
-      // Verify popup options menu exists
-      expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+      // Verify popup options menu is removed
+      expect(find.byType(PopupMenuButton<String>), findsNothing);
     });
 
     test('compareGeminiModels prioritizes higher versions and Flash tier matching AI Studio dashboard', () {

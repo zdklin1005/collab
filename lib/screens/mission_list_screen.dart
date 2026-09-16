@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/device_location_service.dart';
 import '../services/mission_service.dart';
 
 /// "My Missions — Explore & earn" screen.
@@ -13,13 +14,6 @@ import '../services/mission_service.dart';
 ///   it shows an empty state with a "Refresh nearby area" button that
 ///   calls [MissionService.generateDailyMissions] and any new missions
 ///   then appear under "In progress".
-///
-/// ASSUMPTION: this screen expects the tourist's current position to be
-/// passed in from wherever location already flows in the app (likely the
-/// Interactive Map module / a shared location provider) — it does not
-/// fetch GPS itself. If there's already a shared bottom navigation shell
-/// in `tourist_screens.dart`, use `body:` from this widget directly
-/// instead of the whole `Scaffold` (see [MissionListView] below).
 class MissionListScreen extends StatefulWidget {
   const MissionListScreen({
     super.key,
@@ -37,6 +31,29 @@ class MissionListScreen extends StatefulWidget {
 }
 
 class _MissionListScreenState extends State<MissionListScreen> {
+  late double _lat;
+  late double _lng;
+
+  @override
+  void initState() {
+    super.initState();
+    _lat = widget.currentLat;
+    _lng = widget.currentLng;
+    _refreshLocation();
+  }
+
+  Future<void> _refreshLocation() async {
+    try {
+      final pos = await DeviceLocationService.instance.getCurrentPosition();
+      if (mounted) {
+        setState(() {
+          _lat = pos.latitude;
+          _lng = pos.longitude;
+        });
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final canPop = Navigator.canPop(context);
@@ -60,8 +77,8 @@ class _MissionListScreenState extends State<MissionListScreen> {
       body: SafeArea(
         child: MissionListView(
           uid: widget.uid,
-          currentLat: widget.currentLat,
-          currentLng: widget.currentLng,
+          currentLat: _lat,
+          currentLng: _lng,
         ),
       ),
     );
@@ -246,6 +263,7 @@ class _MissionListViewState extends State<MissionListView> {
             currentLat: widget.currentLat,
             currentLng: widget.currentLng,
             onCompletePressed: _completing ? null : _completeCheckpoint,
+            onDiscoverPressed: _refreshNearbyArea,
           )
               : _AvailableEmptyState(
             refreshing: _refreshing,
@@ -314,12 +332,14 @@ class _InProgressList extends StatelessWidget {
     required this.currentLat,
     required this.currentLng,
     required this.onCompletePressed,
+    this.onDiscoverPressed,
   });
 
   final String uid;
   final double currentLat;
   final double currentLng;
   final ValueChanged<Mission>? onCompletePressed;
+  final VoidCallback? onDiscoverPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -335,10 +355,53 @@ class _InProgressList extends StatelessWidget {
             .toList();
 
         if (missions.isEmpty) {
-          return const Center(
-            child: Text(
-              'No missions in progress yet.',
-              style: TextStyle(color: Colors.black54),
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.explore_outlined,
+                    size: 48,
+                    color: Colors.black26,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No missions in progress yet.',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Discover nearby merchant and heritage side quests to earn EXP and rewards.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.black54, fontSize: 13),
+                  ),
+                  if (onDiscoverPressed != null) ...[
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: onDiscoverPressed,
+                      icon: const Icon(Icons.auto_awesome, size: 18),
+                      label: const Text('Discover Missions Nearby'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1B1F5C),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           );
         }

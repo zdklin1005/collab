@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'localquest_widgets.dart';
+import 'lq_image_cropper.dart';
 import 'merchant_validation.dart';
 
 class BusinessPhotoField extends StatefulWidget {
@@ -27,9 +28,9 @@ class _BusinessPhotoFieldState extends State<BusinessPhotoField> {
     try {
       final image = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 85,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 90,
       );
       if (image == null) return;
       final bytes = await image.readAsBytes();
@@ -42,8 +43,19 @@ class _BusinessPhotoFieldState extends State<BusinessPhotoField> {
         );
         return;
       }
-      setState(() => _bytes = bytes);
-      widget.onChanged(bytes);
+
+      final croppedBytes = await cropImageFile(
+        context: context,
+        sourcePath: image.path,
+        aspectRatioX: 16.0,
+        aspectRatioY: 9.0,
+        lockAspectRatio: true,
+        title: 'Crop Business Banner',
+      );
+      if (croppedBytes == null || !mounted) return;
+
+      setState(() => _bytes = croppedBytes);
+      widget.onChanged(croppedBytes);
     } catch (_) {
       if (mounted) {
         showLqMessage(

@@ -15,8 +15,13 @@ import 'redeem_voucher_screen.dart';
 /// generic achievement vouchers earned from leveling up or completing
 /// voucher-type missions.
 class MyRewardsScreen extends StatelessWidget {
-  const MyRewardsScreen({super.key, required this.userId});
+  const MyRewardsScreen({
+    super.key,
+    required this.userId,
+    this.showBackButton = true,
+  });
   final String userId;
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context) => LqPage(
@@ -25,8 +30,10 @@ class MyRewardsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const LqBackButton(label: 'Profile'),
-          const SizedBox(height: 8),
+          if (showBackButton) ...[
+            const LqBackButton(label: 'Profile'),
+            const SizedBox(height: 8),
+          ],
           const Text(
             'My rewards',
             style: TextStyle(

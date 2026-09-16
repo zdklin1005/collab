@@ -71,7 +71,7 @@ void main() {
     );
     expect(find.text('New email address'), findsOneWidget);
     expect(find.text('Current password'), findsOneWidget);
-    expect(find.text('Send verification'), findsOneWidget);
+    expect(find.text('Save changes'), findsOneWidget);
 
     await tester.pumpWidget(app(const PasswordSecurityScreen()));
     expect(find.text('Current password'), findsOneWidget);

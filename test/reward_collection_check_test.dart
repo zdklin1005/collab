@@ -3,6 +3,7 @@ import 'package:collab/models/reward_marker.dart';
 import 'package:collab/screens/interactive_map/location_quality.dart';
 import 'package:collab/screens/interactive_map/reward_collection_check.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:collab/services/demo_map_claim_store.dart';
 
 void main() {
   final now = DateTime.utc(2026, 9, 10, 2);
@@ -156,17 +157,72 @@ void main() {
     expect(result.status, RewardCollectionCheckStatus.outOfRange);
   });
 
-  test('reward expiring after preview fails the new check', () {
-    final expiry = now.add(const Duration(seconds: 10));
-    final reward = makeReward(expiresAt: expiry);
+  for (final type in RewardType.values) {
+    test('${type.name}: expiry after preview prevents a claim', () {
+      final expiry = now.add(const Duration(seconds: 10));
+      final reward = makeReward(type: type, expiresAt: expiry);
+      final store = DemoMapClaimStore();
 
-    expect(check(reward: reward).canProceedToDemo, isTrue);
+      // The reward is eligible when the preview opens.
+      final previewCheck = check(
+        reward: reward,
+        checkedAt: now,
+        recordedAt: now,
+      );
 
-    expect(
-      check(reward: reward, checkedAt: expiry, recordedAt: expiry).status,
-      RewardCollectionCheckStatus.rewardUnavailable,
-    );
-  });
+      expect(previewCheck.canProceedToDemo, isTrue);
+
+      // It remains eligible immediately before expiry.
+      final justBefore = expiry.subtract(const Duration(microseconds: 1));
+
+      expect(
+        check(
+          reward: reward,
+          checkedAt: justBefore,
+          recordedAt: justBefore,
+        ).canProceedToDemo,
+        isTrue,
+      );
+
+      // At expiry and afterward, a fresh collection check rejects it.
+      for (final attemptedAt in [
+        expiry,
+        expiry.add(const Duration(seconds: 1)),
+      ]) {
+        final collectionCheck = check(
+          reward: reward,
+          checkedAt: attemptedAt,
+          recordedAt: attemptedAt,
+        );
+
+        expect(
+          collectionCheck.status,
+          RewardCollectionCheckStatus.rewardUnavailable,
+        );
+        expect(collectionCheck.canProceedToDemo, isFalse);
+
+        // The store independently rejects the expired reward too,
+        // even if a caller mistakenly tries to record it.
+        expect(
+          store.recordDemoClaim(
+            touristId: 'tourist-a',
+            reward: reward,
+            now: attemptedAt,
+          ),
+          DemoMapClaimStatus.rewardUnavailable,
+        );
+
+        expect(store.claimsFor('tourist-a'), isEmpty);
+        expect(
+          store.nextEligibleAt(
+            touristId: 'tourist-a',
+            checkpointId: reward.checkpointId,
+          ),
+          isNull,
+        );
+      }
+    });
+  }
 
   test('permission loss after preview fails the new check', () {
     expect(check().canProceedToDemo, isTrue);

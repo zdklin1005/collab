@@ -3,14 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'localquest_theme.dart';
 import 'localquest_widgets.dart';
+import 'lq_image_cropper.dart';
 import 'merchant_validation.dart';
 import '../models/localquest_models.dart';
 import '../services/cloudinary_images.dart';
 import '../services/localquest_services.dart';
 
 class ProfilePhotoEditor extends StatefulWidget {
-  const ProfilePhotoEditor({super.key, required this.user});
+  const ProfilePhotoEditor({
+    super.key,
+    required this.user,
+    this.showInfoText = true,
+  });
   final AppUser user;
+  final bool showInfoText;
   @override
   State<ProfilePhotoEditor> createState() => _ProfilePhotoEditorState();
 }
@@ -32,9 +38,9 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
     try {
       final file = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 90,
       );
       if (file == null) return;
       final Uint8List bytes = await file.readAsBytes();
@@ -44,6 +50,19 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
         );
       }
       if (!mounted) return;
+
+      // Crop and resize to 1:1 square ratio with circular mask guide using phone cropper
+      final croppedBytes = await cropImageFile(
+        context: context,
+        sourcePath: file.path,
+        aspectRatioX: 1.0,
+        aspectRatioY: 1.0,
+        lockAspectRatio: true,
+        circular: true,
+        title: 'Crop Profile Picture',
+      );
+      if (croppedBytes == null || !mounted) return;
+
       final accepted = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => Dialog(
@@ -60,21 +79,18 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
                   const SizedBox(height: 18),
                   ClipOval(
                     child: Image.memory(
-                      bytes,
+                      croppedBytes,
                       width: 160,
                       height: 160,
                       fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'This photo will be stored on Cloudinary and displayed on your profile. Use a non-sensitive image for this prototype.',
-                  ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
                   LqButton(
                     label: 'Upload photo',
                     onPressed: () => Navigator.pop(dialogContext, true),
                   ),
+                  const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => Navigator.pop(dialogContext, false),
                     child: const Text('Cancel'),
@@ -88,7 +104,7 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
       if (accepted != true || !mounted) return;
       final uploaded = await UserRepository.instance.updatePhoto(
         widget.user.id,
-        bytes,
+        croppedBytes,
       );
       if (mounted) {
         setState(() => _url = uploaded.url);
@@ -162,11 +178,13 @@ class _ProfilePhotoEditorState extends State<ProfilePhotoEditor> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        const Text(
-          'JPG, PNG or WEBP · under 5 MB',
-          style: TextStyle(fontSize: 12),
-        ),
+        if (widget.showInfoText) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'JPG, PNG or WEBP · under 5 MB',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
       ],
     );
   }

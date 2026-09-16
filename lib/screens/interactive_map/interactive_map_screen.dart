@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/map_test_config.dart';
 
@@ -17,6 +18,13 @@ import '../../services/map_category_filter.dart';
 import '../../services/reward_proximity.dart';
 import '../../services/demo_map_claim_store.dart';
 import '../../services/demo_map_claim_persistence.dart';
+import '../../services/nearby_business_detector.dart';
+import '../../services/nearby_business_prompt_tracker.dart';
+import '../../services/daily_reward_generator.dart';
+import '../../services/demo_business_voucher_claim_store.dart';
+import '../../services/demo_business_voucher_claim_persistence.dart';
+
+import '../../services/map_repository.dart';
 
 import 'map_action_buttons.dart';
 import 'map_location_permission.dart';
@@ -37,6 +45,25 @@ import 'out_of_range_dialog.dart';
 import 'reward_collection_check.dart';
 import 'reward_success_screen.dart';
 
+import 'nearby_business_dialog.dart';
+import 'business_voucher_claim_check.dart';
+import 'business_voucher_section.dart';
+
+import '../../core/map_movement_test_config.dart';
+import '../../services/map_test_movement_controller.dart';
+import 'map_test_movement_controls.dart';
+
+import 'live_exp_preview_layer.dart';
+import 'live_exp_collection_check.dart';
+import 'live_business_voucher_section.dart';
+import 'live_business_promotion_section.dart';
+import 'live_business_voucher_details_dialog.dart';
+import '../../services/live_business_voucher_claim_service.dart';
+import 'live_business_voucher_collection_check.dart';
+
+import '../../services/map_exp_history_repository.dart';
+import '../../services/map_voucher_history_repository.dart';
+
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({super.key, required this.user});
 
@@ -48,9 +75,154 @@ class InteractiveMapScreen extends StatefulWidget {
 
 class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     with WidgetsBindingObserver {
+  MapTestMovementController? _testMovement;
+  bool _testMovementRunning = false;
+
+  LatLng? get _displayPoint {
+    if (MapMovementTestConfig.enabled) {
+      if (!_testMovementRunning || !_foreground || !_locationAllowed) {
+        return null;
+      }
+
+      return _testMovement?.point;
+    }
+
+    final position = _position;
+    return position == null
+        ? null
+        : LatLng(position.latitude, position.longitude);
+  }
+
+  // Used only for nearby-business discovery, never for reward claims.
+  LatLng? get _discoveryPoint {
+    if (!mounted || !_foreground || !_locationAllowed) return null;
+
+    if (MapMovementTestConfig.enabled) {
+      return _displayPoint;
+    }
+
+    final position = _position;
+    if (_locationError != null || position == null) return null;
+
+    final quality = assessLocationQuality(
+      accuracy: position.accuracy,
+      recordedAt: position.timestamp,
+      now: DateTime.now(),
+    );
+
+    if (quality != LocationQuality.recent ||
+        !position.latitude.isFinite ||
+        !position.longitude.isFinite ||
+        position.latitude.abs() > 90 ||
+        position.longitude.abs() > 180) {
+      return null;
+    }
+
+    return LatLng(position.latitude, position.longitude);
+  }
+
+  final LiveBusinessVoucherClaimService _liveBusinessVoucherClaimService =
+      LiveBusinessVoucherClaimService();
+
+  static const double _liveBusinessVoucherClaimRadiusMeters = 50;
+
+  void _startTestLocation() {
+    final start = MapMovementTestConfig.start;
+
+    if (!mounted ||
+        !_foreground ||
+        !_locationAllowed ||
+        start == null ||
+        _testMovementRunning) {
+      return;
+    }
+
+    _stopLiveLocation();
+
+    _testMovement ??= MapTestMovementController(
+      start: start,
+      stepMeters: MapMovementTestConfig.stepMeters,
+    );
+
+    final requestId = _requestId;
+
+    setState(() {
+      _testMovementRunning = true;
+      _position = null;
+      _locating = false;
+      _locationError = null;
+      _updateNearbyBusinesses();
+    });
+
+    // Allows reminder spacing to expire while the test marker is stationary.
+    // It does not request GPS or manufacture GPS accuracy readings.
+    _qualityTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_isCurrentRequest(requestId) || !_testMovementRunning) return;
+
+      setState(() {
+        _updateNearbyBusinesses();
+      });
+    });
+
+    _centreOnFirstPosition();
+  }
+
+  void _changeTestPosition({TestMoveDirection? direction}) {
+    final controller = _testMovement;
+
+    if (!MapMovementTestConfig.enabled ||
+        !mounted ||
+        !_foreground ||
+        !_locationAllowed ||
+        !_testMovementRunning ||
+        !_mapReady ||
+        controller == null ||
+        _searchOpen ||
+        _filterSheetOpen ||
+        _locationDetailsOpen ||
+        _nearbyBusinessDialogOpen ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      return;
+    }
+
+    try {
+      setState(() {
+        if (direction == null) {
+          controller.reset();
+        } else {
+          controller.move(direction);
+        }
+
+        _updateNearbyBusinesses();
+      });
+
+      _recenterWhenReady = true;
+      _centreOnFirstPosition();
+    } on ArgumentError {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This movement would leave the supported test area.'),
+        ),
+      );
+    }
+  }
+
   static const _initialPosition = LatLng(3.1390, 101.6869);
 
   final MapController _mapController = MapController();
+
+  StreamSubscription<List<Business>>? _businessSubscription;
+  List<MapLocation> _liveLocations = const [];
+  List<Business> _liveBusinesses = const [];
+  bool _loadingBusinesses = true;
+  bool _businessLoadFailed = false;
+  int _businessRequestId = 0;
+
+  StreamSubscription<List<MapLocation>>? _landmarkSubscription;
+  List<MapLocation> _liveLandmarks = const [];
+  bool _loadingLandmarks = true;
+  bool _landmarkLoadFailed = false;
+  int _landmarkRequestId = 0;
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _firstFixTimer;
@@ -58,8 +230,22 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _pendingStop = Future<void>.value();
   MapStyle _mapStyle = MapStyle.standard;
 
+  StreamSubscription<List<Campaign>>? _businessCampaignSubscription;
+  List<Campaign> _liveBusinessCampaigns = const [];
+  bool _loadingBusinessCampaigns = true;
+  bool _businessCampaignLoadFailed = false;
+  int _businessCampaignRequestId = 0;
+
+  StreamSubscription<MapHistorySnapshot<Set<String>>>?
+  _businessVoucherHistorySubscription;
+
+  MapHistorySnapshot<Set<String>>? _businessVoucherHistory;
+  bool _businessVoucherHistoryLoadFailed = false;
+  int _businessVoucherHistoryRequestId = 0;
+
   Position? _position;
   String? _selectedBusinessCategory;
+  String? _selectedLandmarkCategory;
   bool _filterSheetOpen = false;
   bool _restoringMapStyle = true;
   bool _savingMapStyle = false;
@@ -75,12 +261,37 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   // Temporary demo value, not the final collection policy.
   static const double _demoCollectionRadiusMeters = 50;
 
+  // Temporary business discovery radius.
+  static const double _demoBusinessDiscoveryRadiusMeters = 100;
+
+  List<NearbyBusiness> _nearbyBusinesses = const [];
+  String? _lastNearbyDetectionKey;
+
+  static final _nearbyPromptTracker = NearbyBusinessPromptTracker();
+
+  // Courtesy interval between different businesses' reminders.
+  // This is not a reward or voucher cooldown.
+  static DateTime? _nextNearbyPromptAt;
+
+  bool _nearbyPromptScheduled = false;
+  bool _nearbyBusinessDialogOpen = false;
+
   // Shared by recreated map screens during this app session.
   // Claims remain separated by tourist ID.
   // Hot restart or a full app restart clears this in-memory data.
   // Shared across recreated Discover screens, separated by tourist ID.
   static DemoMapClaimStore _demoClaims = DemoMapClaimStore();
   static final _claimPersistence = DemoMapClaimPersistence();
+
+  static DemoBusinessVoucherClaimStore _businessVoucherClaims =
+      DemoBusinessVoucherClaimStore();
+
+  static final _businessVoucherPersistence =
+      DemoBusinessVoucherClaimPersistence();
+
+  static bool _businessVoucherClaimInProgress = false;
+
+  static Future<void> _pendingBusinessVoucherClaim = Future<void>.value();
 
   static Future<void>? _claimsLoadFuture;
   static Future<void> _pendingClaimSave = Future<void>.value();
@@ -95,9 +306,20 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   String? _locationError;
   int _requestId = 0;
 
+  bool _liveBusinessVoucherDetailsOpen = false;
+
+  // Temporary claim radius, separate from business discovery.
+  static const double _demoBusinessVoucherClaimRadiusMeters = 50;
+
   @override
   void initState() {
     super.initState();
+    if (!MapTestConfig.enabled) {
+      _startLiveBusinesses();
+      _startLiveLandmarks();
+      _startLiveBusinessCampaigns();
+      _startBusinessVoucherHistory();
+    }
     WidgetsBinding.instance.addObserver(this);
 
     final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -122,6 +344,15 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     // On resume, MapLocationPermission rechecks access and calls
     // _onAccessChanged. Do not restart using an old permission result.
+  }
+
+  @override
+  void didUpdateWidget(covariant InteractiveMapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!MapTestConfig.enabled && oldWidget.user.id != widget.user.id) {
+      _startBusinessVoucherHistory();
+    }
   }
 
   bool _isCurrentRequest(int id) {
@@ -266,61 +497,208 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   Future<void> _openMapSearch() async {
     if (!_mapReady || _searchOpen) return;
 
-    if (!MapTestConfig.enabled) {
+    final demoMode = MapTestConfig.enabled;
+    final businessesReady = !_loadingBusinesses && !_businessLoadFailed;
+    final landmarksReady = !_loadingLandmarks && !_landmarkLoadFailed;
+
+    if (!demoMode && !businessesReady && !landmarksReady) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Demo search requires your development configuration. '
-            'Live place search is not connected yet.',
+            'Places are loading or unavailable. '
+            'Check the map status and retry if needed.',
           ),
         ),
       );
       return;
     }
 
+    final locations = filterMapLocations(
+      demoMode
+          ? MockMapData.createLocations()
+          : <MapLocation>[
+              if (businessesReady) ..._liveLocations,
+              if (landmarksReady) ..._liveLandmarks,
+            ],
+      _selectedBusinessCategory,
+      selectedLandmarkCategory: _selectedLandmarkCategory,
+    );
+
+    final informationText = demoMode
+        ? 'Demo places only. Business and landmark category filters apply here. '
+        : [
+            'Search loaded businesses and landmarks.',
+            if (!businessesReady)
+              'Businesses are currently unavailable or still loading.',
+            if (!landmarksReady)
+              'Landmarks are currently unavailable or still loading.',
+            'Business and landmark category filters apply independently.',
+            'Reopen search to refresh the results.',
+          ].join(' ');
+
+    final touristId = widget.user.id;
     _searchOpen = true;
 
     try {
       final selected = await showSearch<MapLocation?>(
         context: context,
         delegate: MapSearchDelegate(
-          locations: filterMapLocations(
-            MockMapData.createLocations(),
-            _selectedBusinessCategory,
-          ),
+          locations: locations,
+          informationText: informationText,
         ),
       );
 
-      if (!mounted || !_mapReady || selected == null || !selected.canDisplay) {
+      if (!mounted ||
+          !_mapReady ||
+          !_foreground ||
+          widget.user.id != touristId ||
+          selected == null) {
         return;
       }
 
-      // Do not let the next initial GPS fix override this selection.
+      MapLocation destination = selected;
+
+      if (!demoMode) {
+        // Recheck the selected place against the latest data.
+        // A failure in one collection must not block the other.
+        final latestLocations = <MapLocation>[
+          if (!_loadingBusinesses && !_businessLoadFailed) ..._liveLocations,
+          if (!_loadingLandmarks && !_landmarkLoadFailed) ..._liveLandmarks,
+        ];
+
+        final matches = filterMapLocations(
+          latestLocations,
+          _selectedBusinessCategory,
+          selectedLandmarkCategory: _selectedLandmarkCategory,
+        ).where((location) => location.id == selected.id).toList();
+
+        if (matches.length != 1) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This place is no longer available. Please search again.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        destination = matches.single;
+      }
+
+      if (!destination.canDisplay) return;
+
       _centredOnce = true;
       _recenterWhenReady = false;
 
-      _mapController.move(LatLng(selected.latitude, selected.longitude), 17);
+      _mapController.move(
+        LatLng(destination.latitude, destination.longitude),
+        17,
+      );
 
-      await _showLocationDetails(selected);
+      await _showLocationDetails(destination);
     } finally {
       _searchOpen = false;
     }
   }
 
   Future<void> _selectBusinessCategory() async {
-    if (!MapTestConfig.enabled || _filterSheetOpen) return;
+    if (_filterSheetOpen) return;
+
+    final demoMode = MapTestConfig.enabled;
+    final businessesReady =
+        demoMode || (!_loadingBusinesses && !_businessLoadFailed);
+    final landmarksReady =
+        demoMode || (!_loadingLandmarks && !_landmarkLoadFailed);
+
+    final businessCategories = availableBusinessCategories(
+      demoMode
+          ? MockMapData.createLocations()
+          : businessesReady
+          ? _liveLocations
+          : const <MapLocation>[],
+    );
+
+    final landmarkCategories = availableLandmarkCategories(
+      demoMode
+          ? MockMapData.createLocations()
+          : landmarksReady
+          ? _liveLandmarks
+          : const <MapLocation>[],
+    );
 
     _filterSheetOpen = true;
+    final touristId = widget.user.id;
 
     try {
-      final categories = availableBusinessCategories(
-        MockMapData.createLocations(),
-      );
-
-      final selected = await showModalBottomSheet<String>(
+      final selected = await showModalBottomSheet<(MapLocationType, String)>(
         context: context,
         showDragHandle: true,
         builder: (sheetContext) {
+          Widget categorySection({
+            required MapLocationType type,
+            required String heading,
+            required String allLabel,
+            required List<String> categories,
+            required String? current,
+            required bool ready,
+          }) {
+            final choices = <String>[
+              ...categories,
+              // Keep an existing selection visible if its records disappear.
+              if (current != null && !categories.contains(current)) current,
+            ];
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text(
+                    heading,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.apps),
+                  title: Text(allLabel),
+                  trailing: current == null
+                      ? const Icon(Icons.check, color: Colors.blue)
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop((type, '')),
+                ),
+                for (final category in choices)
+                  ListTile(
+                    leading: Icon(
+                      type == MapLocationType.business
+                          ? Icons.storefront_outlined
+                          : Icons.account_balance_outlined,
+                    ),
+                    title: Text(category),
+                    trailing: current == category
+                        ? const Icon(Icons.check, color: Colors.blue)
+                        : null,
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop((type, category)),
+                  ),
+                if (!ready || categories.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      !ready
+                          ? 'These places are loading or unavailable. '
+                                'You can still clear their filter.'
+                          : 'No categories are currently available.',
+                    ),
+                  ),
+              ],
+            );
+          }
+
           return SafeArea(
             child: SingleChildScrollView(
               child: Column(
@@ -331,7 +709,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                     child: Column(
                       children: [
                         Text(
-                          'Filter businesses',
+                          'Filter places',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -339,37 +717,30 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'Applies to business markers and search. '
-                          'Landmarks and rewards stay visible.',
+                          'Each category filters its own markers and search '
+                          'results. EXP and voucher markers stay visible.',
                           textAlign: TextAlign.center,
                         ),
                       ],
                     ),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.apps),
-                    title: const Text('All businesses'),
-                    subtitle: const Text('Clear the category filter'),
-                    trailing: _selectedBusinessCategory == null
-                        ? const Icon(Icons.check, color: Colors.blue)
-                        : null,
-                    // Empty string means clear. Null means cancelled.
-                    onTap: () => Navigator.of(sheetContext).pop(''),
+                  categorySection(
+                    type: MapLocationType.business,
+                    heading: 'Businesses',
+                    allLabel: 'All businesses',
+                    categories: businessCategories,
+                    current: _selectedBusinessCategory,
+                    ready: businessesReady,
                   ),
-                  for (final category in categories)
-                    ListTile(
-                      leading: const Icon(Icons.storefront_outlined),
-                      title: Text(category),
-                      trailing: _selectedBusinessCategory == category
-                          ? const Icon(Icons.check, color: Colors.blue)
-                          : null,
-                      onTap: () => Navigator.of(sheetContext).pop(category),
-                    ),
-                  if (categories.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('No business categories are available.'),
-                    ),
+                  const Divider(),
+                  categorySection(
+                    type: MapLocationType.landmark,
+                    heading: 'Landmarks',
+                    allLabel: 'All landmarks',
+                    categories: landmarkCategories,
+                    current: _selectedLandmarkCategory,
+                    ready: landmarksReady,
+                  ),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -378,34 +749,205 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         },
       );
 
-      if (!mounted || selected == null) return;
+      if (!mounted || widget.user.id != touristId || selected == null) {
+        return;
+      }
 
       setState(() {
-        _selectedBusinessCategory = selected.isEmpty ? null : selected;
+        final category = selected.$2.isEmpty ? null : selected.$2;
+
+        if (selected.$1 == MapLocationType.business) {
+          _selectedBusinessCategory = category;
+        } else {
+          _selectedLandmarkCategory = category;
+        }
       });
     } finally {
       _filterSheetOpen = false;
     }
   }
 
+  void _startLiveLandmarks() {
+    final requestId = ++_landmarkRequestId;
+    final previous = _landmarkSubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _liveLandmarks = const [];
+    _loadingLandmarks = true;
+    _landmarkLoadFailed = false;
+
+    _landmarkSubscription = MapRepository().watchActiveLandmarks().listen(
+      (landmarks) {
+        if (!mounted || requestId != _landmarkRequestId) return;
+
+        setState(() {
+          _liveLandmarks = List<MapLocation>.unmodifiable(landmarks);
+          _loadingLandmarks = false;
+          _landmarkLoadFailed = false;
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!mounted || requestId != _landmarkRequestId) return;
+
+        setState(() {
+          _liveLandmarks = const [];
+          _loadingLandmarks = false;
+          _landmarkLoadFailed = true;
+        });
+
+        debugPrint('Map: landmark loading failed: $error');
+      },
+    );
+  }
+
   Future<void> _showLocationDetails(MapLocation location) async {
     if (!mounted || _locationDetailsOpen || !location.canDisplay) return;
 
+    final businessSource = MapTestConfig.enabled
+        ? MockMapData.businesses
+        : _liveBusinesses;
+
+    final matchingBusinesses =
+        location.type == MapLocationType.business && location.businessId != null
+        ? businessSource
+              .where((business) => business.id == location.businessId)
+              .toList()
+        : <Business>[];
+
+    final Business? business = matchingBusinesses.length == 1
+        ? matchingBusinesses.single
+        : null;
+
+    // Keep one offer snapshot for this details visit.
+    final offers = business == null
+        ? <MapVoucherOffer>[]
+        : _demoBusinessOffers(business);
+
+    final checkedAt = DateTime.now();
+    final touristId = widget.user.id;
+    var voucherPreviewOpen = false;
+
     _locationDetailsOpen = true;
+
+    Future<void> openVoucher(MapVoucherOffer selected) async {
+      if (!mounted ||
+          !_foreground ||
+          !_locationDetailsOpen ||
+          voucherPreviewOpen ||
+          business == null) {
+        return;
+      }
+
+      if (widget.user.id != touristId || touristId.trim().isEmpty) {
+        _showDemoCollectionMessage(
+          'The account changed. Close these details and open them again.',
+        );
+        return;
+      }
+
+      if (_restoringClaims || _claimStorageError != null) {
+        _showDemoCollectionMessage(
+          'Claim history is not ready. Close details and retry on Discover.',
+        );
+        return;
+      }
+
+      voucherPreviewOpen = true;
+      var closing = false;
+
+      try {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            void closePreview() {
+              if (closing) return;
+              closing = true;
+              Navigator.of(dialogContext).pop();
+            }
+
+            return NearbyBusinessDialog(
+              business: business,
+              // Hidden for previews opened from business details.
+              distanceMeters: 0,
+              offers: offers,
+              initialOffer: selected,
+              onDismiss: closePreview,
+              // Details are already underneath this dialog.
+              onViewDetails: closePreview,
+              onCheckEligibility: (voucherId) {
+                return _checkSelectedBusinessVoucher(
+                  touristId: touristId,
+                  businessId: business.id,
+                  voucherId: voucherId,
+                  offers: offers,
+                );
+              },
+              onClaim: (voucherId) {
+                return _claimSelectedBusinessVoucher(
+                  touristId: touristId,
+                  businessId: business.id,
+                  voucherId: voucherId,
+                  offers: offers,
+                  isPreviewOpen: () =>
+                      voucherPreviewOpen && !closing && _locationDetailsOpen,
+                );
+              },
+            );
+          },
+        );
+      } finally {
+        voucherPreviewOpen = false;
+      }
+    }
 
     try {
       await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
-        showDragHandle: true,
+        isDismissible: false,
+        enableDrag: false,
+        showDragHandle: false,
         backgroundColor: Colors.white,
         builder: (sheetContext) {
           return FractionallySizedBox(
             heightFactor: 0.85,
             child: MapLocationDetails(
+              isDemo: MapTestConfig.enabled,
               location: location,
               onClose: () => Navigator.of(sheetContext).pop(),
+              voucherSection: business == null
+                  ? null
+                  : MapTestConfig.enabled
+                  ? BusinessVoucherSection(
+                      business: business,
+                      offers: offers,
+                      checkedAt: checkedAt,
+                      onSelected: (offer) {
+                        unawaited(openVoucher(offer));
+                      },
+                    )
+                  : _buildLiveBusinessVoucherSection(
+                      business,
+                      onSelected: (campaign) {
+                        unawaited(
+                          _showLiveBusinessVoucherDetails(
+                            business: business,
+                            campaign: campaign,
+                            onRecorded: () {
+                              Navigator.of(sheetContext).pop();
+                            },
+                          ),
+                        );
+                      },
+                    ),
+              promotionSection: business == null || MapTestConfig.enabled
+                  ? null
+                  : _buildLiveBusinessPromotionSection(business),
             ),
           );
         },
@@ -417,6 +959,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
   // Starts one live subscription. Repeated calls do not create duplicates.
   Future<void> _readPosition() async {
+    if (MapMovementTestConfig.enabled) {
+      _startTestLocation();
+      return;
+    }
     if (!mounted ||
         !_foreground ||
         !_locationAllowed ||
@@ -489,6 +1035,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                 _position = position;
                 _locating = false;
                 _locationError = null;
+                _updateNearbyBusinesses();
               });
 
               _centreOnFirstPosition();
@@ -515,7 +1062,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       // This timer does not request additional GPS readings.
       _qualityTimer = Timer.periodic(const Duration(seconds: 5), (_) {
         if (_isCurrentRequest(requestId) && _position != null) {
-          setState(() {});
+          setState(() {
+            _updateNearbyBusinesses();
+          });
         }
       });
 
@@ -529,6 +1078,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _stopLiveLocation() {
+    _testMovementRunning = false;
+    _publishNearbyBusinesses(const [], 'paused');
+
     // Invalidate callbacks before cancelling the native subscription.
     _requestId++;
     _qualityTimer?.cancel();
@@ -563,18 +1115,14 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   void _centreOnFirstPosition() {
-    // Keep the demo area visible until the user requests GPS recentering.
     if (MapTestConfig.enabled && !_recenterWhenReady) return;
 
-    final position = _position;
+    final point = _displayPoint;
 
-    if (!_mapReady || position == null) return;
+    if (!_mapReady || point == null) return;
     if (_centredOnce && !_recenterWhenReady) return;
 
-    _mapController.move(
-      LatLng(position.latitude, position.longitude),
-      _centredOnce ? _mapController.camera.zoom : 16,
-    );
+    _mapController.move(point, _centredOnce ? _mapController.camera.zoom : 16);
 
     _centredOnce = true;
     _recenterWhenReady = false;
@@ -606,7 +1154,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
     _recenterWhenReady = true;
 
-    if (_position != null) {
+    if (_displayPoint != null) {
       _centreOnFirstPosition();
     } else {
       // If already waiting, the next reading will recenter the map.
@@ -621,6 +1169,41 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     _foreground = false;
     _stopLiveLocation();
     _mapController.dispose();
+    _businessRequestId++;
+    final subscription = _businessSubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+    _businessCampaignRequestId++;
+
+    final businessCampaignSubscription = _businessCampaignSubscription;
+    if (businessCampaignSubscription != null) {
+      unawaited(businessCampaignSubscription.cancel());
+    }
+
+    _landmarkRequestId++;
+
+    final landmarkSubscription = _landmarkSubscription;
+    if (landmarkSubscription != null) {
+      unawaited(landmarkSubscription.cancel());
+    }
+
+    _businessCampaignRequestId++;
+
+    final voucherCampaignSubscription = _businessCampaignSubscription;
+    if (voucherCampaignSubscription != null) {
+      unawaited(voucherCampaignSubscription.cancel());
+    }
+
+    _businessVoucherHistoryRequestId++;
+
+    final businessVoucherHistorySubscription =
+        _businessVoucherHistorySubscription;
+
+    if (businessVoucherHistorySubscription != null) {
+      unawaited(businessVoucherHistorySubscription.cancel());
+    }
+
     super.dispose();
   }
 
@@ -832,6 +1415,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   Future<void> _showRewardDistance(RewardMarker reward) async {
+    if (MapMovementTestConfig.enabled) {
+      return;
+    }
     if (!mounted || !_foreground || _rewardDistanceDialogOpen) {
       return;
     }
@@ -982,6 +1568,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     try {
       final requestedCollection = await showDialog<bool>(
         context: context,
+        barrierDismissible: false,
         barrierColor: Colors.black54,
         builder: (dialogContext) {
           if (checkedWithinRange == true) {
@@ -1046,8 +1633,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   }
 
   static Future<void> _loadSharedDemoClaims() async {
-    final restored = await _claimPersistence.load();
-    _demoClaims = restored;
+    final restoredMapClaims = await _claimPersistence.load();
+
+    final restoredBusinessClaims = await _businessVoucherPersistence.load();
+
+    // Publish only when both histories have loaded successfully.
+    _demoClaims = restoredMapClaims;
+    _businessVoucherClaims = restoredBusinessClaims;
   }
 
   Future<void> _restoreDemoClaims() async {
@@ -1072,6 +1664,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       // If a previous Discover screen was saving when disposed,
       // wait until its shared history has been updated.
       await _pendingClaimSave;
+      await _pendingBusinessVoucherClaim;
 
       if (!mounted) return;
 
@@ -1079,6 +1672,16 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         _restoringClaims = false;
         _claimStorageError = null;
       });
+      final touristId = widget.user.id;
+
+      if (touristId.trim().isNotEmpty) {
+        final claimCount = _businessVoucherClaims.claimsFor(touristId).length;
+
+        debugPrint(
+          'Business-voucher demo history loaded: '
+          '$claimCount claim(s) for the current tourist.',
+        );
+      }
     } catch (_) {
       // Allow an explicit retry without deleting the saved data.
       if (identical(_claimsLoadFuture, loading)) {
@@ -1090,8 +1693,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
       setState(() {
         _restoringClaims = false;
         _claimStorageError =
-            'Could not load demo collection history. '
-            'Collection is paused. Please retry.';
+            'Could not load demo claim history. '
+            'Map-reward collection and business-voucher actions are paused. '
+            'Please retry.';
       });
     }
   }
@@ -1130,12 +1734,1223 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     _demoClaims = candidate;
   }
 
+  void _updateNearbyBusinesses() {
+    if (!MapTestConfig.enabled && (_loadingBusinesses || _businessLoadFailed)) {
+      _publishNearbyBusinesses(
+        const [],
+        _businessLoadFailed
+            ? 'business data unavailable'
+            : 'loading businesses',
+      );
+      return;
+    }
+
+    final point = _discoveryPoint;
+
+    if (point == null) {
+      _publishNearbyBusinesses(
+        const [],
+        'paused: location unavailable or unreliable',
+      );
+      return;
+    }
+
+    final results = findNearbyBusinesses(
+      businesses: MapTestConfig.enabled
+          ? MockMapData.businesses
+          : _liveBusinesses,
+      userLatitude: point.latitude,
+      userLongitude: point.longitude,
+      radiusMeters: _demoBusinessDiscoveryRadiusMeters,
+    );
+
+    _publishNearbyBusinesses(results, 'ready');
+  }
+
+  void _publishNearbyBusinesses(List<NearbyBusiness> results, String status) {
+    _nearbyBusinesses = results;
+
+    if (status == 'ready' && results.isNotEmpty) {
+      _scheduleNearbyBusinessPrompt();
+    }
+
+    if (!MapTestConfig.enabled) {
+      final key =
+          'live|$status|${results.map((item) => item.business.id).join(",")}';
+
+      if (_lastNearbyDetectionKey == key) return;
+      _lastNearbyDetectionKey = key;
+
+      if (status == 'ready') {
+        debugPrint(
+          'Live nearby businesses: ${results.length} within '
+          '${_demoBusinessDiscoveryRadiusMeters.toStringAsFixed(0)} m',
+        );
+      } else {
+        debugPrint('Live nearby businesses: $status');
+      }
+
+      return;
+    }
+
+    // Log only status or ordered business-ID changes.
+    // Distances still refresh even when no new message is printed.
+    final key =
+        '$status|${_nearbyBusinesses.map((item) => item.business.id).join(",")}';
+
+    if (_lastNearbyDetectionKey == key) return;
+    _lastNearbyDetectionKey = key;
+
+    if (status != 'ready') {
+      debugPrint('Nearby businesses: $status');
+      return;
+    }
+
+    if (_nearbyBusinesses.isEmpty) {
+      debugPrint(
+        'Nearby businesses: none within '
+        '${_demoBusinessDiscoveryRadiusMeters.toStringAsFixed(0)} m',
+      );
+      return;
+    }
+
+    final summary = _nearbyBusinesses
+        .map((item) {
+          return '${item.business.name} '
+              '(approximately ${item.distanceMeters.toStringAsFixed(0)} m)';
+        })
+        .join(', ');
+
+    debugPrint('Nearby businesses: $summary');
+  }
+
+  void _scheduleNearbyBusinessPrompt() {
+    if (!mounted || _nearbyPromptScheduled || _nearbyBusinessDialogOpen) {
+      return;
+    }
+
+    _nearbyPromptScheduled = true;
+
+    // Detection can run inside setState. Open the dialog afterward.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _nearbyPromptScheduled = false;
+
+      if (!mounted) return;
+
+      unawaited(_tryShowNearbyBusinessPrompt());
+    });
+  }
+
+  Future<void> _tryShowNearbyBusinessPrompt() async {
+    final demoMode = MapTestConfig.enabled;
+
+    if (!mounted ||
+        !_foreground ||
+        !_mapReady ||
+        !_locationAllowed ||
+        _nearbyBusinessDialogOpen ||
+        _rewardDistanceDialogOpen ||
+        _locationDetailsOpen ||
+        _searchOpen ||
+        _filterSheetOpen ||
+        _restoringMapStyle ||
+        _savingMapStyle ||
+        (!demoMode && (_loadingBusinesses || _businessLoadFailed)) ||
+        (demoMode &&
+            (_restoringClaims || _savingClaim || _claimStorageError != null))) {
+      return;
+    }
+
+    // Do not open over another route, dialog, or bottom sheet.
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+
+    final touristId = widget.user.id;
+    if (touristId.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final nextAllowed = _nextNearbyPromptAt;
+
+    if (nextAllowed != null && now.isBefore(nextAllowed)) return;
+
+    final point = _discoveryPoint;
+    if (point == null) return;
+
+    // Recheck proximity immediately before opening the popup.
+    final currentNearby = findNearbyBusinesses(
+      businesses: demoMode ? MockMapData.businesses : _liveBusinesses,
+      userLatitude: point.latitude,
+      userLongitude: point.longitude,
+      radiusMeters: _demoBusinessDiscoveryRadiusMeters,
+    );
+
+    final candidate = _nearbyPromptTracker.nextCandidate(
+      touristId: touristId,
+      nearby: currentNearby,
+    );
+
+    if (candidate == null) return;
+
+    final location = MapLocation.fromBusiness(candidate.business);
+    if (location == null || !location.canDisplay) return;
+
+    final voucherOffers = demoMode
+        ? _demoBusinessOffers(candidate.business)
+        : <MapVoucherOffer>[];
+
+    _nearbyBusinessDialogOpen = true;
+    bool actionTaken = false;
+    var previewOpen = true;
+
+    try {
+      final requestedDetails = showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          void closeWith(bool viewDetails) {
+            if (actionTaken) return;
+            actionTaken = true;
+            Navigator.of(dialogContext).pop(viewDetails);
+          }
+
+          if (!demoMode) {
+            final business = candidate.business;
+
+            final categoryLabel = business.category.trim().isEmpty
+                ? 'General business'
+                : business.category.trim();
+
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 20, 8),
+              contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              title: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3267D8),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.storefront_outlined,
+                      color: Colors.white,
+                      size: 27,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'BUSINESS NEARBY',
+                          style: TextStyle(
+                            color: Color(0xFF3267D8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          business.name,
+                          style: const TextStyle(
+                            color: Color(0xFF111827),
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F5FF),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.storefront_outlined,
+                            color: Color(0xFF3267D8),
+                            size: 22,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Business category',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  categoryLabel,
+                                  style: const TextStyle(
+                                    color: Color(0xFF1F2937),
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (business.address.trim().isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: Color(0xFF6B7280),
+                            size: 21,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              business.address,
+                              style: const TextStyle(
+                                color: Color(0xFF4B5563),
+                                fontSize: 14,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
+                    _buildLiveBusinessPromotionSection(business, compact: true),
+                    const SizedBox(height: 14),
+                    _buildLiveBusinessVoucherSection(
+                      business,
+                      onSelected: (campaign) {
+                        unawaited(
+                          _showLiveBusinessVoucherDetails(
+                            business: business,
+                            campaign: campaign,
+                            onRecorded: () => closeWith(false),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => closeWith(false),
+                  child: const Text('Close'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => closeWith(true),
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  label: const Text('View details'),
+                ),
+              ],
+            );
+          }
+
+          return NearbyBusinessDialog(
+            business: candidate.business,
+            distanceMeters: candidate.distanceMeters,
+            offers: voucherOffers,
+            onDismiss: () => closeWith(false),
+            onViewDetails: () => closeWith(true),
+            onCheckEligibility: (voucherId) {
+              return _checkSelectedBusinessVoucher(
+                touristId: touristId,
+                businessId: candidate.business.id,
+                voucherId: voucherId,
+                offers: voucherOffers,
+              );
+            },
+            onClaim: (voucherId) {
+              return _claimSelectedBusinessVoucher(
+                touristId: touristId,
+                businessId: candidate.business.id,
+                voucherId: voucherId,
+                offers: voucherOffers,
+                isPreviewOpen: () => previewOpen && !actionTaken,
+              );
+            },
+          );
+        },
+      );
+
+      // The dialog route has now been opened.
+      // Dismissing it still counts as having seen this reminder.
+      _nearbyPromptTracker.markShown(
+        touristId: touristId,
+        businessId: candidate.business.id,
+      );
+
+      final viewDetails = await requestedDetails;
+      previewOpen = false;
+
+      if (viewDetails == true &&
+          mounted &&
+          _foreground &&
+          widget.user.id == touristId &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        await _showLocationDetails(location);
+      }
+    } finally {
+      previewOpen = false;
+      _nearbyBusinessDialogOpen = false;
+      _nextNearbyPromptAt = DateTime.now().add(const Duration(seconds: 30));
+    }
+  }
+
+  Future<BusinessVoucherClaimStatus> _checkSelectedBusinessVoucher({
+    required String touristId,
+    required String businessId,
+    required String voucherId,
+    required List<MapVoucherOffer> offers,
+  }) async {
+    if (MapMovementTestConfig.enabled) {
+      return BusinessVoucherClaimStatus.locationUnavailable;
+    }
+
+    if (!mounted || !_foreground) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    if (touristId.trim().isEmpty || widget.user.id != touristId) {
+      return BusinessVoucherClaimStatus.accountRequired;
+    }
+
+    if (_restoringClaims || _claimStorageError != null) {
+      return BusinessVoucherClaimStatus.historyUnavailable;
+    }
+
+    final requestId = _requestId;
+
+    final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+
+    if (!mounted || !_foreground) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    if (widget.user.id != touristId) {
+      return BusinessVoucherClaimStatus.accountRequired;
+    }
+
+    final accessAllowed =
+        _locationAllowed &&
+        servicesEnabled &&
+        (permission == LocationPermission.whileInUse ||
+            permission == LocationPermission.always);
+
+    if (!accessAllowed) {
+      return BusinessVoucherClaimStatus.locationAccessRequired;
+    }
+
+    if (requestId != _requestId) {
+      return BusinessVoucherClaimStatus.locationUnavailable;
+    }
+
+    Business? currentBusiness;
+
+    for (final business in MockMapData.businesses) {
+      if (business.id == businessId) {
+        currentBusiness = business;
+        break;
+      }
+    }
+
+    if (currentBusiness == null) {
+      return BusinessVoucherClaimStatus.voucherUnavailable;
+    }
+
+    // Use the latest stream reading after checking device access.
+    final position = _locationError == null ? _position : null;
+
+    // Recheck after the asynchronous device-permission checks.
+    if (_restoringClaims || _claimStorageError != null) {
+      return BusinessVoucherClaimStatus.historyUnavailable;
+    }
+
+    return checkBusinessVoucherClaim(
+      touristId: touristId,
+      business: currentBusiness,
+      selectedVoucherId: voucherId,
+      currentOffers: offers,
+      now: DateTime.now(),
+      appIsForeground: _foreground,
+      locationAllowed: accessAllowed,
+      radiusMeters: _demoBusinessVoucherClaimRadiusMeters,
+      userLatitude: position?.latitude,
+      userLongitude: position?.longitude,
+      accuracyMeters: position?.accuracy,
+      recordedAt: position?.timestamp,
+      hasAlreadyClaimed:
+          voucherId.trim().isNotEmpty &&
+          _businessVoucherClaims.hasClaimed(
+            touristId: touristId,
+            offerId: voucherId,
+          ),
+    );
+  }
+
+  Future<BusinessVoucherClaimStatus> _claimSelectedBusinessVoucher({
+    required String touristId,
+    required String businessId,
+    required String voucherId,
+    required List<MapVoucherOffer> offers,
+    required bool Function() isPreviewOpen,
+  }) {
+    if (_businessVoucherClaimInProgress) {
+      return Future.value(BusinessVoucherClaimStatus.claimInProgress);
+    }
+
+    // Lock before any asynchronous work starts.
+    _businessVoucherClaimInProgress = true;
+
+    final operation = _performBusinessVoucherClaim(
+      touristId: touristId,
+      businessId: businessId,
+      voucherId: voucherId,
+      offers: offers,
+      isPreviewOpen: isPreviewOpen,
+    );
+
+    // Recreated screens can safely await completion.
+    // The original operation still delivers errors to its caller.
+    _pendingBusinessVoucherClaim = operation
+        .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {})
+        .whenComplete(() {
+          _businessVoucherClaimInProgress = false;
+        });
+
+    return operation;
+  }
+
+  Future<BusinessVoucherClaimStatus> _performBusinessVoucherClaim({
+    required String touristId,
+    required String businessId,
+    required String voucherId,
+    required List<MapVoucherOffer> offers,
+    required bool Function() isPreviewOpen,
+  }) async {
+    if (MapMovementTestConfig.enabled) {
+      return BusinessVoucherClaimStatus.locationUnavailable;
+    }
+    if (!MapTestConfig.enabled || !isPreviewOpen()) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    // Always run fresh checks when Claim is tapped.
+    final eligibility = await _checkSelectedBusinessVoucher(
+      touristId: touristId,
+      businessId: businessId,
+      voucherId: voucherId,
+      offers: offers,
+    );
+
+    if (eligibility != BusinessVoucherClaimStatus.readyForDemo) {
+      return eligibility;
+    }
+
+    if (!mounted || !_foreground || !isPreviewOpen()) {
+      return BusinessVoucherClaimStatus.appInactive;
+    }
+
+    if (widget.user.id != touristId) {
+      return BusinessVoucherClaimStatus.accountRequired;
+    }
+
+    if (_restoringClaims || _claimStorageError != null) {
+      return BusinessVoucherClaimStatus.historyUnavailable;
+    }
+
+    final businesses = MockMapData.businesses
+        .where((business) => business.id == businessId)
+        .toList();
+
+    final selectedOffers = offers
+        .where((offer) => offer.id == voucherId)
+        .toList();
+
+    if (businesses.length != 1 || selectedOffers.length != 1) {
+      return BusinessVoucherClaimStatus.voucherUnavailable;
+    }
+
+    try {
+      final result = await _businessVoucherPersistence.recordAndSave(
+        currentStore: _businessVoucherClaims,
+        touristId: touristId,
+        business: businesses.single,
+        offer: selectedOffers.single,
+        now: DateTime.now(),
+      );
+
+      // Publish saved history even if the original screen was closed.
+      // Otherwise another screen could use outdated eligibility.
+      if (result.status == DemoBusinessVoucherClaimStatus.recorded) {
+        _businessVoucherClaims = result.store;
+      }
+
+      if (!mounted || !_foreground || !isPreviewOpen()) {
+        return BusinessVoucherClaimStatus.appInactive;
+      }
+
+      if (widget.user.id != touristId) {
+        return BusinessVoucherClaimStatus.accountRequired;
+      }
+
+      return switch (result.status) {
+        DemoBusinessVoucherClaimStatus.recorded =>
+          BusinessVoucherClaimStatus.demoRecorded,
+        DemoBusinessVoucherClaimStatus.alreadyClaimed =>
+          BusinessVoucherClaimStatus.alreadyClaimed,
+        DemoBusinessVoucherClaimStatus.unavailable =>
+          BusinessVoucherClaimStatus.voucherUnavailable,
+      };
+    } catch (_) {
+      return BusinessVoucherClaimStatus.saveFailed;
+    }
+  }
+
+  List<MapVoucherOffer> _demoBusinessOffers(Business business) {
+    final checkedAt = DateTime.now();
+
+    final multipleOffers =
+        MapTestConfig.enabled &&
+        const bool.fromEnvironment('MAP_DEMO_MULTIPLE_VOUCHERS');
+
+    const testTag = String.fromEnvironment(
+      'MAP_DEMO_BUSINESS_VOUCHER_TEST_TAG',
+    );
+
+    return [
+      ...MockMapData.createDemoVoucherOffers(checkedAt),
+      if (multipleOffers)
+        MapVoucherOffer(
+          id:
+              'debug-second-offer-${business.id}'
+              '${testTag.isEmpty ? '' : '-$testTag'}',
+          businessId: business.id,
+          title: 'Second demo voucher — short offer',
+          validFrom: checkedAt.subtract(const Duration(minutes: 1)),
+          expiresAt: checkedAt.add(const Duration(minutes: 5)),
+          remainingStock: 5,
+          mapEligible: false,
+        ),
+    ];
+  }
+
+  void _retryLiveBusinesses() {
+    setState(_startLiveBusinesses);
+  }
+
+  Marker _buildNamedPlaceMarker(MapLocation location) {
+    final isBusiness = location.type == MapLocationType.business;
+
+    return Marker(
+      key: ValueKey('live:${location.id}'),
+      point: LatLng(location.latitude, location.longitude),
+      width: 160,
+      height: 116,
+      alignment: Alignment.center,
+      rotate: true,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 32,
+            child: IgnorePointer(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x22000000), blurRadius: 3),
+                    ],
+                  ),
+                  child: Text(
+                    location.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF19243D),
+                      fontSize: 11,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Tooltip(
+                message: location.title,
+                child: Material(
+                  color: isBusiness
+                      ? const Color(0xFF467A45)
+                      : const Color(0xFF7656A3),
+                  elevation: 3,
+                  shape: const CircleBorder(
+                    side: BorderSide(color: Colors.white, width: 2),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => unawaited(_showLocationDetails(location)),
+                    child: Icon(
+                      isBusiness
+                          ? Icons.storefront_outlined
+                          : Icons.account_balance_outlined,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveBusinessLayer() {
+    final waiting = _loadingBusinesses;
+    final failed = _businessLoadFailed;
+    final locations = filterMapLocations(
+      _liveLocations,
+      _selectedBusinessCategory,
+    );
+
+    return Stack(
+      children: [
+        MarkerLayer(
+          markers: [
+            for (final location in locations) _buildNamedPlaceMarker(location),
+          ],
+        ),
+        if (waiting || failed || _loadingLandmarks || _landmarkLoadFailed)
+          Positioned(
+            left: 16,
+            right: 84,
+            bottom: 150,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (waiting || _loadingLandmarks) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 8),
+                    ],
+                    if (waiting) const Text('Loading businesses…'),
+                    if (_loadingLandmarks) const Text('Loading landmarks…'),
+                    if (failed) ...[
+                      const Text(
+                        'Could not load businesses. '
+                        'Check your connection and sign-in.',
+                      ),
+                      TextButton(
+                        onPressed: _retryLiveBusinesses,
+                        child: const Text('Retry businesses'),
+                      ),
+                    ],
+                    if (_landmarkLoadFailed) ...[
+                      const Text(
+                        'Could not load landmarks. '
+                        'Check your connection and permissions.',
+                      ),
+                      TextButton(
+                        onPressed: () => setState(_startLiveLandmarks),
+                        child: const Text('Retry landmarks'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _startLiveBusinesses() {
+    final requestId = ++_businessRequestId;
+    final previous = _businessSubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _liveLocations = const [];
+    _loadingBusinesses = true;
+    _businessLoadFailed = false;
+    _updateNearbyBusinesses();
+
+    _businessSubscription = MapRepository().watchActiveBusinesses().listen(
+      (businesses) {
+        if (!mounted || requestId != _businessRequestId) return;
+
+        setState(() {
+          _liveBusinesses = List<Business>.unmodifiable(businesses);
+          _liveLocations = businesses
+              .map(MapLocation.fromBusiness)
+              .whereType<MapLocation>()
+              .where((location) => location.canDisplay)
+              .toList(growable: false);
+
+          _loadingBusinesses = false;
+          _businessLoadFailed = false;
+          _updateNearbyBusinesses();
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!mounted || requestId != _businessRequestId) return;
+
+        setState(() {
+          _liveLocations = const [];
+          _loadingBusinesses = false;
+          _businessLoadFailed = true;
+          _updateNearbyBusinesses();
+        });
+      },
+    );
+  }
+
+  Widget _buildLiveLandmarkLayer() {
+    return MarkerLayer(
+      markers: [
+        for (final location in filterMapLocations(
+          _liveLandmarks,
+          null,
+          selectedLandmarkCategory: _selectedLandmarkCategory,
+        ))
+          _buildNamedPlaceMarker(location),
+      ],
+    );
+  }
+
+  static const double _liveExpCollectionRadiusMeters = 50;
+
+  void _startLiveBusinessCampaigns() {
+    final requestId = ++_businessCampaignRequestId;
+    final previous = _businessCampaignSubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _liveBusinessCampaigns = const [];
+    _loadingBusinessCampaigns = true;
+    _businessCampaignLoadFailed = false;
+
+    _businessCampaignSubscription = MapRepository()
+        .watchActiveBusinessCampaigns()
+        .listen(
+          (campaigns) {
+            if (!mounted || requestId != _businessCampaignRequestId) return;
+
+            setState(() {
+              _liveBusinessCampaigns = campaigns;
+              _loadingBusinessCampaigns = false;
+              _businessCampaignLoadFailed = false;
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!mounted || requestId != _businessCampaignRequestId) return;
+
+            setState(() {
+              _liveBusinessCampaigns = const [];
+              _loadingBusinessCampaigns = false;
+              _businessCampaignLoadFailed = true;
+            });
+
+            debugPrint('Map: business campaign loading failed: $error');
+          },
+        );
+  }
+
+  Widget _buildLiveBusinessVoucherSection(
+    Business business, {
+    ValueChanged<Campaign>? onSelected,
+  }) {
+    if (_loadingBusinessCampaigns) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('Loading available vouchers…'),
+          ],
+        ),
+      );
+    }
+
+    if (_businessCampaignLoadFailed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Available vouchers could not be loaded.'),
+          TextButton(
+            onPressed: () => setState(_startLiveBusinessCampaigns),
+            child: const Text('Retry vouchers'),
+          ),
+        ],
+      );
+    }
+
+    final history = _businessVoucherHistory;
+    final claimedIds = history?.data ?? const <String>{};
+    final historyReady =
+        !_businessVoucherHistoryLoadFailed && history?.serverConfirmed == true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LiveBusinessVoucherSection(
+          business: business,
+          campaigns: _liveBusinessCampaigns,
+          checkedAt: DateTime.now(),
+          claimedVoucherIds: claimedIds,
+          claimHistoryReady: historyReady,
+          onSelected: onSelected,
+        ),
+        if (_businessVoucherHistoryLoadFailed) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Your claimed-voucher history could not be confirmed.',
+            style: TextStyle(color: Color(0xFFB42318), fontSize: 12),
+          ),
+          TextButton(
+            onPressed: () => setState(_startBusinessVoucherHistory),
+            child: const Text('Retry claim history'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLiveBusinessPromotionSection(
+    Business business, {
+    bool compact = false,
+  }) {
+    if (_loadingBusinessCampaigns || _businessCampaignLoadFailed) {
+      return const SizedBox.shrink();
+    }
+
+    return LiveBusinessPromotionSection(
+      business: business,
+      campaigns: _liveBusinessCampaigns,
+      checkedAt: DateTime.now(),
+      compact: compact,
+    );
+  }
+
+  Future<LiveRewardCollectionCheck> _checkLiveExpAvailability(
+    RewardMarker selectedReward,
+    List<RewardMarker> Function(DateTime instant) currentRewardsAt,
+    bool Function() rewardSourceReady,
+  ) async {
+    final touristId = widget.user.id;
+    final requestId = _requestId;
+    final simulationActive = MapMovementTestConfig.enabled;
+
+    bool deviceAccessAllowed;
+
+    if (simulationActive) {
+      deviceAccessAllowed = _displayPoint != null;
+    } else {
+      try {
+        final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+        final permission = await Geolocator.checkPermission();
+
+        deviceAccessAllowed =
+            servicesEnabled &&
+            (permission == LocationPermission.whileInUse ||
+                permission == LocationPermission.always);
+      } catch (_) {
+        deviceAccessAllowed = false;
+      }
+    }
+
+    if (!mounted || !_foreground || widget.user.id != touristId) {
+      return const LiveRewardCollectionCheck(
+        LiveRewardCollectionStatus.localCheckFailed,
+        localCheck: RewardCollectionCheck(
+          status: RewardCollectionCheckStatus.appInactive,
+        ),
+      );
+    }
+
+    if (requestId != _requestId) {
+      return const LiveRewardCollectionCheck(
+        LiveRewardCollectionStatus.localCheckFailed,
+        localCheck: RewardCollectionCheck(
+          status: RewardCollectionCheckStatus.locationUnavailable,
+        ),
+      );
+    }
+
+    final sourceReady =
+        !_loadingBusinesses &&
+        !_businessLoadFailed &&
+        !_loadingLandmarks &&
+        !_landmarkLoadFailed &&
+        rewardSourceReady();
+
+    final now = DateTime.now();
+    final simulatedPoint = simulationActive ? _displayPoint : null;
+    final position = !simulationActive && _locationError == null
+        ? _position
+        : null;
+
+    return checkLiveRewardCollection(
+      selectedReward: selectedReward,
+      currentRewards: sourceReady
+          ? currentRewardsAt(now)
+          : const <RewardMarker>[],
+      sourceReady: sourceReady,
+
+      // Simulation was intentionally enabled through the development UI.
+      simulationActive: false,
+
+      now: now,
+      appIsForeground: _foreground,
+      locationAllowed: simulationActive
+          ? simulatedPoint != null
+          : _locationAllowed && deviceAccessAllowed,
+      radiusMeters: _liveExpCollectionRadiusMeters,
+      userLatitude: simulatedPoint?.latitude ?? position?.latitude,
+      userLongitude: simulatedPoint?.longitude ?? position?.longitude,
+      accuracyMeters: simulationActive ? 1 : position?.accuracy,
+      recordedAt: simulationActive ? now : position?.timestamp,
+    );
+  }
+
+  Future<void> _showLiveBusinessVoucherDetails({
+    required Business business,
+    required Campaign campaign,
+    required VoidCallback onRecorded,
+  }) async {
+    if (!mounted || !_foreground || _liveBusinessVoucherDetailsOpen) {
+      return;
+    }
+
+    _liveBusinessVoucherDetailsOpen = true;
+
+    try {
+      final result = await showDialog<LiveBusinessVoucherClaimResult>(
+        context: context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) {
+          return LiveBusinessVoucherDetailsDialog(
+            campaign: campaign,
+            onCheck: () {
+              return _checkLiveBusinessVoucherClaim(
+                business: business,
+                campaign: campaign,
+              );
+            },
+            onClaim: () {
+              return _claimLiveBusinessVoucher(
+                business: business,
+                campaign: campaign,
+              );
+            },
+          );
+        },
+      );
+
+      if (!mounted ||
+          result == null ||
+          result.status != LiveBusinessVoucherClaimStatus.recorded) {
+        return;
+      }
+
+      // Close the nearby popup or business-details sheet underneath.
+      onRecorded();
+
+      // Let the previous modal finish closing before opening success.
+      await Future<void>.delayed(Duration.zero);
+
+      if (!mounted || !_foreground) return;
+
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (successContext) {
+            return RewardSuccessScreen.businessVoucher(
+              result: result,
+              onContinue: () {
+                Navigator.of(successContext).pop();
+              },
+            );
+          },
+        ),
+      );
+    } finally {
+      _liveBusinessVoucherDetailsOpen = false;
+    }
+  }
+
+  Future<LiveBusinessVoucherCollectionCheck> _checkLiveBusinessVoucherClaim({
+    required Business business,
+    required Campaign campaign,
+  }) async {
+    final now = DateTime.now();
+    final simulationActive = MapMovementTestConfig.enabled;
+    final simulatedPoint = simulationActive ? _displayPoint : null;
+    final position = simulationActive ? null : _position;
+
+    return checkLiveBusinessVoucherCollection(
+      touristId: widget.user.id,
+      business: business,
+      voucherId: campaign.id,
+      currentCampaigns: _liveBusinessCampaigns,
+      now: now,
+      appIsForeground: mounted && _foreground,
+      locationAllowed: _locationAllowed,
+      radiusMeters: _liveBusinessVoucherClaimRadiusMeters,
+      userLatitude: simulationActive
+          ? simulatedPoint?.latitude
+          : position?.latitude,
+      userLongitude: simulationActive
+          ? simulatedPoint?.longitude
+          : position?.longitude,
+      accuracyMeters: simulationActive
+          ? simulatedPoint == null
+                ? null
+                : 1
+          : position?.accuracy,
+      recordedAt: simulationActive
+          ? simulatedPoint == null
+                ? null
+                : now
+          : position?.timestamp,
+    );
+  }
+
+  Future<LiveBusinessVoucherClaimResult> _claimLiveBusinessVoucher({
+    required Business business,
+    required Campaign campaign,
+  }) {
+    return _liveBusinessVoucherClaimService.claim(
+      uid: widget.user.id,
+      businessId: business.id,
+      voucherId: campaign.id,
+    );
+  }
+
+  void _startBusinessVoucherHistory() {
+    final requestId = ++_businessVoucherHistoryRequestId;
+    final previous = _businessVoucherHistorySubscription;
+
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
+
+    _businessVoucherHistory = null;
+    _businessVoucherHistoryLoadFailed = false;
+
+    final touristId = widget.user.id;
+
+    if (touristId.trim().isEmpty) {
+      _businessVoucherHistoryLoadFailed = true;
+      return;
+    }
+
+    _businessVoucherHistorySubscription =
+        MapVoucherHistoryRepository(firestore: FirebaseFirestore.instance)
+            .watchClaimedVoucherIds(touristId)
+            .listen(
+              (snapshot) {
+                if (!mounted ||
+                    requestId != _businessVoucherHistoryRequestId ||
+                    widget.user.id != touristId) {
+                  return;
+                }
+
+                setState(() {
+                  _businessVoucherHistory = snapshot;
+                  _businessVoucherHistoryLoadFailed = false;
+                });
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                if (!mounted ||
+                    requestId != _businessVoucherHistoryRequestId ||
+                    widget.user.id != touristId) {
+                  return;
+                }
+
+                setState(() {
+                  _businessVoucherHistory = null;
+                  _businessVoucherHistoryLoadFailed = true;
+                });
+
+                debugPrint(
+                  'Map: business voucher history loading failed: $error',
+                );
+              },
+            );
+  }
+
   @override
   Widget build(BuildContext context) {
     final position = _position;
-    final point = position == null
-        ? null
-        : LatLng(position.latitude, position.longitude);
+    final point = _displayPoint;
 
     final accuracy = position?.accuracy;
     final hasAccuracy = accuracy != null && accuracy.isFinite && accuracy > 0;
@@ -1188,11 +3003,33 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           children: [
             MapTilesWithStatus(key: ValueKey(_mapStyle), style: _mapStyle),
 
+            if (!MapTestConfig.enabled) _buildLiveLandmarkLayer(),
+            if (!MapTestConfig.enabled) _buildLiveBusinessLayer(),
+
+            if (!MapTestConfig.enabled)
+              LiveExpPreviewLayer(
+                key: ValueKey('live-reward-previews:${widget.user.id}'),
+                businesses: !_loadingBusinesses && !_businessLoadFailed
+                    ? _liveBusinesses
+                    : const <Business>[],
+                places: [
+                  if (!_loadingBusinesses && !_businessLoadFailed)
+                    ..._liveLocations,
+                  if (!_loadingLandmarks && !_landmarkLoadFailed)
+                    ..._liveLandmarks,
+                ],
+                onCheckExpAvailability: _checkLiveExpAvailability,
+                collectionRadiusMeters: _liveExpCollectionRadiusMeters,
+                onFocusReward: _focusOnReward,
+                userId: widget.user.id,
+              ),
+
             if (MapTestConfig.enabled &&
                 !_restoringClaims &&
                 _claimStorageError == null)
               DemoMapMarkers(
                 selectedCategory: _selectedBusinessCategory,
+                selectedLandmarkCategory: _selectedLandmarkCategory,
                 onLocationSelected: _showLocationDetails,
                 onRewardSelected: _showRewardDistance,
                 hiddenRewardIds: widget.user.id.trim().isEmpty
@@ -1230,7 +3067,13 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                       height: 120,
                       alignment: Alignment.center,
                       rotate: false,
-                      child: const CompassUserMarker(),
+                      child: MapMovementTestConfig.enabled
+                          ? const Icon(
+                              Icons.person_pin_circle,
+                              color: Colors.deepOrange,
+                              size: 48,
+                            )
+                          : const CompassUserMarker(),
                     ),
                   ],
                 ),
@@ -1254,7 +3097,22 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
 
         // The permission notice is hidden when access is granted,
         // so this status card can use the same space.
-        if (_locationAllowed)
+        if (MapMovementTestConfig.enabled && _locationAllowed)
+          Positioned(
+            top: 130,
+            left: 16,
+            right: 84,
+            child: MapTestMovementControls(
+              enabled: _foreground && _testMovementRunning && _mapReady,
+              stepMeters: MapMovementTestConfig.stepMeters,
+              onMove: (direction) {
+                _changeTestPosition(direction: direction);
+              },
+              onReset: () => _changeTestPosition(),
+            ),
+          ),
+
+        if (_locationAllowed && !MapMovementTestConfig.enabled)
           Positioned(
             top: 130,
             left: 16,
@@ -1319,7 +3177,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
                               _claimStorageError ??
                                   (_savingClaim
                                       ? 'Saving demo collection…'
-                                      : 'Loading demo collection history…'),
+                                      : 'Loading demo claim histories…'),
                               textAlign: TextAlign.center,
                             ),
                             if (_claimStorageError != null) ...[
@@ -1348,8 +3206,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
               onCurrentLocation: _recenter,
               onMapStyle: _selectMapStyle,
               onSearch: _openMapSearch,
-              onFilter: MapTestConfig.enabled ? _selectBusinessCategory : null,
-              filterActive: _selectedBusinessCategory != null,
+              onFilter: _selectBusinessCategory,
+              filterActive:
+                  _selectedBusinessCategory != null ||
+                  _selectedLandmarkCategory != null,
               onDemoArea: MapTestConfig.enabled ? _showDemoArea : null,
             ),
           ),

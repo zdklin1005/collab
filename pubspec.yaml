@@ -30,6 +30,8 @@ dependencies:
   google_mlkit_image_labeling: ^0.15.0
   local_auth: ^3.0.2
   crypto: ^3.0.7
+  image_cropper: ^12.2.1
+  google_sign_in: ^6.2.2
 
 dev_dependencies:
   flutter_test:
@@ -37,6 +39,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  fake_cloud_firestore: ^4.2.0
 
 flutter:
   uses-material-design: true
