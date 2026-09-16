@@ -309,7 +309,7 @@ void main() {
 
     expect(find.text('Email address'), findsOneWidget);
     expect(find.text('Password & security'), findsOneWidget);
-    expect(find.text('Trip notifications'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
     expect(find.text('Location history'), findsOneWidget);
     expect(find.text('Privacy & data'), findsOneWidget);
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/localquest_models.dart';
 import '../../services/live_business_ad_availability.dart';
+import '../../services/localquest_services.dart';
 
 class LiveBusinessPromotionSection extends StatelessWidget {
   const LiveBusinessPromotionSection({
@@ -33,6 +34,10 @@ class LiveBusinessPromotionSection extends StatelessWidget {
 
     final visible = compact ? available.take(1).toList() : available;
     final hiddenCount = available.length - visible.length;
+
+    for (final campaign in visible) {
+      MerchantRepository.instance.recordCampaignView(campaign.id);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

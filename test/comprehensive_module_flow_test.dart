@@ -146,6 +146,7 @@ void main() {
       final sendBtn = find.widgetWithText(LqButton, 'Save changes');
 
       await tester.enterText(newEmailField, 'malformed@com');
+      await tester.ensureVisible(sendBtn);
       await tester.tap(sendBtn);
       await tester.pumpAndSettle();
 
@@ -278,8 +279,7 @@ void main() {
 
       // Preferences toggles
       expect(find.text('Location history'), findsOneWidget);
-      expect(find.text('Trip notifications'), findsOneWidget);
-      expect(find.text('Partner offers'), findsOneWidget);
+      expect(find.text('Notifications'), findsOneWidget);
 
       // Account actions
       final logOutBtn = find.byType(LqLogoutButton);

@@ -911,5 +911,39 @@ void main() {
 
       DirectChatService.instance.mockSendLocationMessage = null;
     });
+
+    testWidgets('FriendsScreen note editor shows Connect Spotify for unlinked users',
+        (tester) async {
+      await SpotifyService.instance.disconnectUser('unlinked_user');
+
+      await tester.pumpWidget(
+        app(
+          const FriendsScreen(
+            currentUser: AppUser(
+              id: 'unlinked_user',
+              email: 'unlinked@example.com',
+              displayName: 'Oscar Piastri',
+              username: '@oscar_p',
+              role: AccountRole.tourist,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap Your Note to open the editor
+      await tester.tap(find.text('Your Note'));
+      await tester.pumpAndSettle();
+
+      // Verify unlinked state UI
+      expect(find.text('Spotify Not Connected'), findsOneWidget);
+      expect(find.text('Connect Spotify Account'), findsOneWidget);
+      expect(find.text('Connect Spotify to share music'), findsOneWidget);
+      expect(find.text('Unlink Spotify Account'), findsNothing);
+
+      // Close dialog
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+    });
   });
 }

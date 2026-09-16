@@ -11,26 +11,21 @@ class LqInputValidators {
   static final RegExp malaysianPostcodePattern = RegExp(r'\b\d{5}\b');
 
   static final RegExp malaysianPhonePattern = RegExp(
-    r'^(\+?60|0)(1[0-46-9][0-9]{7}|11[0-9]{8}|[3-9][0-9]{7,8})$',
+    r'^(\+?60|0)(1[0-9]{8,9}|[3-9][0-9]{6,8})$',
   );
 
-  /// Validates Malaysian phone numbers without dashes or spaces
+  /// Validates Malaysian mobile and landline phone numbers (accepts optional dashes and spaces).
   static String? validateMalaysianPhone(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Phone number is required.';
     }
-    final clean = value.trim();
-    if (clean.contains('-') ||
-        clean.contains(' ') ||
-        clean.contains('(') ||
-        clean.contains(')')) {
-      return 'Enter phone number without dashes or spaces (e.g. 0123456789).';
-    }
-    if (!RegExp(r'^\+?[0-9]+$').hasMatch(clean)) {
+    final raw = value.trim();
+    if (!RegExp(r'^\+?[0-9\s\-()]+$').hasMatch(raw)) {
       return 'Phone number must contain digits only.';
     }
+    final clean = raw.replaceAll(RegExp(r'[\s\-()]'), '');
     if (!malaysianPhonePattern.hasMatch(clean)) {
-      return 'Enter a valid Malaysian phone number (e.g. 0123456789 or 01112345678).';
+      return 'Enter a valid Malaysian phone or landline number (e.g. 042612345, 0388881234, or 0123456789).';
     }
     return null;
   }

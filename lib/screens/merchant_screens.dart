@@ -106,8 +106,12 @@ class MerchantOverview extends StatelessWidget {
         ),
     builder: (context, snapshot) {
       final campaigns = snapshot.data ?? [];
-      final active = campaigns
-          .where((item) => item.isActive)
+      final liveAds = campaigns
+          .where((item) =>
+              item.type == 'ad' &&
+              item.effectiveStatus == 'active' &&
+              !item.isScheduled &&
+              item.status != 'scheduled')
           .toList();
       final views = campaigns.fold<int>(0, (sum, item) => sum + item.views);
       final claims = campaigns.fold<int>(0, (sum, item) => sum + item.claims);
@@ -168,65 +172,26 @@ class MerchantOverview extends StatelessWidget {
                 _MetricCard(
                   icon: Icons.auto_awesome_outlined,
                   color: LqColors.peachSoft,
-                  value: active.length.toString().padLeft(2, '0'),
+                  value: liveAds.length.toString().padLeft(2, '0'),
                   label: 'Active campaigns',
                 ),
                 const SizedBox(height: 40),
-                if (active.isNotEmpty)
-                  LqCard(
-                    color: LqColors.primarySoft,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('LIVE CAMPAIGN', style: monoLabel),
-                            Switch(
-                              value: true,
-                              onChanged: (value) => _setCampaignActive(
-                                context,
-                                active.first,
-                                value,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Text(
-                          active.first.name,
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'ACTIVE · ENDS ${DateFormat('d MMM').format(active.first.endDate).toUpperCase()}',
-                          style: monoLabel.copyWith(color: LqColors.success),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          active.first.description,
-                          style: const TextStyle(
-                            color: LqColors.muted,
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        OutlinedButton(
-                          onPressed: openCampaigns,
-                          child: const Text('Edit details'),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  const LqCard(
-                    child: Text(
-                      'No active campaigns yet. Create one to reach nearby LocalQuest explorers.',
-                      style: TextStyle(color: LqColors.muted),
+                _LiveCampaignCarousel(
+                  campaigns: liveAds,
+                  monoLabel: monoLabel,
+                  onEdit: (camp) => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CampaignEditor(
+                        user: user,
+                        businessId: business?.id ?? '',
+                        campaign: camp,
+                        initialType: 'ad',
+                      ),
                     ),
                   ),
+                  onToggle: (camp, val) => _setCampaignActive(context, camp, val),
+                ),
                 const SizedBox(height: 28),
                 Text('RECENT ADS', style: monoLabel),
                 const SizedBox(height: 10),
@@ -377,6 +342,12 @@ class MerchantOverview extends StatelessWidget {
   ) async {
     try {
       await MerchantRepository.instance.setCampaignStatus(campaign.id, active);
+      if (context.mounted && !active && campaign.type == 'ad') {
+        showLqMessage(
+          context,
+          'Campaign paused. Any associated vouchers have also been set to inactive.',
+        );
+      }
     } catch (_) {
       if (context.mounted) {
         showLqMessage(
@@ -428,6 +399,175 @@ class _MetricCard extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _LiveCampaignCarousel extends StatefulWidget {
+  const _LiveCampaignCarousel({
+    required this.campaigns,
+    required this.monoLabel,
+    required this.onEdit,
+    required this.onToggle,
+  });
+
+  final List<Campaign> campaigns;
+  final TextStyle monoLabel;
+  final ValueChanged<Campaign> onEdit;
+  final void Function(Campaign campaign, bool active) onToggle;
+
+  @override
+  State<_LiveCampaignCarousel> createState() => _LiveCampaignCarouselState();
+}
+
+class _LiveCampaignCarouselState extends State<_LiveCampaignCarousel> {
+  late PageController _pageController;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialPage = widget.campaigns.length > 1
+        ? (1000 * widget.campaigns.length)
+        : 0;
+    _pageController = PageController(initialPage: initialPage);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveCampaignCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.campaigns.length != widget.campaigns.length) {
+      final initialPage = widget.campaigns.length > 1
+          ? (1000 * widget.campaigns.length)
+          : 0;
+      _pageController.dispose();
+      _pageController = PageController(initialPage: initialPage);
+      _currentIndex = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.campaigns.isEmpty) {
+      return const LqCard(
+        child: Text(
+          'No active campaigns yet. Create one to reach nearby LocalQuest explorers.',
+          style: TextStyle(color: LqColors.muted),
+        ),
+      );
+    }
+
+    if (widget.campaigns.length == 1) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: _buildCard(widget.campaigns.first),
+      );
+    }
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 244,
+          child: PageView.builder(
+            controller: _pageController,
+            onPageChanged: (page) {
+              setState(() {
+                _currentIndex = page % widget.campaigns.length;
+              });
+            },
+            itemBuilder: (context, index) {
+              final campaign =
+                  widget.campaigns[index % widget.campaigns.length];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: _buildCard(campaign),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (int i = 0; i < widget.campaigns.length; i++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: _currentIndex == i ? 18 : 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: _currentIndex == i ? LqColors.primary : LqColors.line,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCard(Campaign campaign) {
+    return LqCard(
+      color: LqColors.primarySoft,
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('LIVE CAMPAIGN', style: widget.monoLabel),
+              Switch(
+                value: true,
+                onChanged: (value) => widget.onToggle(campaign, value),
+              ),
+            ],
+          ),
+          Text(
+            campaign.name,
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ACTIVE · ENDS ${DateFormat('d MMM').format(campaign.endDate).toUpperCase()}',
+            style: widget.monoLabel.copyWith(color: LqColors.success),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 38,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                campaign.description,
+                style: const TextStyle(
+                  color: LqColors.muted,
+                  height: 1.35,
+                  fontSize: 13,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () => widget.onEdit(campaign),
+            child: const Text('Edit details'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class CampaignsScreen extends StatefulWidget {
@@ -745,8 +885,10 @@ class _CampaignCreativeCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${campaign.views} views · ${campaign.claims} claims'
-                      '${campaign.linkedAdId != null ? ' · 🔗 Linked Ad' : ''}',
+                      campaign.type == 'ad'
+                          ? '${campaign.views} views'
+                          : '${campaign.views} views · ${campaign.claims} claims'
+                            '${campaign.linkedAdId != null ? ' · 🔗 Linked Ad' : ''}',
                       style: monoLabel,
                     ),
                     if (campaign.type == 'voucher' &&
@@ -808,60 +950,13 @@ class _CampaignCreativeCard extends StatelessWidget {
                             return const SizedBox.shrink();
                           }
                           return Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${attached.length} ATTACHED VOUCHER${attached.length == 1 ? '' : 'S'}',
-                                  style: monoLabel.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: LqColors.primaryDark,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: attached
-                                      .map(
-                                        (v) => Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 7,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: LqColors.greenSoft,
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                            border: Border.all(
-                                              color: const Color(0xFF86EFAC),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                Icons.confirmation_num_outlined,
-                                                size: 11,
-                                                color: Color(0xFF15803D),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                '${v.name} (${v.discountValue.toStringAsFixed(0)}${v.discountType == 'percentage' ? '%' : ' RM'} off)',
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: Color(0xFF15803D),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                ),
-                              ],
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '${attached.length} ATTACHED VOUCHER${attached.length == 1 ? '' : 'S'}',
+                              style: monoLabel.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: LqColors.primaryDark,
+                              ),
                             ),
                           );
                         },
@@ -988,11 +1083,13 @@ class _StatusHintText extends StatelessWidget {
     required this.status,
     required this.startDate,
     required this.endDate,
+    this.type,
   });
 
   final String status;
   final DateTime startDate;
   final DateTime endDate;
+  final String? type;
 
   @override
   Widget build(BuildContext context) {
@@ -1018,7 +1115,9 @@ class _StatusHintText extends StatelessWidget {
       icon = Icons.check_circle_outline;
       color = const Color(0xFF15803D);
     } else {
-      message = 'Campaign is paused. Switch to Active to make it live again.';
+      message = type == 'ad'
+          ? 'Campaign is paused. Attached vouchers will also be set to inactive.'
+          : 'Campaign is paused. Switch to Active to make it live again.';
       icon = Icons.pause_circle_outline;
       color = LqColors.muted;
     }
@@ -1079,9 +1178,6 @@ class _CampaignEditorState extends State<CampaignEditor> {
       ? 'welcome'
       : 'promotional';
   late String validDays = widget.campaign?.validDays ?? 'All Days';
-  late final _seasonName = TextEditingController(
-    text: widget.campaign?.seasonName ?? '',
-  );
   late final _validHours = TextEditingController(
     text: widget.campaign?.validHours ?? widget.campaign?.redemptionHours ?? '',
   );
@@ -1107,7 +1203,7 @@ class _CampaignEditorState extends State<CampaignEditor> {
   Uint8List? poster;
   String? extension;
   bool busy = false;
-  Set<String> _attachedVoucherIds = {};
+  final Set<String> _attachedVoucherIds = {};
   bool _initialVouchersLoaded = false;
 
   int get _totalSteps => type == 'voucher' ? 4 : 3;
@@ -1125,6 +1221,36 @@ class _CampaignEditorState extends State<CampaignEditor> {
         ];
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.campaign != null && type == 'ad') {
+      final bizId = widget.businessId.isNotEmpty
+          ? widget.businessId
+          : widget.campaign?.businessId ?? '';
+      if (bizId.isNotEmpty) {
+        MerchantRepository.instance
+            .campaigns(widget.user.id, businessId: bizId)
+            .first
+            .then((list) {
+          if (mounted && !_initialVouchersLoaded && list.isNotEmpty) {
+            final attached = list
+                .where((c) =>
+                    c.type == 'voucher' && c.linkedAdId == widget.campaign!.id)
+                .map((c) => c.id)
+                .toSet();
+            if (attached.isNotEmpty) {
+              setState(() {
+                _attachedVoucherIds.addAll(attached);
+                _initialVouchersLoaded = true;
+              });
+            }
+          }
+        }).catchError((_) {});
+      }
+    }
+  }
+
+  @override
   void dispose() {
     for (final controller in [
       _name,
@@ -1134,7 +1260,6 @@ class _CampaignEditorState extends State<CampaignEditor> {
       _minimum,
       _quantity,
       _limit,
-      _seasonName,
       _validHours,
       _dailyQuota,
     ]) {
@@ -1361,97 +1486,124 @@ class _CampaignEditorState extends State<CampaignEditor> {
             ],
           ),
         ),
-        if (voucherType == 'promotional') ...[
-          const SizedBox(height: 16),
-          LqField(
-            controller: _seasonName,
-            label: 'Season / festival occasion (Optional)',
-            hint: 'e.g. Hari Raya Festive, Merdeka 67, Year-End',
+        const SizedBox(height: 16),
+        StreamBuilder<List<Campaign>>(
+          stream: MerchantRepository.instance.campaigns(
+            widget.user.id,
+            businessId: widget.businessId.isNotEmpty
+                ? widget.businessId
+                : widget.campaign?.businessId,
           ),
-          const SizedBox(height: 16),
-          StreamBuilder<List<Campaign>>(
-            stream: MerchantRepository.instance.campaigns(
-              widget.user.id,
-              businessId: widget.businessId.isNotEmpty
-                  ? widget.businessId
-                  : widget.campaign?.businessId,
-            ),
-            builder: (context, snapshot) {
-              final ads = (snapshot.data ?? [])
-                  .where((c) => c.type == 'ad' && c.status == 'active')
-                  .toList();
-              if (ads.isEmpty) return const SizedBox.shrink();
-              final selectedAd =
-                  ads.where((a) => a.id == linkedAdId).firstOrNull;
-              return InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () async {
-                  final options = <(String?, String)>[
-                    (null, 'None (Standalone voucher)'),
-                    ...ads.map((ad) => (ad.id as String?, ad.name)),
-                  ];
-                  final chosen = await showLqSelectionSheet<String?>(
-                    context,
-                    title: 'Link to active ad campaign',
-                    options: options,
-                    selected: linkedAdId,
-                  );
-                  setState(() => linkedAdId = chosen);
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
+            final ads = (snapshot.data ?? [])
+                .where((c) => c.type == 'ad' && c.effectiveStatus != 'inactive')
+                .toList();
+            if (ads.isEmpty) {
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: LqColors.field,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: LqColors.line),
+                ),
+                child: const Row(
                   children: [
-                    const Text(
-                      'Link to active ad campaign (Optional)',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: LqColors.line),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              selectedAd?.name ??
-                                  'None (Standalone voucher)',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: selectedAd != null
-                                    ? LqColors.primaryDark
-                                    : LqColors.muted,
-                                fontWeight: selectedAd != null
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const Icon(
-                            Icons.arrow_drop_down,
-                            color: LqColors.muted,
-                          ),
-                        ],
+                    Icon(Icons.info_outline, size: 18, color: LqColors.muted),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'No active or scheduled ad campaigns found for this business. You can create an ad campaign later and attach this voucher to it.',
+                        style: TextStyle(fontSize: 12, color: LqColors.muted),
                       ),
                     ),
                   ],
                 ),
               );
-            },
-          ),
-        ],
+            }
+            final selectedAd =
+                ads.where((a) => a.id == linkedAdId).firstOrNull;
+            return InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () async {
+                final options = <(String?, String)>[
+                  (null, 'None (Standalone voucher)'),
+                  ...ads.map((ad) => (ad.id as String?, '${ad.name} (${ad.effectiveStatus.toUpperCase()})')),
+                ];
+                final chosen = await showLqSelectionSheet<String?>(
+                  context,
+                  title: 'Link to ad campaign',
+                  options: options,
+                  selected: linkedAdId,
+                );
+                setState(() => linkedAdId = chosen);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Link to ad campaign (Optional)',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: LqColors.line),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            selectedAd != null
+                                ? '${selectedAd.name} (${selectedAd.effectiveStatus.toUpperCase()})'
+                                : 'None (Standalone voucher)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: selectedAd != null
+                                  ? LqColors.primaryDark
+                                  : LqColors.muted,
+                              fontWeight: selectedAd != null
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.arrow_drop_down,
+                          color: LqColors.muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ],
     ];
   }
@@ -1582,6 +1734,7 @@ class _CampaignEditorState extends State<CampaignEditor> {
         status: status,
         startDate: startDate,
         endDate: endDate,
+        type: type,
       ),
     ];
   }
@@ -1638,6 +1791,7 @@ class _CampaignEditorState extends State<CampaignEditor> {
         status: status,
         startDate: startDate,
         endDate: endDate,
+        type: type,
       ),
       const SizedBox(height: 20),
       const Divider(color: LqColors.line),
@@ -1662,12 +1816,13 @@ class _CampaignEditorState extends State<CampaignEditor> {
           final vouchers =
               allCampaigns.where((c) => c.type == 'voucher').toList();
 
-          if (!_initialVouchersLoaded) {
+          if (!_initialVouchersLoaded && snapshot.hasData && snapshot.data != null) {
             if (widget.campaign != null) {
-              _attachedVoucherIds = vouchers
+              final preAttached = vouchers
                   .where((c) => c.linkedAdId == widget.campaign!.id)
                   .map((c) => c.id)
                   .toSet();
+              _attachedVoucherIds.addAll(preAttached);
             }
             _initialVouchersLoaded = true;
           }
@@ -1897,29 +2052,6 @@ class _CampaignEditorState extends State<CampaignEditor> {
                       ),
                     ],
                   ),
-                  if (_seasonName.text.trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.celebration,
-                          size: 14,
-                          color: Color(0xFFC2410C),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Occasion: ${_seasonName.text.trim()}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFC2410C),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                   if (validDays != 'All Days' ||
                       _validHours.text.trim().isNotEmpty ||
                       _dailyQuota.text.trim().isNotEmpty) ...[
@@ -2603,13 +2735,8 @@ class _CampaignEditorState extends State<CampaignEditor> {
           collectionMethod: type == 'voucher'
               ? (voucherType == 'welcome' ? 'discovery_claim' : 'both')
               : 'both',
-          seasonName: type == 'voucher' &&
-                  voucherType == 'promotional' &&
-                  _seasonName.text.trim().isNotEmpty
-              ? _seasonName.text.trim()
-              : null,
+          seasonName: null,
           linkedAdId: type == 'voucher' &&
-                  voucherType == 'promotional' &&
                   linkedAdId != null &&
                   linkedAdId!.isNotEmpty
               ? linkedAdId
@@ -2631,10 +2758,17 @@ class _CampaignEditorState extends State<CampaignEditor> {
       );
 
       if (type == 'ad' && targetBizId.isNotEmpty) {
+        final isAdInactive = Campaign.resolveStatus(
+              rawStatus: status,
+              startDate: startDate,
+              endDate: endDate,
+            ) ==
+            'inactive';
         await MerchantRepository.instance.attachVouchersToAd(
           savedId,
           _attachedVoucherIds,
           targetBizId,
+          isAdInactive: isAdInactive,
         );
       }
 
@@ -3301,53 +3435,65 @@ class BusinessRegistrationsScreen extends StatelessWidget {
                                         ),
                                       ),
                                       const SizedBox(height: 8),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 4,
+                                      Column(
                                         crossAxisAlignment:
-                                            WrapCrossAlignment.center,
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          if (item.isSsmVerified)
-                                            const SsmVerifiedBadge(
-                                              compact: true,
-                                            ),
-                                          if (item.dietaryStatus != null &&
-                                              item.dietaryStatus!.trim().isNotEmpty &&
-                                              lqIsDietaryCategory(item.category))
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 7,
-                                                vertical: 2,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFE8F5E9),
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                                border: Border.all(
-                                                  color: const Color(0xFFA5D6A7),
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Icon(
-                                                    Icons.restaurant_outlined,
-                                                    size: 11,
-                                                    color: Color(0xFF2E7D32),
+                                          if (item.isSsmVerified ||
+                                              (item.dietaryStatus != null &&
+                                                  item.dietaryStatus!.trim().isNotEmpty &&
+                                                  lqIsDietaryCategory(item.category))) ...[
+                                            Wrap(
+                                              spacing: 6,
+                                              runSpacing: 4,
+                                              crossAxisAlignment:
+                                                  WrapCrossAlignment.center,
+                                              children: [
+                                                if (item.isSsmVerified)
+                                                  const SsmVerifiedBadge(
+                                                    compact: true,
                                                   ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    item.dietaryStatus!,
-                                                    style: const TextStyle(
-                                                      color: Color(0xFF2E7D32),
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w700,
+                                                if (item.dietaryStatus != null &&
+                                                    item.dietaryStatus!.trim().isNotEmpty &&
+                                                    lqIsDietaryCategory(item.category))
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFE8F5E9),
+                                                      borderRadius:
+                                                          BorderRadius.circular(6),
+                                                      border: Border.all(
+                                                        color: const Color(0xFFA5D6A7),
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.restaurant_outlined,
+                                                          size: 11,
+                                                          color: Color(0xFF2E7D32),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          item.dietaryStatus!,
+                                                          style: const TextStyle(
+                                                            color: Color(0xFF2E7D32),
+                                                            fontSize: 10,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
-                                                ],
-                                              ),
+                                              ],
                                             ),
+                                            const SizedBox(height: 5),
+                                          ],
                                           LqStatusPill(active: item.active),
                                         ],
                                       ),
@@ -3599,6 +3745,7 @@ class _BusinessEditorState extends State<BusinessEditor> {
                   LqField(
                     controller: _registration,
                     label: 'Registration number',
+                    hint: 'e.g. 201934234321 (RT0069300-M) or 201901032124',
                     validator: MerchantValidation.registration,
                   ),
                   const SizedBox(height: 8),
@@ -3686,6 +3833,7 @@ class _BusinessEditorState extends State<BusinessEditor> {
                   LqField(
                     controller: _phone,
                     label: 'Contact number',
+                    hint: 'e.g. 04-261 2345, 03-8888 1234, or 012-345 6789',
                     validator: MerchantValidation.phone,
                     keyboardType: TextInputType.phone,
                   ),

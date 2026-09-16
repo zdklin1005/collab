@@ -123,6 +123,10 @@ class LiveMapVoucherClaimService {
         'redeemed': false,
       });
 
+      transaction.update(campaignRef, {
+        'claims': FieldValue.increment(1),
+      });
+
       return LiveMapVoucherClaimResult(
         LiveMapVoucherClaimStatus.recorded,
         campaign: campaign,

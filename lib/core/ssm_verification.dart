@@ -69,11 +69,11 @@ class SsmVerificationEngine {
   ];
 
   static final RegExp _modernSsmPattern = RegExp(
-    r'\b(19\d{2}|20\d{2})(0[1-4]|1[0-9])\d{6}\b',
+    r'\b(19\d{2}|20\d{2})\d{8}\b',
   );
 
   static final RegExp _legacySsmPattern = RegExp(
-    r'\b(?:[A-Z]{1,3}\d{5,10}|\d{5,10})-[A-Z0-9]\b',
+    r'\b(?:[A-Z]{1,4}\s*\d{4,10}|\d{5,10})\s*-\s*[A-Z0-9]\b',
     caseSensitive: false,
   );
 
@@ -113,7 +113,8 @@ class SsmVerificationEngine {
 
     // 2. Extract registration numbers
     final modernMatch = _modernSsmPattern.firstMatch(upperText)?.group(0);
-    final legacyMatch = _legacySsmPattern.firstMatch(upperText)?.group(0);
+    final rawLegacy = _legacySsmPattern.firstMatch(upperText)?.group(0);
+    final legacyMatch = rawLegacy?.replaceAll(RegExp(r'\s+'), '');
 
     String? formattedRegNumber;
     if (modernMatch != null && legacyMatch != null) {

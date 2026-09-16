@@ -415,4 +415,40 @@ class SocialService {
     }
     return results;
   }
+
+  /// Check if current user already sent a pending request to target user
+  Future<bool> hasPendingSentRequest({
+    required String currentUserId,
+    required String targetUserId,
+  }) async {
+    try {
+      final doc = await db
+          .collection('users')
+          .doc(targetUserId)
+          .collection('friendRequests')
+          .doc(currentUserId)
+          .get();
+      return doc.exists && doc.data()?['status'] == 'pending';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Check if two users are already friends
+  Future<bool> isFriend({
+    required String currentUserId,
+    required String targetUserId,
+  }) async {
+    try {
+      final doc = await db
+          .collection('users')
+          .doc(currentUserId)
+          .collection('friends')
+          .doc(targetUserId)
+          .get();
+      return doc.exists;
+    } catch (_) {
+      return false;
+    }
+  }
 }

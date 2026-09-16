@@ -57,6 +57,8 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   void _openNoteEditor(UserNote? currentNote) {
     bool isSyncingSpotify = false;
+    bool isCheckingLink = true;
+    bool isLinked = false;
     bool isStatusEnabled = (currentNote != null && currentNote.hasMusic);
     SpotifyTrack? selectedTrack = (currentNote != null && currentNote.hasMusic)
         ? SpotifyTrack(
@@ -76,7 +78,25 @@ class _FriendsScreenState extends State<FriendsScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
-          if (!hasAutoFetched && selectedTrack == null) {
+          if (isCheckingLink) {
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!ctx.mounted) return;
+              final linked =
+                  await SpotifyService.instance.isSpotifyLinked(widget.currentUser.id);
+              if (ctx.mounted) {
+                setModalState(() {
+                  isLinked = linked;
+                  isCheckingLink = false;
+                  if (!linked) {
+                    isStatusEnabled = false;
+                    selectedTrack = null;
+                  }
+                });
+              }
+            });
+          }
+
+          if (isLinked && !hasAutoFetched && selectedTrack == null) {
             hasAutoFetched = true;
             WidgetsBinding.instance.addPostFrameCallback((_) async {
               if (!ctx.mounted) return;
@@ -100,26 +120,28 @@ class _FriendsScreenState extends State<FriendsScreen>
             });
           }
 
-          trackSub ??= SpotifyService.instance.onTrackChanged.listen((newTrack) {
-            if (context.mounted) {
-              setModalState(() {
-                selectedTrack = newTrack;
-                if (isStatusEnabled) {
-                  SocialService.instance.updateUserNote(
-                    uid: widget.currentUser.id,
-                    text: '',
-                    songTitle: newTrack.title,
-                    songArtist: newTrack.artist,
-                    albumArtUrl: newTrack.albumArtUrl,
-                    spotifyUrl: newTrack.spotifyUrl,
-                  );
-                }
-              });
-            }
-          });
-          pollTimer ??= Timer.periodic(const Duration(seconds: 3), (_) {
-            SpotifyService.instance.checkLocalBroadcast();
-          });
+          if (isLinked) {
+            trackSub ??= SpotifyService.instance.onTrackChanged.listen((newTrack) {
+              if (context.mounted) {
+                setModalState(() {
+                  selectedTrack = newTrack;
+                  if (isStatusEnabled) {
+                    SocialService.instance.updateUserNote(
+                      uid: widget.currentUser.id,
+                      text: '',
+                      songTitle: newTrack.title,
+                      songArtist: newTrack.artist,
+                      albumArtUrl: newTrack.albumArtUrl,
+                      spotifyUrl: newTrack.spotifyUrl,
+                    );
+                  }
+                });
+              }
+            });
+            pollTimer ??= Timer.periodic(const Duration(seconds: 3), (_) {
+              SpotifyService.instance.checkLocalBroadcast();
+            });
+          }
 
           return Dialog(
             backgroundColor: Colors.transparent,
@@ -145,7 +167,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Header: Avatar, Name, "Your 24-hr Music Note", Close button
+                      // Header: Avatar, Name, "Music Note", Close button
                       Row(
                         children: [
                           LqAvatar(
@@ -169,7 +191,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const Text(
-                                  'Your 24-hr Music Note',
+                                  'Music Note',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: LqColors.muted,
@@ -187,67 +209,59 @@ class _FriendsScreenState extends State<FriendsScreen>
                       const SizedBox(height: 14),
 
                       // Toggle Row
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isStatusEnabled
-                              ? const Color(0xFF1DB954).withValues(alpha: 0.08)
-                              : LqColors.background,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isStatusEnabled
-                                ? const Color(0xFF1DB954).withValues(alpha: 0.3)
-                                : LqColors.line,
+                      if (!isLinked)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: LqColors.background,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: LqColors.line),
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            const LqSpotifyLogo(size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Share Music Status',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                      color: isStatusEnabled ? LqColors.ink : LqColors.muted,
+                          child: Row(
+                            children: [
+                              const LqSpotifyLogo(size: 20),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Share Music Status',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: LqColors.muted,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    isStatusEnabled
-                                        ? 'Visible to friends for 24 hours'
-                                        : 'Status is currently turned off',
-                                    style: const TextStyle(fontSize: 11, color: LqColors.muted),
-                                  ),
-                                ],
+                                    Text(
+                                      'Connect Spotify to share music',
+                                      style: TextStyle(fontSize: 11, color: LqColors.muted),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            Switch.adaptive(
-                              value: isStatusEnabled,
-                              activeTrackColor: const Color(0xFF1DB954),
-                              onChanged: (val) async {
-                                setModalState(() => isStatusEnabled = val);
-                                if (!val) {
-                                  await SocialService.instance.clearUserNote(widget.currentUser.id);
-                                  SpotifyService.instance.setLiveSync(widget.currentUser.id, false);
-                                } else {
-                                  if (selectedTrack != null) {
-                                    await SocialService.instance.updateUserNote(
-                                      uid: widget.currentUser.id,
-                                      text: '',
-                                      songTitle: selectedTrack!.title,
-                                      songArtist: selectedTrack!.artist,
-                                      albumArtUrl: selectedTrack!.albumArtUrl,
-                                      spotifyUrl: selectedTrack!.spotifyUrl,
-                                    );
-                                    SpotifyService.instance.setLiveSync(widget.currentUser.id, true);
-                                  } else {
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF1DB954),
+                                  side: const BorderSide(color: Color(0xFF1DB954)),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () async {
+                                  final success = await SpotifyService.instance
+                                      .authenticateWithSpotify(widget.currentUser.id);
+                                  if (success && ctx.mounted) {
                                     final track = await SpotifyService.instance.fetchCurrentlyPlaying();
+                                    setModalState(() {
+                                      isLinked = true;
+                                      isStatusEnabled = true;
+                                      if (track != null) selectedTrack = track;
+                                    });
                                     if (track != null) {
-                                      setModalState(() => selectedTrack = track);
                                       await SocialService.instance.updateUserNote(
                                         uid: widget.currentUser.id,
                                         text: '',
@@ -259,12 +273,94 @@ class _FriendsScreenState extends State<FriendsScreen>
                                       SpotifyService.instance.setLiveSync(widget.currentUser.id, true);
                                     }
                                   }
-                                }
-                              },
+                                },
+                                child: const Text(
+                                  'Connect',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isStatusEnabled
+                                ? const Color(0xFF1DB954).withValues(alpha: 0.08)
+                                : LqColors.background,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isStatusEnabled
+                                  ? const Color(0xFF1DB954).withValues(alpha: 0.3)
+                                  : LqColors.line,
                             ),
-                          ],
+                          ),
+                          child: Row(
+                            children: [
+                              const LqSpotifyLogo(size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Share Music Status',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: isStatusEnabled ? LqColors.ink : LqColors.muted,
+                                      ),
+                                    ),
+                                    Text(
+                                      isStatusEnabled
+                                          ? 'Visible to friends'
+                                          : 'Status is currently turned off',
+                                      style: const TextStyle(fontSize: 11, color: LqColors.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Switch.adaptive(
+                                value: isStatusEnabled,
+                                activeTrackColor: const Color(0xFF1DB954),
+                                onChanged: (val) async {
+                                  setModalState(() => isStatusEnabled = val);
+                                  if (!val) {
+                                    await SocialService.instance.clearUserNote(widget.currentUser.id);
+                                    SpotifyService.instance.setLiveSync(widget.currentUser.id, false);
+                                  } else {
+                                    if (selectedTrack != null) {
+                                      await SocialService.instance.updateUserNote(
+                                        uid: widget.currentUser.id,
+                                        text: '',
+                                        songTitle: selectedTrack!.title,
+                                        songArtist: selectedTrack!.artist,
+                                        albumArtUrl: selectedTrack!.albumArtUrl,
+                                        spotifyUrl: selectedTrack!.spotifyUrl,
+                                      );
+                                      SpotifyService.instance.setLiveSync(widget.currentUser.id, true);
+                                    } else {
+                                      final track = await SpotifyService.instance.fetchCurrentlyPlaying();
+                                      if (track != null) {
+                                        setModalState(() => selectedTrack = track);
+                                        await SocialService.instance.updateUserNote(
+                                          uid: widget.currentUser.id,
+                                          text: '',
+                                          songTitle: track.title,
+                                          songArtist: track.artist,
+                                          albumArtUrl: track.albumArtUrl,
+                                          spotifyUrl: track.spotifyUrl,
+                                        );
+                                        SpotifyService.instance.setLiveSync(widget.currentUser.id, true);
+                                      }
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 16),
 
                       // Large Album Art (Centered)
@@ -283,36 +379,86 @@ class _FriendsScreenState extends State<FriendsScreen>
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: (isStatusEnabled &&
-                                  selectedTrack != null &&
-                                  selectedTrack!.albumArtUrl != null &&
-                                  selectedTrack!.albumArtUrl!.isNotEmpty)
-                              ? Image.network(
-                                  selectedTrack!.albumArtUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => Container(
-                                    color: const Color(0xFF191414),
-                                    child: const Icon(
-                                      Icons.music_note,
-                                      color: Color(0xFF1DB954),
-                                      size: 64,
+                          child: !isLinked
+                              ? Container(
+                                  color: const Color(0xFF191414),
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const LqSpotifyLogo(size: 48),
+                                        const SizedBox(height: 10),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'NOT CONNECTED',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 0.8,
+                                              color: LqColors.muted,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 )
-                              : Container(
-                                  color: const Color(0xFF191414),
-                                  child: Icon(
-                                    isStatusEnabled ? Icons.music_note : Icons.music_off_outlined,
-                                    color: isStatusEnabled ? const Color(0xFF1DB954) : LqColors.muted,
-                                    size: 64,
-                                  ),
-                                ),
+                              : (isStatusEnabled &&
+                                      selectedTrack != null &&
+                                      selectedTrack!.albumArtUrl != null &&
+                                      selectedTrack!.albumArtUrl!.isNotEmpty)
+                                  ? Image.network(
+                                      selectedTrack!.albumArtUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Container(
+                                        color: const Color(0xFF191414),
+                                        child: const Icon(
+                                          Icons.music_note,
+                                          color: Color(0xFF1DB954),
+                                          size: 64,
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: const Color(0xFF191414),
+                                      child: Icon(
+                                        isStatusEnabled ? Icons.music_note : Icons.music_off_outlined,
+                                        color: isStatusEnabled
+                                            ? const Color(0xFF1DB954)
+                                            : LqColors.muted,
+                                        size: 64,
+                                      ),
+                                    ),
                         ),
                       ),
                       const SizedBox(height: 16),
 
-                      // Song Title and Artist
-                      if (isStatusEnabled && selectedTrack != null) ...[
+                      // Song Title and Artist / Status Info
+                      if (!isLinked) ...[
+                        const Text(
+                          'Spotify Not Connected',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: LqColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Link your Spotify account to share your currently playing music with friends.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: LqColors.muted),
+                        ),
+                      ] else if (isStatusEnabled && selectedTrack != null) ...[
                         Text(
                           selectedTrack!.title,
                           textAlign: TextAlign.center,
@@ -372,7 +518,49 @@ class _FriendsScreenState extends State<FriendsScreen>
                       const SizedBox(height: 18),
 
                       // Action Buttons
-                      if (isStatusEnabled && selectedTrack != null) ...[
+                      if (!isLinked) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF1DB954),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: const LqSpotifyLogo(size: 20),
+                            label: const Text(
+                              'Connect Spotify Account',
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                            ),
+                            onPressed: () async {
+                              final success = await SpotifyService.instance
+                                  .authenticateWithSpotify(widget.currentUser.id);
+                              if (success && ctx.mounted) {
+                                final track = await SpotifyService.instance.fetchCurrentlyPlaying();
+                                setModalState(() {
+                                  isLinked = true;
+                                  isStatusEnabled = true;
+                                  if (track != null) selectedTrack = track;
+                                });
+                                if (track != null) {
+                                  await SocialService.instance.updateUserNote(
+                                    uid: widget.currentUser.id,
+                                    text: '',
+                                    songTitle: track.title,
+                                    songArtist: track.artist,
+                                    albumArtUrl: track.albumArtUrl,
+                                    spotifyUrl: track.spotifyUrl,
+                                  );
+                                  SpotifyService.instance.setLiveSync(widget.currentUser.id, true);
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                      ] else if (isStatusEnabled && selectedTrack != null) ...[
                         if (selectedTrack!.spotifyUrl.isNotEmpty) ...[
                           SizedBox(
                             width: double.infinity,
@@ -537,53 +725,65 @@ class _FriendsScreenState extends State<FriendsScreen>
                         ),
                       ],
 
-                      const SizedBox(height: 10),
-                      // Unlink Spotify Account
-                      Center(
-                        child: TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: LqColors.muted,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          ),
-                          icon: const Icon(Icons.link_off, size: 16),
-                          label: const Text(
-                            'Unlink Spotify Account',
-                            style: TextStyle(fontSize: 12, decoration: TextDecoration.underline),
-                          ),
-                          onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (dCtx) => AlertDialog(
-                                title: const Text('Unlink Spotify?'),
-                                content: const Text(
-                                  'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+                      if (isLinked) ...[
+                        const SizedBox(height: 10),
+                        // Unlink Spotify Account
+                        Center(
+                          child: TextButton.icon(
+                            style: TextButton.styleFrom(
+                              foregroundColor: LqColors.muted,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            ),
+                            icon: const Icon(Icons.link_off, size: 16),
+                            label: const Text(
+                              'Unlink Spotify Account',
+                              style: TextStyle(fontSize: 12, decoration: TextDecoration.underline),
+                            ),
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (dCtx) => AlertDialog(
+                                  title: const Text('Unlink Spotify?'),
+                                  content: const Text(
+                                    'This will remove your linked Spotify credentials and clear your current music status from LocalQuest.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dCtx, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: LqColors.danger,
+                                      ),
+                                      onPressed: () => Navigator.pop(dCtx, true),
+                                      child: const Text('Unlink'),
+                                    ),
+                                  ],
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(dCtx, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    style: FilledButton.styleFrom(backgroundColor: LqColors.danger),
-                                    onPressed: () => Navigator.pop(dCtx, true),
-                                    child: const Text('Unlink'),
-                                  ),
-                                ],
-                              ),
-                            );
+                              );
 
-                            if (confirm == true) {
-                              await SpotifyService.instance.disconnectUser(widget.currentUser.id);
-                              if (ctx.mounted) {
-                                Navigator.pop(ctx);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Spotify account unlinked')),
-                                );
+                              if (confirm == true) {
+                                await SpotifyService.instance.disconnectUser(widget.currentUser.id);
+                                trackSub?.cancel();
+                                trackSub = null;
+                                pollTimer?.cancel();
+                                pollTimer = null;
+                                if (ctx.mounted) {
+                                  setModalState(() {
+                                    isLinked = false;
+                                    isStatusEnabled = false;
+                                    selectedTrack = null;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Spotify account unlinked')),
+                                  );
+                                }
                               }
-                            }
-                          },
+                            },
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -1618,7 +1818,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                             ),
                           ),
                           const Text(
-                            'Shared music on 24-hr Note',
+                            'Shared music on Music Note',
                             style: TextStyle(
                               fontSize: 11,
                               color: LqColors.muted,
@@ -1795,6 +1995,7 @@ class _UserSearchModalState extends State<_UserSearchModal> {
   List<AppUser> _results = [];
   bool _isSearching = false;
   final Set<String> _sentUserIds = {};
+  final Set<String> _friendUserIds = {};
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) {
@@ -1807,7 +2008,29 @@ class _UserSearchModalState extends State<_UserSearchModal> {
         query: query,
         currentUserId: widget.currentUser.id,
       );
-      if (mounted) setState(() => _results = list);
+      if (mounted) {
+        setState(() => _results = list);
+        for (final user in list) {
+          if (!_sentUserIds.contains(user.id)) {
+            final hasSent = await SocialService.instance.hasPendingSentRequest(
+              currentUserId: widget.currentUser.id,
+              targetUserId: user.id,
+            );
+            if (hasSent && mounted) {
+              setState(() => _sentUserIds.add(user.id));
+            }
+          }
+          if (!_friendUserIds.contains(user.id)) {
+            final isFr = await SocialService.instance.isFriend(
+              currentUserId: widget.currentUser.id,
+              targetUserId: user.id,
+            );
+            if (isFr && mounted) {
+              setState(() => _friendUserIds.add(user.id));
+            }
+          }
+        }
+      }
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
@@ -1885,6 +2108,8 @@ class _UserSearchModalState extends State<_UserSearchModal> {
                     itemBuilder: (context, index) {
                       final user = _results[index];
                       final isSent = _sentUserIds.contains(user.id);
+                      final isFriend = _friendUserIds.contains(user.id);
+                      final isActionDisabled = isSent || isFriend;
 
                       return Container(
                         padding: const EdgeInsets.all(12),
@@ -1925,16 +2150,18 @@ class _UserSearchModalState extends State<_UserSearchModal> {
                             ),
                             FilledButton.tonal(
                               style: FilledButton.styleFrom(
-                                backgroundColor:
-                                    isSent ? LqColors.field : LqColors.primarySoft,
-                                foregroundColor:
-                                    isSent ? LqColors.muted : LqColors.primaryDark,
+                                backgroundColor: isActionDisabled
+                                    ? LqColors.field
+                                    : LqColors.primarySoft,
+                                foregroundColor: isActionDisabled
+                                    ? LqColors.muted
+                                    : LqColors.primaryDark,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                   vertical: 8,
                                 ),
                               ),
-                              onPressed: isSent
+                              onPressed: isActionDisabled
                                   ? null
                                   : () async {
                                       try {
@@ -1946,7 +2173,9 @@ class _UserSearchModalState extends State<_UserSearchModal> {
                                           targetPhotoUrl: user.photoUrl,
                                           targetLevel: user.level,
                                         );
-                                        setState(() => _sentUserIds.add(user.id));
+                                        if (mounted) {
+                                          setState(() => _sentUserIds.add(user.id));
+                                        }
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
@@ -1964,7 +2193,13 @@ class _UserSearchModalState extends State<_UserSearchModal> {
                                         }
                                       }
                                     },
-                              child: Text(isSent ? 'Sent' : 'Add Friend'),
+                              child: Text(
+                                isFriend
+                                    ? 'Friends'
+                                    : isSent
+                                        ? 'Sent'
+                                        : 'Add Friend',
+                              ),
                             ),
                           ],
                         ),
