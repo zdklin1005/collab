@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/device_location_service.dart';
 import '../services/mission_service.dart';
+import 'dart:async';
 
 /// "My Missions — Explore & earn" screen.
 ///
@@ -110,10 +111,22 @@ class _MissionListViewState extends State<MissionListView> {
   bool _refreshing = false;
   bool _completing = false; // guards against double-tap while a checkpoint is in flight
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      MissionService.instance.ensureMissionsUpToDate(
+        widget.uid,
+        currentLat: widget.currentLat,
+        currentLng: widget.currentLng,
+      ),
+    );
+  }
+
   Future<void> _refreshNearbyArea() async {
     setState(() => _refreshing = true);
     try {
-      await MissionService.instance.generateDailyMissions(
+      await MissionService.instance.ensureMissionsUpToDate(
         widget.uid,
         currentLat: widget.currentLat,
         currentLng: widget.currentLng,

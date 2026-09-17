@@ -79,28 +79,17 @@ class RewardService {
   set db(FirebaseFirestore customDb) => _db = customDb;
 
   /// EXP curve: total cumulative EXP required to *reach* [level].
-  /// Level 1 requires 0 EXP (everyone starts here).
-  int expRequiredForLevel(int level) {
-    if (level <= 1) return 0;
-    final steps = level - 1;
-    return 100 * steps * steps + 100 * steps;
-  }
+  /// Delegates to ExpProgress, the single source of truth shared with
+  /// MapProgressCard and the tourist profile screen.
+  int expRequiredForLevel(int level) => ExpProgress.expRequiredForLevel(level);
 
   /// The level a given cumulative EXP total corresponds to.
-  int levelForExp(int exp) {
-    var level = 1;
-    while (exp >= expRequiredForLevel(level + 1)) {
-      level++;
-    }
-    return level;
-  }
+  int levelForExp(int exp) =>
+      ExpProgress.fromTotalExp(exp < 0 ? 0 : exp).level;
 
-  /// EXP still needed to reach the next level from [exp].
-  int expToNextLevel(int exp) {
-    final progress = ExpProgress.fromTotalExp(exp < 0 ? 0 : exp);
-    // Preserve the existing result for negative input too.
-    return progress.nextLevelExp - exp;
-  }
+  /// EXP still needed to reach the next level from [exp] (0 at max level).
+  int expToNextLevel(int exp) =>
+      ExpProgress.fromTotalExp(exp < 0 ? 0 : exp).expToNextLevel;
 
   /// Returns detailed level progress metrics for a given cumulative [exp].
   /// Optionally accepts [currentLevel] if the stored user document has an

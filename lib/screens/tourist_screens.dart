@@ -11,6 +11,7 @@ import '../core/profile_photo_editor.dart';
 import '../models/localquest_models.dart';
 import '../services/localquest_services.dart';
 import '../services/biometric_auth_service.dart';
+import '../services/exp_progress.dart';
 
 import 'interactive_map/interactive_map_screen.dart';
 import 'ai_assistant_sheet.dart';
@@ -391,13 +392,12 @@ class TouristProfileScreen extends StatelessWidget {
                                                   ),
                                                   const SizedBox(width: 6),
                                                   Text(
-                                                    levelProgress.expLabel,
+                                                    ExpProgress.isMaxLevel(levelProgress.currentLevel)
+                                                        ? 'MAX LEVEL'
+                                                        : levelProgress.expLabel,
                                                     style: monoLabel.copyWith(
-                                                      color: const Color(
-                                                        0xFF466294,
-                                                      ),
-                                                      fontWeight:
-                                                          FontWeight.w700,
+                                                      color: const Color(0xFF466294),
+                                                      fontWeight: FontWeight.w700,
                                                       fontSize: 9,
                                                       letterSpacing: 0,
                                                     ),
@@ -408,8 +408,7 @@ class TouristProfileScreen extends StatelessWidget {
                                               LinearProgressIndicator(
                                                 value: levelProgress.progress,
                                                 minHeight: 7,
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
+                                                borderRadius: BorderRadius.circular(20),
                                               ),
                                             ],
                                           ),

@@ -78,7 +78,7 @@ class MapProgressCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'LEVEL ${progress.level} · EXPLORER',
+                        'LEVEL ${progress.level} · ${progress.tierName.toUpperCase()}',
                         style: const TextStyle(
                           color: LqColors.muted,
                           fontWeight: FontWeight.w700,
