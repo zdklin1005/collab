@@ -18,10 +18,6 @@ class OutOfRangeDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final distanceLabel = distanceMeters < 1000
-        ? '${distanceMeters.toStringAsFixed(1)} m'
-        : '${(distanceMeters / 1000).toStringAsFixed(2)} km';
-
     return RewardDialogCard(
       heading: 'Too Far Away!',
       icon: Icons.star_rounded,
@@ -31,20 +27,19 @@ class OutOfRangeDialog extends StatelessWidget {
       description: Text.rich(
         TextSpan(
           children: [
-            TextSpan(
+            const TextSpan(
               text:
-                  'You are approximately $distanceLabel away '
-                  'in a straight line.\n\n'
-                  'The current ${isDemo ? 'demo ' : ''}collection radius is ',
+                  'You are currently too far from this reward.\n'
+                  'You need to be within ',
             ),
             TextSpan(
-              text: '${radiusMeters.toStringAsFixed(0)} metres',
+              text: '${radiusMeters.toStringAsFixed(0)} meters',
               style: const TextStyle(
                 color: Color(0xFF3267D8),
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const TextSpan(text: '.'),
+            const TextSpan(text: ' to collect it. Keep moving!'),
           ],
         ),
         textAlign: TextAlign.center,
@@ -55,7 +50,6 @@ class OutOfRangeDialog extends StatelessWidget {
         ),
       ),
       note:
-          'Get Closer shows this reward on the map, not a walking route.\n'
           'Do not enter unsafe or restricted areas. '
           'Tap the marker again to refresh the range check.',
       buttonLabel: 'GET CLOSER',
