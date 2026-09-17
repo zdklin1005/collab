@@ -39,7 +39,9 @@ class RewardPreviewDialog extends StatelessWidget {
             TextSpan(
               text: isDemo
                   ? 'You found a demo reward near '
-                  : 'Explore this reward near ',
+                  : isExp
+                  ? 'Great job exploring! You found a reward at '
+                  : 'Great job exploring! You found a voucher at ',
             ),
             TextSpan(
               text: locationName,
@@ -48,7 +50,7 @@ class RewardPreviewDialog extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const TextSpan(text: '.'),
+            TextSpan(text: isDemo ? '.' : ' area.'),
           ],
         ),
         textAlign: TextAlign.center,
