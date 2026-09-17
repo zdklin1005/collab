@@ -81,6 +81,14 @@ class SsmVerificationEngine {
     r'\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b',
   );
 
+  /// Checks whether a registration number matches Malaysian SSM format
+  /// (modern 12-digit format, legacy format, or combined format with both).
+  static bool isValidRegistrationNumber(String? number) {
+    if (number == null || number.trim().isEmpty) return false;
+    final clean = number.trim();
+    return _modernSsmPattern.hasMatch(clean) || _legacySsmPattern.hasMatch(clean);
+  }
+
   /// Analyzes raw OCR text from a Malaysian SSM certificate
   static SsmAnalysisResult analyze({
     required String text,

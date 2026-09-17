@@ -533,6 +533,7 @@ class AuthService {
         'phone': phone.trim(),
         'birthday': birthday == null ? null : Timestamp.fromDate(birthday),
         'role': AccountRole.tourist.value,
+        'hasPassword': true,
         'exp': 0,
         'level': 1,
         'voucherCount': 0,
@@ -600,6 +601,7 @@ class AuthService {
         'usernameLower': rawMerchant,
         'phone': phone.trim(),
         'role': AccountRole.merchant.value,
+        'hasPassword': true,
         'preferences': {
           'campaignNotifications': true,
           'claimNotifications': true,
@@ -658,12 +660,34 @@ class AuthService {
   }
 
   /// Checks whether the current user has a password authentication method.
-  Future<bool> hasPassword() async {
+  Future<bool> hasPassword([String? userId]) async {
     if (mockHasPassword != null) return mockHasPassword!();
     try {
       final u = auth.currentUser;
       if (u == null) return true;
-      return u.providerData.any((p) => p.providerId == 'password');
+      if (u.providerData.any((p) => p.providerId == 'password')) {
+        return true;
+      }
+      final email = u.email?.trim().toLowerCase();
+      final uid = userId ?? u.uid;
+      try {
+        var userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists && email != null && email.isNotEmpty) {
+          final q = await db
+              .collection('users')
+              .where('email', isEqualTo: email)
+              .limit(1)
+              .get();
+          if (q.docs.isNotEmpty) userDoc = q.docs.first;
+        }
+        if (userDoc.exists) {
+          final data = userDoc.data() ?? {};
+          if (data['hasPassword'] == false) return false;
+          // In LocalQuest, all registered accounts created via the registration form set a password
+          return true;
+        }
+      } catch (_) {}
+      return false;
     } catch (_) {
       return true;
     }
@@ -895,11 +919,31 @@ class AuthService {
         if (currentPassword == null || currentPassword.trim().isEmpty) {
           throw const LocalQuestException('Please enter your current password.');
         }
+        final email = user.email!;
         final credential = EmailAuthProvider.credential(
-          email: user.email!,
+          email: email,
           password: currentPassword.trim(),
         );
-        await user.reauthenticateWithCredential(credential);
+        try {
+          await user.reauthenticateWithCredential(credential);
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'wrong-password') {
+            throw const LocalQuestException('Incorrect password. Please try again.');
+          }
+          // If user logged in via Google SSO but has a registered password, verify via signInWithEmailAndPassword
+          try {
+            await auth.signInWithEmailAndPassword(
+              email: email,
+              password: currentPassword.trim(),
+            );
+          } on FirebaseAuthException catch (inner) {
+            if (inner.code == 'wrong-password' ||
+                inner.code == 'invalid-credential') {
+              throw const LocalQuestException('Incorrect password. Please try again.');
+            }
+            throw LocalQuestException(_authMessage(inner));
+          }
+        }
       } else {
         // User is authenticated via Google or OAuth
         try {
@@ -917,70 +961,88 @@ class AuthService {
         } catch (_) {}
       }
 
-      final userRef = db.collection('users').doc(user.uid);
+      final currentAuthUser = auth.currentUser ?? user;
+      final email = (currentAuthUser.email ?? user.email ?? '').trim().toLowerCase();
+      final targetUids = <String>{currentAuthUser.uid, user.uid};
 
-      final businesses = await db
-          .collection('businesses')
-          .where('ownerId', isEqualTo: user.uid)
-          .get();
-      final campaigns = await db
-          .collection('campaigns')
-          .where('ownerId', isEqualTo: user.uid)
-          .get();
-      final visits = await userRef.collection('visitedPlaces').get();
-      final friends = await userRef.collection('friends').get();
-      final friendRequests = await userRef.collection('friendRequests').get();
-      final missions = await userRef.collection('missions').get();
-      final vouchers = await userRef.collection('vouchers').get();
-      final claimedVouchers = await userRef.collection('claimedVouchers').get();
-      final expLogs = await userRef.collection('expLog').get();
-      final rewardClaims = await userRef.collection('rewardClaims').get();
-      final cooldowns = await userRef.collection('checkpointCooldowns').get();
+      if (email.isNotEmpty) {
+        try {
+          final query = await db
+              .collection('users')
+              .where('email', isEqualTo: email)
+              .get();
+          for (final d in query.docs) {
+            targetUids.add(d.id);
+          }
+        } catch (_) {}
+      }
 
       final toDelete = <DocumentReference>[];
-      for (final doc in businesses.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in campaigns.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in visits.docs) {
-        toDelete.add(doc.reference);
-      }
+      for (final uid in targetUids) {
+        final userRef = db.collection('users').doc(uid);
 
-      // Clean up reverse friend relationships in each friend's account
-      for (final doc in friends.docs) {
-        final friendId = doc.data()['friendUserId'] as String? ?? doc.id;
-        if (friendId.isNotEmpty && friendId != user.uid) {
-          toDelete.add(db.collection('users').doc(friendId).collection('friends').doc(user.uid));
+        final businesses = await db
+            .collection('businesses')
+            .where('ownerId', isEqualTo: uid)
+            .get();
+        final campaigns = await db
+            .collection('campaigns')
+            .where('ownerId', isEqualTo: uid)
+            .get();
+        final visits = await userRef.collection('visitedPlaces').get();
+        final friends = await userRef.collection('friends').get();
+        final friendRequests = await userRef.collection('friendRequests').get();
+        final missions = await userRef.collection('missions').get();
+        final vouchers = await userRef.collection('vouchers').get();
+        final claimedVouchers = await userRef.collection('claimedVouchers').get();
+        final expLogs = await userRef.collection('expLog').get();
+        final rewardClaims = await userRef.collection('rewardClaims').get();
+        final cooldowns = await userRef.collection('checkpointCooldowns').get();
+
+        for (final doc in businesses.docs) {
+          toDelete.add(doc.reference);
         }
-        toDelete.add(doc.reference);
-      }
+        for (final doc in campaigns.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in visits.docs) {
+          toDelete.add(doc.reference);
+        }
 
-      for (final doc in friendRequests.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in missions.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in vouchers.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in claimedVouchers.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in expLogs.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in rewardClaims.docs) {
-        toDelete.add(doc.reference);
-      }
-      for (final doc in cooldowns.docs) {
-        toDelete.add(doc.reference);
-      }
+        // Clean up reverse friend relationships in each friend's account
+        for (final doc in friends.docs) {
+          final friendId = doc.data()['friendUserId'] as String? ?? doc.id;
+          if (friendId.isNotEmpty && !targetUids.contains(friendId)) {
+            toDelete.add(db.collection('users').doc(friendId).collection('friends').doc(uid));
+          }
+          toDelete.add(doc.reference);
+        }
 
-      toDelete.add(userRef.collection('notes').doc('status'));
-      toDelete.add(userRef);
+        for (final doc in friendRequests.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in missions.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in vouchers.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in claimedVouchers.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in expLogs.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in rewardClaims.docs) {
+          toDelete.add(doc.reference);
+        }
+        for (final doc in cooldowns.docs) {
+          toDelete.add(doc.reference);
+        }
+
+        toDelete.add(userRef.collection('notes').doc('status'));
+        toDelete.add(userRef);
+      }
 
       WriteBatch currentBatch = db.batch();
       int opCount = 0;
@@ -996,11 +1058,22 @@ class AuthService {
       if (opCount > 0) {
         await currentBatch.commit();
       }
-      BiometricAuthService.instance.clearSessionAuthentication(user.uid);
+
+      for (final uid in targetUids) {
+        BiometricAuthService.instance.clearSessionAuthentication(uid);
+      }
       try {
         await BiometricAuthService.instance.clearLastUser();
       } catch (_) {}
-      await user.delete();
+
+      try {
+        await currentAuthUser.delete();
+      } catch (_) {}
+      if (user.uid != currentAuthUser.uid) {
+        try {
+          await user.delete();
+        } catch (_) {}
+      }
       await signOut();
     } on FirebaseAuthException catch (error) {
       throw LocalQuestException(_authMessage(error));

@@ -3157,12 +3157,20 @@ class _BusinessSelector extends StatelessWidget {
                       size: 20,
                     ),
                   ),
-                  title: Text(
-                    b.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: isCurrent ? LqColors.primaryDark : Colors.black87,
-                    ),
+                  title: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    children: [
+                      Text(
+                        b.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: isCurrent ? LqColors.primaryDark : Colors.black87,
+                        ),
+                      ),
+                      if (b.isSsmVerified)
+                        const SsmVerifiedBadge(compact: true),
+                    ],
                   ),
                   subtitle: Text(
                     b.area.isNotEmpty ? b.area : b.address,
@@ -3304,10 +3312,18 @@ class _BusinessSelector extends StatelessWidget {
                     'Manage workspace for',
                     style: TextStyle(color: LqColors.muted, fontSize: 11),
                   ),
-                  Text(
-                    selectedBusiness?.name ?? businesses.first.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    children: [
+                      Text(
+                        selectedBusiness?.name ?? businesses.first.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      if ((selectedBusiness ?? businesses.firstOrNull)?.isSsmVerified == true)
+                        const SsmVerifiedBadge(compact: true),
+                    ],
                   ),
                 ],
               ),
@@ -3648,8 +3664,13 @@ class _BusinessEditorState extends State<BusinessEditor> {
           longitude: widget.business!.longitude!,
         );
   late bool active = widget.business?.active ?? true;
-  late String _verificationStatus =
-      widget.business?.verificationStatus ?? 'unverified';
+  late String _verificationStatus = widget.business?.verificationStatus == 'verified' ||
+          (widget.business?.verificationStatus != 'rejected' &&
+              SsmVerificationEngine.isValidRegistrationNumber(
+                widget.business?.registrationNumber,
+              ))
+      ? 'verified'
+      : (widget.business?.verificationStatus ?? 'unverified');
   bool busy = false;
 
   @override
@@ -3747,19 +3768,38 @@ class _BusinessEditorState extends State<BusinessEditor> {
                     label: 'Registration number',
                     hint: 'e.g. 201934234321 (RT0069300-M) or 201901032124',
                     validator: MerchantValidation.registration,
+                    onChanged: (v) {
+                      if (_verificationStatus != 'rejected') {
+                        setState(() {
+                          if (SsmVerificationEngine.isValidRegistrationNumber(v)) {
+                            _verificationStatus = 'verified';
+                          } else if (_verificationStatus == 'verified' &&
+                              (widget.business?.verificationStatus ?? 'unverified') != 'verified') {
+                            _verificationStatus = 'unverified';
+                          }
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: 8),
                   CertificateScanButton(
                     businessName: _name.text,
-                    onRegistration: (number) =>
-                        setState(() => _registration.text = number),
+                    onRegistration: (number) => setState(() {
+                      _registration.text = number;
+                      if (SsmVerificationEngine.isValidRegistrationNumber(number) &&
+                          _verificationStatus != 'rejected') {
+                        _verificationStatus = 'verified';
+                      }
+                    }),
                     onVerificationResult: (result) {
                       setState(() {
                         _verificationStatus = result.status;
                       });
                     },
                   ),
-                  if (_verificationStatus == 'verified') ...[
+                  if (_verificationStatus == 'verified' ||
+                      (_verificationStatus != 'rejected' &&
+                          SsmVerificationEngine.isValidRegistrationNumber(_registration.text))) ...[
                     const SizedBox(height: 8),
                     const Align(
                       alignment: Alignment.centerLeft,
@@ -3946,6 +3986,13 @@ class _BusinessEditorState extends State<BusinessEditor> {
     }
     setState(() => busy = true);
     try {
+      final effectiveVerificationStatus = _verificationStatus == 'verified' ||
+              (_verificationStatus != 'rejected' &&
+                  SsmVerificationEngine.isValidRegistrationNumber(
+                    _registration.text,
+                  ))
+          ? 'verified'
+          : _verificationStatus;
       await MerchantRepository.instance.saveBusiness(
         Business(
           id: widget.business?.id ?? '',
@@ -3958,7 +4005,7 @@ class _BusinessEditorState extends State<BusinessEditor> {
           state: _state.text,
           phone: _phone.text,
           registrationNumber: _registration.text,
-          verificationStatus: _verificationStatus,
+          verificationStatus: effectiveVerificationStatus,
           active: active,
           latitude: _location?.latitude,
           longitude: _location?.longitude,

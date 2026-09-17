@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/ssm_verification.dart';
 
 enum AccountRole { tourist, merchant }
 
@@ -115,7 +116,11 @@ class Business {
   final String? description;
   final bool rewardPlacementApproved;
 
-  bool get isSsmVerified => verificationStatus == 'verified';
+  bool get isSsmVerified {
+    if (verificationStatus == 'rejected') return false;
+    if (verificationStatus == 'verified') return true;
+    return SsmVerificationEngine.isValidRegistrationNumber(registrationNumber);
+  }
 
   factory Business.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -130,7 +135,10 @@ class Business {
       postcode: data['postcode'] as String? ?? '',
       state: data['state'] as String? ?? '',
       registrationNumber: data['registrationNumber'] as String? ?? '',
-      verificationStatus: data['verificationStatus'] as String? ?? 'unverified',
+      verificationStatus: data['verificationStatus'] as String? ??
+          ((data['isSsmVerified'] == true || data['ssmVerified'] == true)
+              ? 'verified'
+              : 'unverified'),
       photoUrl: data['photoUrl'] as String?,
       photoPublicId: data['photoPublicId'] as String?,
       active: data['active'] as bool? ?? true,
