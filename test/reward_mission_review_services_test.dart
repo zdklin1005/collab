@@ -365,5 +365,62 @@ void main() {
       final activeCount = missions.where((m) => m.status == MissionStatus.active).length;
       expect(activeCount, 2);
     });
+
+    test('MissionCheckpoint supports photoUrl and copyWith correctly', () {
+      const checkpoint = MissionCheckpoint(
+        businessId: 'biz_1',
+        businessName: 'Cafe Test',
+        type: MissionType.photo,
+        targetLatitude: 3.1390,
+        targetLongitude: 101.6869,
+        completed: false,
+        photoTargetLabel: 'coffee',
+      );
+
+      expect(checkpoint.photoUrl, isNull);
+      expect(checkpoint.completed, isFalse);
+
+      final completedCheckpoint = checkpoint.copyWith(
+        completed: true,
+        photoUrl: 'https://res.cloudinary.com/demo/image/upload/sample.jpg',
+      );
+
+      expect(completedCheckpoint.completed, isTrue);
+      expect(completedCheckpoint.photoUrl, 'https://res.cloudinary.com/demo/image/upload/sample.jpg');
+      expect(completedCheckpoint.photoTargetLabel, 'coffee');
+
+      final map = completedCheckpoint.toMap();
+      expect(map['photoUrl'], 'https://res.cloudinary.com/demo/image/upload/sample.jpg');
+      expect(map['completed'], isTrue);
+
+      final deserialized = MissionCheckpoint.fromMap(map);
+      expect(deserialized.photoUrl, 'https://res.cloudinary.com/demo/image/upload/sample.jpg');
+      expect(deserialized.completed, isTrue);
+      expect(deserialized.businessName, 'Cafe Test');
+    });
+
+    test('Mission model correctly handles city and campaignId', () {
+      final now = DateTime.now();
+      final mission = Mission(
+        id: 'm_campaign',
+        title: 'Special Event',
+        description: 'Visit our partner store',
+        rewardType: MissionRewardType.voucher,
+        status: MissionStatus.active,
+        checkpoints: const [],
+        generatedAt: now,
+        expiresAt: now.add(const Duration(days: 1)),
+        city: 'Kuala Lumpur',
+        campaignId: 'camp_123',
+      );
+
+      expect(mission.isCampaignMission, isTrue);
+      expect(mission.city, 'Kuala Lumpur');
+      expect(mission.campaignId, 'camp_123');
+
+      final map = mission.toMap();
+      expect(map['city'], 'Kuala Lumpur');
+      expect(map['campaignId'], 'camp_123');
+    });
   });
 }
