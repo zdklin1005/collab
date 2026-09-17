@@ -430,10 +430,13 @@ class MissionService {
       int startIndex,
       int checkpointCount,
       ) {
+    if (businesses.isEmpty) return const [];
     final checkpoints = <MissionCheckpoint>[];
-    var index = startIndex;
-    for (var c = 0; c < checkpointCount && index < businesses.length; c++) {
-      final business = businesses[index++];
+    for (var c = 0; c < checkpointCount; c++) {
+      // Wraps around rather than running out, so a sparse area (as few
+      // as 1 business) still fills every checkpoint slot instead of
+      // silently generating fewer missions than the daily count.
+      final business = businesses[(startIndex + c) % businesses.length];
       final type = _random.nextBool() ? MissionType.visit : MissionType.photo;
       checkpoints.add(
         MissionCheckpoint(
@@ -540,20 +543,19 @@ class MissionService {
     var businessIndex = 0;
 
     for (var i = 0; i < _dailyMissionCount; i++) {
-      if (businessIndex >= businesses.length) break;
-
-      final checkpointCount = 1 + _random.nextInt(3); // 1-3 checkpoints
+      // Capped so a single mission never repeats the same business
+      // within itself — separate missions can still reuse it via the
+      // wrapping index above.
+      final checkpointCount = min(1 + _random.nextInt(3), businesses.length);
       final checkpoints = _buildCheckpoints(
         businesses,
         businessIndex,
         checkpointCount,
       );
       businessIndex += checkpoints.length;
-      if (checkpoints.isEmpty) break;
 
       final areaLabel = checkpoints.first.businessName;
       final expReward = 20 * checkpoints.length + _random.nextInt(20);
-
       final mission = Mission(
         id: '',
         title: checkpoints.length > 1
@@ -606,16 +608,13 @@ class MissionService {
     final batch = db.batch();
     for (final doc in toResync) {
       final mission = Mission.fromDoc(doc);
-      final checkpointCount = mission.checkpoints.length;
-      if (businessIndex + checkpointCount > businesses.length) break;
-
+      final checkpointCount = min(mission.checkpoints.length, businesses.length);
       final newCheckpoints = _buildCheckpoints(
         businesses,
         businessIndex,
         checkpointCount,
       );
       businessIndex += newCheckpoints.length;
-      if (newCheckpoints.length != checkpointCount) continue;
 
       final areaLabel = newCheckpoints.first.businessName;
       batch.update(doc.reference, {

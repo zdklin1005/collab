@@ -4,33 +4,26 @@ import 'package:intl/intl.dart';
 import '../../../core/localquest_theme.dart';
 import '../../../core/localquest_widgets.dart';
 import '../../../models/localquest_models.dart';
-import '../../../services/reward_service.dart';
+import '../../../services/exp_progress.dart';
 
 /// Shows the tourist's current level/EXP progress plus a preview of the
-/// next several levels and the voucher each one guarantees. Every level
-/// gained awards exactly one voucher (see RewardService.awardExp()'s
-/// vouchersAwarded logic) — so this is a preview of a known, guaranteed
-/// reward, not a random or varied reward table.
+/// remaining levels up to Champion Explorer (level 5, the max). Derives
+/// level from EXP via ExpProgress rather than trusting the passed-in
+/// user.level field directly, so this always agrees with the map card
+/// and profile screen even if the caller's user object is a step stale.
 class RewardsRoadmapScreen extends StatelessWidget {
   const RewardsRoadmapScreen({super.key, required this.user});
   final AppUser user;
 
-  static const _previewLevels = 6;
-
   @override
   Widget build(BuildContext context) {
-    final reward = RewardService.instance;
+    final progress = ExpProgress.fromTotalExp(
+      user.exp < 0 ? 0 : user.exp,
+      user.level,
+    );
     final numberFormat = NumberFormat('#,##0');
-
-    final currentLevelBaseExp = reward.expRequiredForLevel(user.level);
-    final nextLevelExp = reward.expRequiredForLevel(user.level + 1);
-    final expIntoLevel = (user.exp - currentLevelBaseExp) < 0
-        ? 0
-        : user.exp - currentLevelBaseExp;
-    final expNeededForLevel = nextLevelExp - currentLevelBaseExp;
-    final progress = expNeededForLevel <= 0
-        ? 1.0
-        : (expIntoLevel / expNeededForLevel).clamp(0.0, 1.0);
+    final isMaxLevel = ExpProgress.isMaxLevel(progress.level);
+    final remainingLevels = ExpProgress.maxLevel - progress.level;
 
     return LqPage(
       child: Padding(
@@ -66,7 +59,7 @@ class RewardsRoadmapScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: Text(
-                          '${user.level}',
+                          '${progress.level}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 26,
@@ -80,7 +73,7 @@ class RewardsRoadmapScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'LEVEL ${user.level}',
+                              'LEVEL ${progress.level} · ${progress.tierName.toUpperCase()}',
                               style: const TextStyle(
                                 color: LqColors.muted,
                                 fontWeight: FontWeight.w700,
@@ -89,9 +82,11 @@ class RewardsRoadmapScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${numberFormat.format(expIntoLevel)} / '
-                              '${numberFormat.format(expNeededForLevel)} EXP '
-                              'to level ${user.level + 1}',
+                              isMaxLevel
+                                  ? 'Max level reached'
+                                  : '${numberFormat.format(progress.expIntoLevel)} / '
+                                  '${numberFormat.format(progress.expRequiredThisLevel)} EXP '
+                                  'to level ${progress.level + 1}',
                               style: const TextStyle(
                                 color: LqColors.primary,
                                 fontWeight: FontWeight.w700,
@@ -107,7 +102,7 @@ class RewardsRoadmapScreen extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: LinearProgressIndicator(
-                      value: progress,
+                      value: progress.fraction,
                       minHeight: 10,
                       color: LqColors.primary,
                       backgroundColor: LqColors.line,
@@ -117,17 +112,56 @@ class RewardsRoadmapScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 28),
-            Text('UPCOMING REWARDS', style: monoLabel),
+            Text('UPCOMING TIERS', style: monoLabel),
             const SizedBox(height: 12),
             Expanded(
-              child: ListView.separated(
-                itemCount: _previewLevels,
+              child: isMaxLevel
+                  ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.emoji_events_outlined,
+                        size: 48,
+                        color: LqColors.primary,
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        "You've reached Champion Explorer",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: LqColors.ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        "There's no higher tier — you've maxed out the leveling system.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: LqColors.muted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+                  : ListView.separated(
+                itemCount: remainingLevels,
                 separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final targetLevel = user.level + 1 + index;
-                  final expForLevel = reward.expRequiredForLevel(targetLevel);
-                  final expRemainingRaw = expForLevel - user.exp;
-                  final expRemaining = expRemainingRaw < 0 ? 0 : expRemainingRaw;
+                  final targetLevel = progress.level + 1 + index;
+                  final expForLevel = ExpProgress.expRequiredForLevel(
+                    targetLevel,
+                  );
+                  final expRemainingRaw = expForLevel - progress.totalExp;
+                  final expRemaining = expRemainingRaw < 0
+                      ? 0
+                      : expRemainingRaw;
                   final isNext = index == 0;
 
                   return LqCard(
@@ -146,13 +180,16 @@ class RewardsRoadmapScreen extends StatelessWidget {
                           alignment: Alignment.center,
                           child: Icon(
                             Icons.lock_outline,
-                            color: isNext ? LqColors.primary : LqColors.muted,
+                            color: isNext
+                                ? LqColors.primary
+                                : LqColors.muted,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                            CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Level $targetLevel',
@@ -183,9 +220,9 @@ class RewardsRoadmapScreen extends StatelessWidget {
                             color: const Color(0xFFFBE0C4),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Text(
-                            '+1 Voucher',
-                            style: TextStyle(
+                          child: Text(
+                            ExpProgress.tierNameForLevel(targetLevel),
+                            style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 11,
                               color: Color(0xFF8A5A22),

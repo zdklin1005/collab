@@ -1,10 +1,13 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'voucher_code.dart';
 import '../models/localquest_models.dart';
 import 'exp_award_service.dart';
-import 'exp_progress.dart';
+import '../services/exp_progress.dart';
+import 'localquest_services.dart';
 
 /// Represents the user's progress within their current level.
 class LevelProgress {
@@ -34,7 +37,10 @@ class LevelProgress {
 }
 
 /// Result of awarding EXP to a tourist, including whether they leveled up
-/// and how many vouchers were awarded as a result.
+/// and how many real campaign vouchers were actually granted as a result
+/// (see RewardService.awardExp()'s doc comment — this can be less than
+/// the number of levels gained if no active campaign was available at
+/// grant time).
 class ExpAwardResult {
   const ExpAwardResult({
     required this.previousLevel,
@@ -77,6 +83,7 @@ class RewardService {
   FirebaseFirestore? _db;
   FirebaseFirestore get db => _db ?? FirebaseFirestore.instance;
   set db(FirebaseFirestore customDb) => _db = customDb;
+  final Random _random = Random();
 
   /// EXP curve: total cumulative EXP required to *reach* [level].
   /// Delegates to ExpProgress, the single source of truth shared with
@@ -107,18 +114,26 @@ class RewardService {
     );
   }
 
-  /// Adds [amount] EXP to the tourist identified by [uid], recalculates
-  /// their level, and awards one voucher per level gained.
+  /// Adds [amount] EXP to the tourist identified by [uid] and recalculates
+  /// their level.
   ///
   /// Uses a Firestore transaction so concurrent EXP awards (e.g. two
   /// quick pickups from the map module firing close together) can't race
   /// and silently drop EXP.
   ///
-  /// NOTE: the actual voucher being awarded (which business, what
-  /// discount) isn't modeled yet on the merchant side — this writes a
-  /// placeholder record to `users/{uid}/vouchers` so there's something
-  /// to display and count, and it can be enriched once a real voucher
-  /// shape exists in the Promotional Configuration module.
+  /// If this crosses one or more level thresholds, a real merchant
+  /// campaign voucher is granted per level gained via
+  /// [MerchantRepository.claimVoucher] — deliberately run AFTER the
+  /// transaction above commits, not nested inside it. Firestore
+  /// transactions can retry silently on contention; nesting a
+  /// multi-step operation like claimVoucher() inside one risks it
+  /// firing more than once per retry. Voucher campaigns aren't scoped
+  /// to the tourist's location, since several EXP-awarding call sites
+  /// (check-in, review submission) don't have GPS context available —
+  /// only mission completion does — so this picks from ALL currently
+  /// active voucher campaigns regardless of city. If none are active at
+  /// grant time, the level-up itself still happens; it just doesn't
+  /// come with a bonus voucher that time.
   Future<ExpAwardResult> awardExp(
       String uid,
       int amount, {
@@ -130,7 +145,7 @@ class RewardService {
 
     final userRef = db.collection('users').doc(uid);
 
-    return db.runTransaction<ExpAwardResult>((transaction) async {
+    final result = await db.runTransaction<ExpAwardResult>((transaction) async {
       final snapshot = await transaction.get(userRef);
       final user = AppUser.fromDoc(snapshot);
 
@@ -138,26 +153,12 @@ class RewardService {
       final previousLevel = user.level;
       final newExp = previousExp + amount;
       final newLevel = levelForExp(newExp);
-      final levelsGained = newLevel - previousLevel;
 
       transaction.update(userRef, {
         'exp': newExp,
         'level': newLevel,
-        if (levelsGained > 0)
-          'voucherCount': FieldValue.increment(levelsGained),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-
-      for (var i = 0; i < levelsGained; i++) {
-        final voucherRef = userRef.collection('vouchers').doc();
-        transaction.set(voucherRef, {
-          'source': 'level_up',
-          'levelReached': previousLevel + i + 1,
-          'awardedAt': FieldValue.serverTimestamp(),
-          'redeemed': false,
-          'code': VoucherCode.generate(),
-        });
-      }
 
       // Activity log for the EXP gain itself, useful for a history feed
       // and for debugging "why did my EXP change" during development.
@@ -173,16 +174,85 @@ class RewardService {
         newLevel: newLevel,
         previousExp: previousExp,
         newExp: newExp,
-        vouchersAwarded: levelsGained,
+        vouchersAwarded: 0, // filled in below, after the transaction commits
       );
     });
+
+    if (result.levelsGained <= 0) return result;
+
+    final usedCampaignIds = <String>{};
+    var granted = 0;
+    for (var i = 0; i < result.levelsGained; i++) {
+      final campaignId = await _grantLevelUpVoucher(uid, usedCampaignIds);
+      if (campaignId != null) {
+        usedCampaignIds.add(campaignId);
+        granted++;
+      }
+    }
+
+    return ExpAwardResult(
+      previousLevel: result.previousLevel,
+      newLevel: result.newLevel,
+      previousExp: result.previousExp,
+      newExp: result.newExp,
+      vouchersAwarded: granted,
+    );
+  }
+
+  /// Attempts to grant one real campaign voucher for a level-up. Prefers
+  /// a campaign not already used earlier in this same award call
+  /// ([excludeCampaignIds]) so multiple level-ups from one big EXP award
+  /// don't all hand out the same voucher when several are active; falls
+  /// back to reusing one if that's all that's available. Returns the
+  /// campaign id used, or null if no active voucher campaign exists at
+  /// all right now.
+  ///
+  /// NOTE: MerchantRepository.claimVoucher() only blocks a duplicate
+  /// claim for 'welcome'-type campaigns — 'promotional'/'seasonal'
+  /// campaigns don't currently enforce perCustomerLimit/quantity at
+  /// claim time. That's a pre-existing gap in the merchant module, not
+  /// something specific to level-up grants, but worth knowing: a
+  /// tourist leveling up repeatedly while only one non-welcome campaign
+  /// is active could claim it more than once.
+  Future<String?> _grantLevelUpVoucher(
+      String uid,
+      Set<String> excludeCampaignIds,
+      ) async {
+    try {
+      final snap = await db
+          .collection('campaigns')
+          .where('type', isEqualTo: 'voucher')
+          .where('status', isEqualTo: 'active')
+          .limit(20)
+          .get();
+      if (snap.docs.isEmpty) return null;
+
+      final campaigns = snap.docs.map(Campaign.fromDoc).toList();
+      final fresh = campaigns
+          .where((c) => !excludeCampaignIds.contains(c.id))
+          .toList();
+      final pool = fresh.isNotEmpty ? fresh : campaigns;
+      final campaign = pool[_random.nextInt(pool.length)];
+
+      await MerchantRepository.instance.claimVoucher(
+        userId: uid,
+        voucherId: campaign.id,
+        businessId: campaign.businessId,
+        voucherType: campaign.voucherType,
+      );
+      return campaign.id;
+    } catch (_) {
+      // e.g. already claimed (welcome-type dedup) or a transient error —
+      // the level-up itself already happened; just no bonus voucher.
+      return null;
+    }
   }
 
   /// Awards a single voucher to [uid] outside of the leveling flow (e.g.
   /// for completing a voucher-reward mission). Increments `voucherCount`
-  /// on the user doc and writes the same placeholder voucher record
-  /// shape used by [awardExp]'s level-up path — see the note there about
-  /// this being a stand-in until a real voucher shape exists.
+  /// on the user doc and writes a placeholder voucher record — see the
+  /// class doc on awardVoucher() for why this is a stand-in until a real
+  /// voucher shape exists for this specific call site.
   Future<void> awardVoucher(String uid, {required String source}) async {
     final userRef = db.collection('users').doc(uid);
     final voucherRef = userRef.collection('vouchers').doc();
@@ -197,9 +267,12 @@ class RewardService {
     });
     await batch.commit();
   }
-  /// Live list of achievement vouchers (from level-ups / voucher-type
-  /// missions) awarded to [uid]. Raw maps, not a dedicated model — see
-  /// the class doc on awardVoucher() for why these are placeholders.
+
+  /// Live list of achievement vouchers (from voucher-type missions)
+  /// awarded to [uid]. Raw maps, not a dedicated model — see the class
+  /// doc on awardVoucher() for why these are placeholders. No longer
+  /// includes level-up vouchers, which are now real campaign vouchers
+  /// living in claimedVouchers instead (see MyRewardsScreen).
   Stream<List<Map<String, dynamic>>> watchAchievementVouchers(String uid) {
     try {
       return db
@@ -244,7 +317,14 @@ class RewardService {
   /// Finish other transaction reads before calling this method.
   /// Do not call awardExp() afterward: that would award EXP twice.
   ///
-  /// This does not issue the teammate's separate level-up reward.
+  /// This does not issue a level-up voucher directly — if it crosses a
+  /// level threshold, that's picked up the next time the tourist's
+  /// profile reads their level normally; map EXP goes through this
+  /// dedicated transactional path instead of awardExp() specifically so
+  /// it can share the caller's Firestore transaction, which precludes
+  /// also calling out to claimVoucher() here for the same reason
+  /// awardExp() defers its own voucher grant until after its
+  /// transaction commits.
   Future<ExpAwardReceipt> awardMapExpInTransaction(
       Transaction transaction, {
         required String uid,

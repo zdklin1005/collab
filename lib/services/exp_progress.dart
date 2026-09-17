@@ -1,13 +1,17 @@
 /// Single source of truth for the tourist leveling curve — used by
 /// RewardService (which delegates to this instead of keeping its own
-/// copy of the formula), MapProgressCard, and the tourist profile
-/// screen, so all three always agree on level thresholds and names.
+/// copy of the formula), MapProgressCard, LqTierBadge, and the tourist
+/// profile/roadmap screens, so all of them always agree on level
+/// thresholds and names.
 ///
-/// Five tiers total, calibrated so that completing every daily mission
-/// (3/day, using the existing random EXP-per-mission formula in
-/// MissionService) reaches max level in roughly a week on an average
-/// run. Variance from that formula's randomness means some tourists
-/// will hit max level a little earlier or later than exactly 7 days.
+/// 15 tiers total. The curve is a quadratic (10*steps^2 + 10*steps,
+/// steps = level-1) chosen so level 15 (max) requires ~2,100 EXP —
+/// almost exactly what the earlier 5-level system required for its own
+/// max (2,000). Daily mission EXP output (3/day, MissionService's
+/// existing random per-mission formula) hasn't changed, so the *pacing*
+/// to reach max level is still roughly two weeks of active play — this
+/// just spreads the same total distance across three times as many
+/// milestones, so level-ups happen more often along the way.
 class ExpProgress {
   const ExpProgress._({
     required this.totalExp,
@@ -37,20 +41,25 @@ class ExpProgress {
 
   String get tierName => tierNameForLevel(level);
 
-  // Cumulative EXP required to *reach* each level, index 0 = level 1.
-  // Level 1 requires 0 EXP (everyone starts here). Deltas increase per
-  // tier (150, 250, 300, 350) for a natural escalating-effort feel.
-  static const List<int> _levelThresholds = [0, 150, 400, 700, 1050];
+  static const int maxLevel = 15;
 
   static const List<String> tierNames = [
     'New Explorer',
+    'Curious Explorer',
     'Junior Explorer',
+    'Rising Explorer',
     'Seasoned Explorer',
+    'Skilled Explorer',
+    'Trailblazing Explorer',
     'Veteran Explorer',
+    'Expert Explorer',
+    'Master Explorer',
+    'Elite Explorer',
+    'Renowned Explorer',
+    'Legendary Explorer',
+    'Mythic Explorer',
     'Champion Explorer',
   ];
-
-  static int get maxLevel => _levelThresholds.length;
 
   static bool isMaxLevel(int level) => level >= maxLevel;
 
@@ -67,7 +76,8 @@ class ExpProgress {
       throw ArgumentError.value(level, 'level', 'must be at least 1');
     }
     final clamped = level > maxLevel ? maxLevel : level;
-    return _levelThresholds[clamped - 1];
+    final steps = clamped - 1;
+    return 10 * steps * steps + 10 * steps;
   }
 
   factory ExpProgress.fromTotalExp(int totalExp, [int? currentLevel]) {
