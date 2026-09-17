@@ -65,6 +65,7 @@ import '../../services/map_exp_history_repository.dart';
 import '../../services/map_voucher_history_repository.dart';
 
 import '../../services/external_map_navigation.dart';
+import '../../services/device_location_service.dart';
 
 class InteractiveMapScreen extends StatefulWidget {
   const InteractiveMapScreen({
@@ -95,6 +96,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     }
 
     final position = _position;
+
     return position == null
         ? null
         : LatLng(position.latitude, position.longitude);
@@ -251,6 +253,7 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
   int _businessVoucherHistoryRequestId = 0;
 
   Position? _position;
+  Future<Position?>? _claimLocationRefresh;
   String? _selectedBusinessCategory;
   String? _selectedLandmarkCategory;
   bool _filterSheetOpen = false;
@@ -2795,11 +2798,9 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
         !_landmarkLoadFailed &&
         rewardSourceReady();
 
-    final now = DateTime.now();
     final simulatedPoint = simulationActive ? _displayPoint : null;
-    final position = !simulationActive && _locationError == null
-        ? _position
-        : null;
+    final position = simulationActive ? null : await _positionForRewardClaim();
+    final now = DateTime.now();
 
     return checkLiveRewardCollection(
       selectedReward: selectedReward,
@@ -2894,10 +2895,10 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
     required Business business,
     required Campaign campaign,
   }) async {
-    final now = DateTime.now();
     final simulationActive = MapMovementTestConfig.enabled;
     final simulatedPoint = simulationActive ? _displayPoint : null;
-    final position = simulationActive ? null : _position;
+    final position = simulationActive ? null : await _positionForRewardClaim();
+    final now = DateTime.now();
 
     return checkLiveBusinessVoucherCollection(
       touristId: widget.user.id,
@@ -3020,6 +3021,76 @@ class _InteractiveMapScreenState extends State<InteractiveMapScreen>
           content: Text('Google Maps could not be opened. Please try again.'),
         ),
       );
+  }
+
+  Future<Position?> _positionForRewardClaim() async {
+    final current = _locationError == null ? _position : null;
+
+    if (current != null) {
+      final quality = assessLocationQuality(
+        accuracy: current.accuracy,
+        recordedAt: current.timestamp,
+        now: DateTime.now(),
+      );
+
+      if (quality == LocationQuality.recent) {
+        return current;
+      }
+    }
+
+    if (!mounted ||
+        !_foreground ||
+        !widget.isActive ||
+        !_locationAllowed ||
+        MapMovementTestConfig.enabled) {
+      return current;
+    }
+
+    // Reuse an ongoing refresh when multiple claim buttons are tapped.
+    final existingRefresh = _claimLocationRefresh;
+    if (existingRefresh != null) {
+      return existingRefresh;
+    }
+
+    final requestId = _requestId;
+
+    final Future<Position?> refresh = () async {
+      try {
+        final freshPosition = await DeviceLocationService.instance
+            .getCurrentPosition()
+            .timeout(const Duration(seconds: 12));
+
+        if (!mounted ||
+            !_foreground ||
+            !widget.isActive ||
+            !_locationAllowed ||
+            requestId != _requestId) {
+          return current;
+        }
+
+        setState(() {
+          _position = freshPosition;
+          _locationError = null;
+          _locating = false;
+          _updateNearbyBusinesses();
+        });
+
+        return freshPosition;
+      } catch (_) {
+        // Return the old reading so the normal validation can reject it safely.
+        return current;
+      }
+    }();
+
+    _claimLocationRefresh = refresh;
+
+    try {
+      return await refresh;
+    } finally {
+      if (identical(_claimLocationRefresh, refresh)) {
+        _claimLocationRefresh = null;
+      }
+    }
   }
 
   @override
