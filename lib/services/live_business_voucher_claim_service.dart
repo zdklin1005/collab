@@ -131,6 +131,10 @@ class LiveBusinessVoucherClaimService {
         'redeemed': false,
       });
 
+      transaction.update(campaignRef, {
+        'claims': FieldValue.increment(1),
+      });
+
       return LiveBusinessVoucherClaimResult(
         LiveBusinessVoucherClaimStatus.recorded,
         campaign: campaign,

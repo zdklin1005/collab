@@ -11,6 +11,7 @@ import '../core/merchant_validation.dart';
 import '../core/password_policy.dart';
 import 'biometric_auth_service.dart';
 import 'cloudinary_images.dart';
+import 'spotify_service.dart';
 import 'voucher_code.dart';
 
 class LocalQuestException implements Exception {
@@ -647,6 +648,9 @@ class AuthService {
       final uid = auth.currentUser?.uid;
       BiometricAuthService.instance.clearSessionAuthentication(uid);
       try {
+        await SpotifyService.instance.disconnectUser(uid);
+      } catch (_) {}
+      try {
         await googleSignIn.signOut();
       } catch (_) {}
       await auth.signOut();
@@ -913,6 +917,8 @@ class AuthService {
         } catch (_) {}
       }
 
+      final userRef = db.collection('users').doc(user.uid);
+
       final businesses = await db
           .collection('businesses')
           .where('ownerId', isEqualTo: user.uid)
@@ -921,23 +927,75 @@ class AuthService {
           .collection('campaigns')
           .where('ownerId', isEqualTo: user.uid)
           .get();
-      final visits = await db
-          .collection('users')
-          .doc(user.uid)
-          .collection('visitedPlaces')
-          .get();
-      final batch = db.batch();
-      for (final document in businesses.docs) {
-        batch.delete(document.reference);
+      final visits = await userRef.collection('visitedPlaces').get();
+      final friends = await userRef.collection('friends').get();
+      final friendRequests = await userRef.collection('friendRequests').get();
+      final missions = await userRef.collection('missions').get();
+      final vouchers = await userRef.collection('vouchers').get();
+      final claimedVouchers = await userRef.collection('claimedVouchers').get();
+      final expLogs = await userRef.collection('expLog').get();
+      final rewardClaims = await userRef.collection('rewardClaims').get();
+      final cooldowns = await userRef.collection('checkpointCooldowns').get();
+
+      final toDelete = <DocumentReference>[];
+      for (final doc in businesses.docs) {
+        toDelete.add(doc.reference);
       }
-      for (final document in campaigns.docs) {
-        batch.delete(document.reference);
+      for (final doc in campaigns.docs) {
+        toDelete.add(doc.reference);
       }
-      for (final document in visits.docs) {
-        batch.delete(document.reference);
+      for (final doc in visits.docs) {
+        toDelete.add(doc.reference);
       }
-      batch.delete(db.collection('users').doc(user.uid));
-      await batch.commit();
+
+      // Clean up reverse friend relationships in each friend's account
+      for (final doc in friends.docs) {
+        final friendId = doc.data()['friendUserId'] as String? ?? doc.id;
+        if (friendId.isNotEmpty && friendId != user.uid) {
+          toDelete.add(db.collection('users').doc(friendId).collection('friends').doc(user.uid));
+        }
+        toDelete.add(doc.reference);
+      }
+
+      for (final doc in friendRequests.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in missions.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in vouchers.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in claimedVouchers.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in expLogs.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in rewardClaims.docs) {
+        toDelete.add(doc.reference);
+      }
+      for (final doc in cooldowns.docs) {
+        toDelete.add(doc.reference);
+      }
+
+      toDelete.add(userRef.collection('notes').doc('status'));
+      toDelete.add(userRef);
+
+      WriteBatch currentBatch = db.batch();
+      int opCount = 0;
+      for (final ref in toDelete) {
+        currentBatch.delete(ref);
+        opCount++;
+        if (opCount >= 400) {
+          await currentBatch.commit();
+          currentBatch = db.batch();
+          opCount = 0;
+        }
+      }
+      if (opCount > 0) {
+        await currentBatch.commit();
+      }
       BiometricAuthService.instance.clearSessionAuthentication(user.uid);
       try {
         await BiometricAuthService.instance.clearLastUser();
@@ -1394,6 +1452,7 @@ class MerchantRepository {
     final data = doc.data() ?? {};
     final startDate = (data['startDate'] as Timestamp?)?.toDate() ?? DateTime.now();
     final endDate = (data['endDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final campaignType = data['type'] as String? ?? 'ad';
 
     final resolved = Campaign.resolveStatus(
       rawStatus: active ? 'active' : 'inactive',
@@ -1404,6 +1463,23 @@ class MerchantRepository {
       'status': resolved,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    if (resolved == 'inactive' && campaignType == 'ad') {
+      final linkedVouchers = await db
+          .collection('campaigns')
+          .where('linkedAdId', isEqualTo: id)
+          .get();
+      if (linkedVouchers.docs.isNotEmpty) {
+        final batch = db.batch();
+        for (final vDoc in linkedVouchers.docs) {
+          batch.update(vDoc.reference, {
+            'status': 'inactive',
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+      }
+    }
   }
 
   Future<String> saveCampaign(
@@ -1499,9 +1575,13 @@ class MerchantRepository {
             ? value.collectionMethod
             : 'both',
         if (value.seasonName != null && value.seasonName!.trim().isNotEmpty)
-          'seasonName': value.seasonName!.trim(),
-        if (value.linkedAdId != null && value.linkedAdId!.trim().isNotEmpty)
-          'linkedAdId': value.linkedAdId!.trim(),
+          'seasonName': value.seasonName!.trim()
+        else
+          'seasonName': FieldValue.delete(),
+        if (value.type == 'voucher')
+          'linkedAdId': (value.linkedAdId != null && value.linkedAdId!.trim().isNotEmpty)
+              ? value.linkedAdId!.trim()
+              : FieldValue.delete(),
         if (value.validDays != null && value.validDays!.trim().isNotEmpty)
           'validDays': value.validDays!.trim(),
         if (value.validHours != null && value.validHours!.trim().isNotEmpty)
@@ -1513,6 +1593,29 @@ class MerchantRepository {
         'updatedAt': FieldValue.serverTimestamp(),
         if (value.id.isEmpty) 'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      final resolvedStatus = Campaign.resolveStatus(
+        rawStatus: value.status,
+        startDate: value.startDate,
+        endDate: value.endDate,
+      );
+      if (value.type == 'ad' && resolvedStatus == 'inactive' && ref.id.isNotEmpty) {
+        final linkedSnap = await db
+            .collection('campaigns')
+            .where('linkedAdId', isEqualTo: ref.id)
+            .get();
+        if (linkedSnap.docs.isNotEmpty) {
+          final b = db.batch();
+          for (final doc in linkedSnap.docs) {
+            b.update(doc.reference, {
+              'status': 'inactive',
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
+          await b.commit();
+        }
+      }
+
       return ref.id;
     } catch (_) {
       if (uploaded != null) await CloudinaryImages.instance.rollback(uploaded);
@@ -1520,14 +1623,55 @@ class MerchantRepository {
     }
   }
 
-  Future<void> deleteCampaign(String id) =>
-      db.collection('campaigns').doc(id).delete();
+  static final Set<String> _recordedViewsInSession = {};
+
+  /// Increments the real-time view counter on a campaign or voucher
+  /// once per session to prevent view count spamming.
+  Future<void> recordCampaignView(String campaignId) async {
+    final clean = campaignId.trim();
+    if (clean.isEmpty || _recordedViewsInSession.contains(clean)) return;
+    _recordedViewsInSession.add(clean);
+    try {
+      await db.collection('campaigns').doc(clean).update({
+        'views': FieldValue.increment(1),
+      });
+    } catch (_) {
+      _recordedViewsInSession.remove(clean);
+    }
+  }
+
+  Future<void> deleteCampaign(String id) async {
+    final doc = await db.collection('campaigns').doc(id).get();
+    final data = doc.data() ?? {};
+    final type = data['type'] as String?;
+
+    await db.collection('campaigns').doc(id).delete();
+
+    if (type == 'ad') {
+      final linkedSnap = await db
+          .collection('campaigns')
+          .where('linkedAdId', isEqualTo: id)
+          .get();
+      if (linkedSnap.docs.isNotEmpty) {
+        final b = db.batch();
+        for (final doc in linkedSnap.docs) {
+          b.update(doc.reference, {
+            'linkedAdId': FieldValue.delete(),
+            'status': 'inactive',
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+        await b.commit();
+      }
+    }
+  }
 
   Future<void> attachVouchersToAd(
     String adId,
     Set<String> voucherIds,
-    String businessId,
-  ) async {
+    String businessId, {
+    bool isAdInactive = false,
+  }) async {
     final snap = await db
         .collection('campaigns')
         .where('businessId', isEqualTo: businessId)
@@ -1540,6 +1684,12 @@ class MerchantRepository {
       if (shouldBeAttached && currentLinked != adId) {
         batch.update(doc.reference, {
           'linkedAdId': adId,
+          if (isAdInactive) 'status': 'inactive',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else if (shouldBeAttached && isAdInactive) {
+        batch.update(doc.reference, {
+          'status': 'inactive',
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else if (!shouldBeAttached && currentLinked == adId) {

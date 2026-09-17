@@ -106,6 +106,15 @@ class DirectChatService {
                       ),
                     );
                     continue;
+                  } else {
+                    list.add(
+                      convo.copyWith(
+                        otherDisplayName: 'Deleted Account',
+                        otherUsername: 'deleted_user',
+                        otherPhotoUrl: null,
+                      ),
+                    );
+                    continue;
                   }
                 } catch (_) {}
               }

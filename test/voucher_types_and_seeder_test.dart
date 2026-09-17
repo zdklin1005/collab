@@ -224,6 +224,37 @@ void main() {
       expect(seasonalWithAd.seasonName, 'Penang Heritage Month');
       expect(seasonalWithAd.linkedAdId, 'demo_ad_heritage_fest');
     });
+
+    test('Linked vouchers to an ad campaign are resolved with effective status rules', () {
+      final adCampaign = Campaign(
+        id: 'ad-101',
+        ownerId: 'owner-1',
+        businessId: 'biz-1',
+        name: 'Mega Sales Ad',
+        description: 'Store-wide discounts',
+        type: 'ad',
+        status: 'inactive',
+        startDate: DateTime(2026, 9, 1),
+        endDate: DateTime(2026, 10, 1),
+      );
+
+      final linkedVoucher = Campaign(
+        id: 'v-101',
+        ownerId: 'owner-1',
+        businessId: 'biz-1',
+        name: 'Linked Voucher',
+        description: 'Voucher under Mega Sales',
+        type: 'voucher',
+        status: 'inactive',
+        linkedAdId: 'ad-101',
+        startDate: DateTime(2026, 9, 1),
+        endDate: DateTime(2026, 10, 1),
+      );
+
+      expect(adCampaign.effectiveStatus, 'inactive');
+      expect(linkedVoucher.linkedAdId, 'ad-101');
+      expect(linkedVoucher.effectiveStatus, 'inactive');
+    });
   });
 
   group('AiTouristGuideService Penang Grounding', () {
@@ -298,12 +329,12 @@ void main() {
       expect(find.text('Seasonal'), findsNothing,
           reason: 'Seasonal is now an occasion field under Promotional');
 
-      // Default is Promotional, shows occasion field
+      // Default is Promotional, occasion field has been removed per user requirement
       expect(
         find.textContaining('Promotional voucher: Standard or seasonal'),
         findsOneWidget,
       );
-      expect(find.text('Season / festival occasion (Optional)'), findsOneWidget);
+      expect(find.text('Season / festival occasion (Optional)'), findsNothing);
 
       // Tap 'Welcome'
       await tester.ensureVisible(find.text('Welcome'));
@@ -326,7 +357,7 @@ void main() {
         find.textContaining('Promotional voucher: Standard or seasonal'),
         findsOneWidget,
       );
-      expect(find.text('Season / festival occasion (Optional)'), findsOneWidget);
+      expect(find.text('Season / festival occasion (Optional)'), findsNothing);
     });
 
     testWidgets('Navigates across all 3 steps with step validation and renders redemption rules', (

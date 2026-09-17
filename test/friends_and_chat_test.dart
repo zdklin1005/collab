@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:collab/core/localquest_theme.dart';
+import 'package:collab/core/localquest_widgets.dart';
 import 'package:collab/data/mock_map_data.dart';
 import 'package:collab/models/localquest_models.dart';
 import 'package:collab/screens/ai_assistant_sheet.dart';
@@ -727,10 +728,12 @@ void main() {
       // Verify recipient sheet content
       expect(find.text('EXPLORER · LEVEL 3'), findsOneWidget);
       expect(find.text('2450 XP'), findsOneWidget);
-      expect(find.text('Level 3 Explorer • Next tier at 9000 XP'), findsOneWidget);
+      expect(find.text('Level 3 Explorer • Next tier at 1200 XP'), findsOneWidget);
+      expect(find.text('CURRENTLY PLAYING'), findsOneWidget);
       expect(find.text('"Exploring Armenian Street!"'), findsOneWidget);
       expect(find.text('Island in the Sun'), findsOneWidget);
       expect(find.text('Weezer'), findsOneWidget);
+      expect(find.byType(LqSpotifyLogo), findsOneWidget);
       expect(find.text('Vouchers'), findsNothing);
       expect(find.text('Reviews'), findsNothing);
       expect(find.byKey(const Key('direct_chat_remove_friend_button')), findsOneWidget);
@@ -910,6 +913,87 @@ void main() {
       expect(sentLng, closeTo(MockMapData.businesses.first.longitude!, 0.001));
 
       DirectChatService.instance.mockSendLocationMessage = null;
+    });
+
+    testWidgets('FriendsScreen note editor shows Connect Spotify for unlinked users',
+        (tester) async {
+      await SpotifyService.instance.disconnectUser('unlinked_user');
+
+      await tester.pumpWidget(
+        app(
+          const FriendsScreen(
+            currentUser: AppUser(
+              id: 'unlinked_user',
+              email: 'unlinked@example.com',
+              displayName: 'Oscar Piastri',
+              username: '@oscar_p',
+              role: AccountRole.tourist,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap Your Note to open the editor
+      await tester.tap(find.text('Your Note'));
+      await tester.pumpAndSettle();
+
+      // Verify unlinked state UI
+      expect(find.text('Spotify Not Connected'), findsOneWidget);
+      expect(find.text('Connect Spotify Account'), findsOneWidget);
+      expect(find.text('Connect Spotify to share music'), findsOneWidget);
+      expect(find.text('Unlink Spotify Account'), findsNothing);
+
+      // Close dialog
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+    });
+
+    test('streamFriends omits deleted friends and only returns active users', () async {
+      SocialService.instance.mockFriendsStream = (uid) => Stream.value([
+        Friend(
+          id: 'active_friend_doc',
+          friendUserId: 'active_friend_uid',
+          displayName: 'Active Explorer',
+          username: '@active_user',
+          level: 3,
+          createdAt: DateTime.now(),
+        ),
+      ]);
+
+      final friends = await SocialService.instance.streamFriends('current_user_1').first;
+
+      expect(friends.length, equals(1));
+      expect(friends.first.friendUserId, equals('active_friend_uid'));
+      expect(friends.first.displayName, equals('Active Explorer'));
+
+      SocialService.instance.mockFriendsStream = null;
+    });
+
+    test('streamConversations marks deleted participants as Deleted Account', () async {
+      DirectChatService.instance.mockConversationsStream = (uid) => Stream.value([
+        ChatConversation(
+          id: 'chat_with_deleted',
+          participants: [uid, 'deleted_user_uid'],
+          otherUserId: 'deleted_user_uid',
+          otherDisplayName: 'Deleted Account',
+          otherUsername: 'deleted_user',
+          otherPhotoUrl: null,
+          lastMessage: 'Goodbye!',
+          lastMessageTime: DateTime.now(),
+          unreadCount: 0,
+        ),
+      ]);
+
+      final convos =
+          await DirectChatService.instance.streamConversations('current_user_1').first;
+
+      expect(convos.length, equals(1));
+      expect(convos.first.otherDisplayName, equals('Deleted Account'));
+      expect(convos.first.otherUsername, equals('deleted_user'));
+      expect(convos.first.otherPhotoUrl, isNull);
+
+      DirectChatService.instance.mockConversationsStream = null;
     });
   });
 }

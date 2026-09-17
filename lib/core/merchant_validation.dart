@@ -41,7 +41,7 @@ class MerchantValidation {
   static String? registration(String? value) {
     final v = (value ?? '').trim();
     return v.isEmpty ||
-            RegExp(r'^[A-Za-z0-9][A-Za-z0-9 ()/-]{4,39}$').hasMatch(v)
+            RegExp(r'^[A-Za-z0-9][A-Za-z0-9 ()/-]{4,49}$').hasMatch(v)
         ? null
         : 'Check the registration number against your certificate.';
   }

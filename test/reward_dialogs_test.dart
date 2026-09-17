@@ -97,10 +97,7 @@ void main() {
     );
 
     expect(find.text('Too Far Away!'), findsOneWidget);
-    expect(
-      find.textContaining('25 metres', findRichText: true),
-      findsOneWidget,
-    );
+    expect(find.textContaining('within 25 meters'), findsOneWidget);
 
     await tester.ensureVisible(find.text('GET CLOSER'));
     await tester.tap(find.text('GET CLOSER'));

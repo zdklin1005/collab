@@ -13,7 +13,9 @@ import '../services/cloudinary_images.dart';
 import '../services/direct_chat_service.dart';
 import '../services/in_app_notification_service.dart';
 import '../services/localquest_services.dart';
+import '../services/reward_service.dart';
 import '../services/social_service.dart';
+import '../services/spotify_service.dart';
 
 class DirectChatScreen extends StatefulWidget {
   const DirectChatScreen({
@@ -158,6 +160,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
               final user = userSnap.data;
               final level = user?.level ?? 1;
               final exp = user?.exp ?? 0;
+              final levelProgress = RewardService.instance.getLevelProgress(exp, level);
               final displayName = user?.displayName ?? widget.targetDisplayName;
               final username = user?.username ?? widget.targetUsername;
               final photoUrl = user?.photoUrl ?? widget.targetPhotoUrl;
@@ -256,14 +259,16 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                             children: [
                               Row(
                                 children: [
-                                  const Icon(
-                                    Icons.chat_bubble_outline_rounded,
+                                  Icon(
+                                    note.hasMusic
+                                        ? Icons.graphic_eq_rounded
+                                        : Icons.chat_bubble_outline_rounded,
                                     size: 14,
                                     color: LqColors.primary,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
-                                    '24-HR STATUS NOTE',
+                                    note.hasMusic ? 'CURRENTLY PLAYING' : 'STATUS NOTE',
                                     style: monoLabel.copyWith(
                                       fontSize: 9.5,
                                       letterSpacing: 1.0,
@@ -287,24 +292,43 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                               ],
                               if (note.hasMusic) ...[
                                 const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
+                                Material(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: InkWell(
+                                    onTap: (note.spotifyUrl != null && note.spotifyUrl!.isNotEmpty)
+                                        ? () => SpotifyService.instance.launchSpotify(note.spotifyUrl)
+                                        : null,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      if (note.albumArtUrl != null && note.albumArtUrl!.isNotEmpty)
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(6),
-                                          child: Image.network(
-                                            note.albumArtUrl!,
-                                            width: 36,
-                                            height: 36,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, _, _) => Container(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          if (note.albumArtUrl != null && note.albumArtUrl!.isNotEmpty)
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(6),
+                                              child: Image.network(
+                                                note.albumArtUrl!,
+                                                width: 36,
+                                                height: 36,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, _, _) => Container(
+                                                  width: 36,
+                                                  height: 36,
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFF1DB954).withValues(alpha: 0.15),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 20),
+                                                ),
+                                              ),
+                                            )
+                                          else
+                                            Container(
                                               width: 36,
                                               height: 36,
                                               decoration: BoxDecoration(
@@ -313,51 +337,37 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                                               ),
                                               child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 20),
                                             ),
-                                          ),
-                                        )
-                                      else
-                                        Container(
-                                          width: 36,
-                                          height: 36,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF1DB954).withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 20),
-                                        ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              note.songTitle ?? '',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w700,
-                                                color: LqColors.ink,
-                                              ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  note.songTitle ?? '',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: LqColors.ink,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  note.songArtist ?? '',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: LqColors.muted,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            Text(
-                                              note.songArtist ?? '',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: LqColors.muted,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                          ),
+                                          const LqSpotifyLogo(size: 20),
+                                        ],
                                       ),
-                                      const Icon(
-                                        Icons.music_note_rounded,
-                                        color: Color(0xFF1DB954),
-                                        size: 20,
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -443,7 +453,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(6),
                               child: LinearProgressIndicator(
-                                value: ((exp % 3000) / 3000.0).clamp(0.05, 1.0),
+                                value: levelProgress.progress,
                                 minHeight: 8,
                                 backgroundColor: const Color(0xFFE2E8F0),
                                 valueColor: const AlwaysStoppedAnimation<Color>(LqColors.primary),
@@ -451,7 +461,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Level $level Explorer • Next tier at ${level * 3000} XP',
+                              'Level $level Explorer • Next tier at ${levelProgress.nextLevelExp} XP',
                               style: const TextStyle(
                                 fontSize: 11,
                                 color: LqColors.muted,

@@ -170,9 +170,19 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if willBeMerchant()
         && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isMerchantNow()
-        && resource.data.ownerId == request.auth.uid
-        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if (
+        (
+          isMerchantNow()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == request.auth.uid
+        )
+        ||
+        (
+          signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['views', 'claims'])
+        )
+      );
       allow delete: if isMerchantNow()
         && resource.data.ownerId == request.auth.uid;
     }

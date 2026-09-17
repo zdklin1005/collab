@@ -913,50 +913,28 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 _BiometricSettingTile(userId: currentUser.id),
               ]),
-          const SizedBox(height: 24),
-          _section(
-            'Preferences',
-            user.role == AccountRole.merchant
-                ? [
-              _PreferenceTile(
-                user: user,
-                keyName: 'campaignNotifications',
-                icon: Icons.campaign_outlined,
-                title: 'Campaign notifications',
-                subtitle: 'Campaign status and performance updates',
-              ),
-              _PreferenceTile(
-                user: user,
-                keyName: 'claimNotifications',
-                icon: Icons.confirmation_num_outlined,
-                title: 'Voucher claim notifications',
-                subtitle: 'Alerts when tourists claim your vouchers',
-              ),
-            ]
-                : [
-              _PreferenceTile(
-                user: user,
-                keyName: 'tripNotifications',
-                icon: Icons.notifications_none,
-                title: 'Trip notifications',
-                subtitle: 'Check-ins, rewards & reminders',
-              ),
-              _PreferenceTile(
-                user: user,
-                keyName: 'locationHistory',
-                icon: Icons.location_on_outlined,
-                title: 'Location history',
-                subtitle: 'Automatic visit logging',
-              ),
-              _PreferenceTile(
-                user: user,
-                keyName: 'partnerOffers',
-                icon: Icons.card_giftcard,
-                title: 'Partner offers',
-                subtitle: 'Occasional local reward updates',
-              ),
-            ],
-          ),
+          if (user.role != AccountRole.merchant) ...[
+            const SizedBox(height: 24),
+            _section(
+              'Preferences',
+              [
+                _PreferenceTile(
+                  user: user,
+                  keyName: 'tripNotifications',
+                  icon: Icons.notifications_none,
+                  title: 'Notifications',
+                  subtitle: 'Check-ins, rewards & reminders',
+                ),
+                _PreferenceTile(
+                  user: user,
+                  keyName: 'locationHistory',
+                  icon: Icons.location_on_outlined,
+                  title: 'Location history',
+                  subtitle: 'Automatic visit logging',
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
           _section('Connected Accounts', [
             _GoogleSettingTile(user: user),
@@ -1264,7 +1242,7 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
   }
 
   Future<void> _checkStatus() async {
-    final linked = await SpotifyService.instance.isSpotifyLinked();
+    final linked = await SpotifyService.instance.isSpotifyLinked(widget.userId);
     if (mounted) {
       setState(() {
         _isLinked = linked;
@@ -1367,7 +1345,7 @@ class _SpotifySettingTileState extends State<_SpotifySettingTile> {
               ),
               onPressed: () async {
                 final success = await SpotifyService.instance
-                    .authenticateWithSpotify();
+                    .authenticateWithSpotify(widget.userId);
                 _checkStatus();
                 if (context.mounted && success) {
                   showLqMessage(context, 'Spotify connected!');
@@ -1782,15 +1760,20 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
   late String _currentEmail;
   bool _busy = false;
   bool _checkingStatus = false;
+  bool _resendingVerification = false;
+  bool _isEmailVerified = false;
 
   @override
   void initState() {
     super.initState();
     String? initial;
     try {
-      initial = widget.currentEmail ?? AuthService.instance.auth.currentUser?.email;
+      final user = AuthService.instance.auth.currentUser;
+      initial = widget.currentEmail ?? user?.email;
+      _isEmailVerified = user?.emailVerified ?? false;
     } catch (_) {
       initial = widget.currentEmail;
+      _isEmailVerified = false;
     }
     _currentEmail = initial ?? '';
     WidgetsBinding.instance.addObserver(this);
@@ -1816,26 +1799,123 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
     super.dispose();
   }
 
+  Future<void> _resendVerification() async {
+    if (_resendingVerification) return;
+    setState(() => _resendingVerification = true);
+    try {
+      await AuthService.instance.auth.currentUser?.sendEmailVerification();
+      if (mounted) {
+        showLqMessage(
+          context,
+          'Verification link resent. Please check your inbox.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showLqMessage(
+          context,
+          'Unable to resend email right now. Please try again later.',
+          error: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _resendingVerification = false);
+    }
+  }
+
   Future<void> _checkVerification({bool quiet = false}) async {
     if (_checkingStatus) return;
     setState(() => _checkingStatus = true);
     try {
       final fresh = await AuthService.instance.syncCurrentUserEmail();
-      if (fresh != null && fresh.isNotEmpty && fresh != _currentEmail) {
-        if (mounted) {
-          setState(() => _currentEmail = fresh);
-          showLqMessage(context, 'Email address updated to $_currentEmail.');
+      final freshUser = AuthService.instance.auth.currentUser;
+      final verified = freshUser?.emailVerified ?? false;
+      if (mounted) {
+        setState(() {
+          _isEmailVerified = verified;
+          if (fresh != null && fresh.isNotEmpty && fresh != _currentEmail) {
+            _currentEmail = fresh;
+            showLqMessage(context, 'Email address updated to $_currentEmail.');
+          }
+        });
+        if (!quiet) {
+          if (verified) {
+            showLqMessage(context, 'Your email is verified!');
+          } else {
+            showLqMessage(
+              context,
+              'Email not verified yet. Please click the verification link sent to your email.',
+            );
+          }
         }
-      } else if (!quiet && mounted) {
-        showLqMessage(
-          context,
-          'Email not changed yet. Please click the verification link sent to your new email.',
-        );
       }
     } catch (_) {
     } finally {
       if (mounted) setState(() => _checkingStatus = false);
     }
+  }
+
+  Widget? _buildVerificationBanner() {
+    if (_isEmailVerified) return null;
+
+    return CustomPaint(
+      foregroundPainter: const LqDashedBorderPainter(
+        color: Color(0xFF93C5FD),
+        radius: 16,
+        strokeWidth: 1.35,
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDCE8FF),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.mark_email_unread_outlined,
+                color: LqColors.primary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Verify your email address',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: LqColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Please verify $_currentEmail to secure your account and enable full recovery.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: LqColors.muted,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1844,6 +1924,7 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
     title: 'Email address',
     subtitle: 'Use an address you can access for account recovery.',
     headerIcon: Icons.email_outlined,
+    banner: _buildVerificationBanner(),
     children: [
       Form(
         key: _form,
@@ -1851,9 +1932,19 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
         child: Column(
           children: [
             TextFormField(
-              key: ValueKey(_currentEmail),
-              initialValue: _currentEmail,              enabled: false,
-              decoration: const InputDecoration(labelText: 'Current email'),
+              key: ValueKey('$_currentEmail-$_isEmailVerified'),
+              initialValue: _currentEmail,
+              enabled: false,
+              decoration: InputDecoration(
+                labelText: 'Current email',
+                suffixIcon: _isEmailVerified
+                    ? const Icon(
+                        Icons.check_circle,
+                        color: LqColors.success,
+                        size: 20,
+                      )
+                    : null,
+              ),
             ),
             const SizedBox(height: 16),
             LqField(
@@ -1871,30 +1962,35 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
               obscureText: true,
               validator: (v) => v == null || v.isEmpty
                   ? 'Enter your current password.'
-                  : null,            ),
+                  : null,
+            ),
             const SizedBox(height: 12),
             const Text(
               'We’ll send a verification link before your email address changes.',
               style: TextStyle(color: LqColors.muted, fontSize: 12),
             ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _checkingStatus ? null : () => _checkVerification(quiet: false),
-                icon: _checkingStatus
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh, size: 16),
-                label: const Text(
-                  'Already verified? Check status',
-                  style: TextStyle(fontSize: 12),
+            if (!_isEmailVerified) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _resendingVerification ? null : _resendVerification,
+                  icon: _resendingVerification
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.mark_email_unread_outlined, size: 16),
+                  label: Text(
+                    _resendingVerification
+                        ? 'Sending verification email...'
+                        : 'Resend verification email',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
               ),
-            ),
+            ],
             const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerRight,
@@ -1903,7 +1999,8 @@ class _EmailAddressScreenState extends State<EmailAddressScreen>
                 busy: _busy,
                 onPressed: _save,
               ),
-            ),          ],
+            ),
+          ],
         ),
       ),
     ],
@@ -2068,12 +2165,14 @@ class _SimpleFormPage extends StatelessWidget {
     required this.children,
     this.subtitle,
     this.headerIcon,
+    this.banner,
   });
   final String eyebrow;
   final String title;
   final String? subtitle;
   final List<Widget> children;
   final IconData? headerIcon;
+  final Widget? banner;
 
   @override
   Widget build(BuildContext context) => LqPage(
@@ -2090,7 +2189,11 @@ class _SimpleFormPage extends StatelessWidget {
             subtitle: subtitle,
             icon: headerIcon,
           ),
-          const SizedBox(height: 24),
+          if (banner != null) ...[
+            const SizedBox(height: 14),
+            banner!,
+          ],
+          const SizedBox(height: 20),
           LqCard(child: Column(children: children)),
         ],
       ),
@@ -2570,9 +2673,64 @@ class _HelpCentreScreenState extends State<HelpCentreScreen> {
   }
 }
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key, required this.user});
   final AppUser user;
+
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with WidgetsBindingObserver {
+  bool _isEmailVerified = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    try {
+      _isEmailVerified =
+          AuthService.instance.auth.currentUser?.emailVerified ?? false;
+    } catch (_) {
+      _isEmailVerified = false;
+    }
+    _refreshVerificationStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshVerificationStatus();
+    }
+  }
+
+  Future<void> _refreshVerificationStatus() async {
+    try {
+      final u = AuthService.instance.auth.currentUser;
+      if (u != null) {
+        await u.reload();
+        if (mounted) {
+          setState(() {
+            _isEmailVerified =
+                AuthService.instance.auth.currentUser?.emailVerified ?? false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isEmailVerified = false;
+        });
+      }
+    }
+  }
 
   String _timeAgo(DateTime time) {
     final diff = DateTime.now().difference(time);
@@ -2584,41 +2742,226 @@ class NotificationsScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => LqPage(
-    child: SizedBox(
-      width: double.infinity,
-      child: StreamBuilder<List<ChatConversation>>(
-        stream: DirectChatService.instance.streamConversations(user.id),
-        builder: (context, chatSnap) {
-          final conversations =
-              (chatSnap.data ?? [])
-                  .where((c) => c.lastMessage.isNotEmpty)
-                  .toList()
-                ..sort(
-                  (a, b) => b.lastMessageTime.compareTo(a.lastMessageTime),
-                );
+  Widget build(BuildContext context) {
+    final user = widget.user;
+    return LqPage(
+      child: SizedBox(
+        width: double.infinity,
+        child: StreamBuilder<List<ChatConversation>>(
+          stream: DirectChatService.instance.streamConversations(user.id),
+          builder: (context, chatSnap) {
+            final conversations =
+                (chatSnap.data ?? [])
+                    .where((c) => c.lastMessage.isNotEmpty)
+                    .toList()
+                  ..sort(
+                    (a, b) => b.lastMessageTime.compareTo(a.lastMessageTime),
+                  );
 
-          return StreamBuilder<List<FriendRequest>>(
-            stream: SocialService.instance.streamFriendRequests(user.id),
-            builder: (context, reqSnap) {
-              final requests = reqSnap.data ?? [];
-              final bool hasItems =
-                  conversations.isNotEmpty || requests.isNotEmpty;
+            return StreamBuilder<List<FriendRequest>>(
+              stream: SocialService.instance.streamFriendRequests(user.id),
+              builder: (context, reqSnap) {
+                final requests = reqSnap.data ?? [];
+                final bool hasItems =
+                    !_isEmailVerified ||
+                    conversations.isNotEmpty ||
+                    requests.isNotEmpty;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const LqBackButton(label: 'Profile'),
-                    const SizedBox(height: 14),
-                    const LqTitleBlock(
-                      eyebrow: 'Activity',
-                      title: 'Notifications',
-                      subtitle: 'Messages, friend requests & updates in one place.',
-                      icon: Icons.notifications_none_outlined,
-                    ),
-                    const SizedBox(height: 20),
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 28, 16, 36),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const LqBackButton(label: 'Profile'),
+                      const SizedBox(height: 14),
+                      const LqTitleBlock(
+                        eyebrow: 'Activity',
+                        title: 'Notifications',
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Account & Security section (unverified email prompt)
+                      if (!_isEmailVerified) ...[
+                        const Text(
+                          'ACCOUNT & SECURITY',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: LqColors.muted,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFDCE8FF),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Icon(
+                                      Icons.mark_email_unread_outlined,
+                                      color: LqColors.primary,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                'Verify your email address',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 14,
+                                                  color: LqColors.ink,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Action required',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: LqColors.primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Please confirm ${user.email} to secure your account, recover access, and receive important updates.',
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            color: LqColors.muted,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Wrap(
+                                  alignment: WrapAlignment.end,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      onPressed: () async {
+                                        try {
+                                          await AuthService
+                                              .instance
+                                              .auth
+                                              .currentUser
+                                              ?.sendEmailVerification();
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Verification email resent! Please check your inbox.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        } catch (_) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Unable to resend email right now. Please try again later.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                      child: const Text(
+                                        'Resend link',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: LqColors.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    FilledButton(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: LqColors.primary,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 8,
+                                        ),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                      ),
+                                      onPressed: () async {
+                                        await Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => EmailAddressScreen(
+                                              currentEmail: user.email,
+                                            ),
+                                          ),
+                                        );
+                                        _refreshVerificationStatus();
+                                      },
+                                      child: const Text(
+                                        'Verify Now',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                     // Friend requests section
                     if (requests.isNotEmpty) ...[
@@ -2986,6 +3329,7 @@ class NotificationsScreen extends StatelessWidget {
       ),
     ),
   );
+}
 }
 
 class PrivacyScreen extends StatelessWidget {

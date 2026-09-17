@@ -34,11 +34,31 @@ class MainActivity : FlutterFragmentActivity() {
         private const val KEY_TIMESTAMP = "timestamp"
     }
 
+    private var initialAuthCallbackUri: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleDeepLink(intent)
         registerSpotifyReceiver()
         createNotificationChannel()
         requestNotificationPermission()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    private fun handleDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "localquest" && data.host == "callback") {
+            val uriStr = data.toString()
+            initialAuthCallbackUri = uriStr
+            runOnUiThread {
+                spotifyMethodChannel?.invokeMethod("onSpotifyAuthCallback", uriStr)
+            }
+        }
     }
 
     private fun createNotificationChannel() {
@@ -100,6 +120,11 @@ class MainActivity : FlutterFragmentActivity() {
                 "clearBroadcast" -> {
                     getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
                     result.success(true)
+                }
+                "getInitialAuthCallback" -> {
+                    val uri = initialAuthCallbackUri
+                    initialAuthCallbackUri = null
+                    result.success(uri)
                 }
                 else -> result.notImplemented()
             }

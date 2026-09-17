@@ -128,8 +128,46 @@ class SpotifyService {
         } catch (e) {
           debugPrint('Error handling native onPlaybackChanged: $e');
         }
+      } else if (call.method == 'onSpotifyAuthCallback') {
+        try {
+          final uriStr = call.arguments as String?;
+          if (uriStr != null && uriStr.isNotEmpty) {
+            await _handleAuthCallbackUri(uriStr);
+          }
+        } catch (e) {
+          debugPrint('Error handling native onSpotifyAuthCallback: $e');
+        }
       }
     });
+  }
+
+  Completer<bool>? _authCompleter;
+  String? _authUserId;
+  String? _usedRedirectUri;
+
+  Future<void> _handleAuthCallbackUri(String uriStr) async {
+    try {
+      final uri = Uri.parse(uriStr);
+      final code = uri.queryParameters['code'];
+      final error = uri.queryParameters['error'];
+      if (code != null && code.isNotEmpty) {
+        final success = await exchangeAuthCode(
+          code,
+          _authUserId,
+          _usedRedirectUri ?? defaultRedirectUri,
+        );
+        if (_authCompleter != null && !_authCompleter!.isCompleted) {
+          _authCompleter!.complete(success);
+        }
+      } else if (error != null) {
+        debugPrint('Spotify OAuth error: $error');
+        if (_authCompleter != null && !_authCompleter!.isCompleted) {
+          _authCompleter!.complete(false);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error handling auth callback URI: $e');
+    }
   }
 
   Future<void> _updateUserLiveNote(String uid, SpotifyTrack track) async {
@@ -221,31 +259,25 @@ class SpotifyService {
   // Registered Spotify Developer App credentials
   static const String clientId = 'f7ebb503ee4d4265b1dee2884042a53e';
   static const String clientSecret = '7b7545ff84f6411d90249147671fd6e8';
-  static const String redirectUri = 'http://127.0.0.1:8888/callback';
+  static const String appRedirectUri = 'localquest://callback';
+  static const String loopbackRedirectUri = 'http://127.0.0.1:8888/callback';
+
+  static String get defaultRedirectUri =>
+      (!kIsWeb && Platform.isAndroid) ? appRedirectUri : loopbackRedirectUri;
+  static String get redirectUri => defaultRedirectUri;
 
   static const String _prefAccessToken = 'spotify_user_access_token';
   static const String _prefRefreshToken = 'spotify_user_refresh_token';
   static const String _prefExpiresAt = 'spotify_user_expires_at';
+  static const String _prefConnectedUserId = 'spotify_connected_user_id';
 
   Future<List<SpotifyTrack>> Function(String query)? mockSearchTracks;
   Future<SpotifyTrack?> Function()? mockFetchCurrentlyPlaying;
   Future<bool> Function()? mockAuthenticateWithSpotify;
 
-  /// Check if the user has an active authenticated Spotify session or local broadcast
-  Future<bool> isUserConnected() async {
-    if (!kIsWeb && Platform.isAndroid) {
-      try {
-        final broadcast = await _nativeChannel
-            .invokeMethod<Map<dynamic, dynamic>>('getLatestBroadcast');
-        if (broadcast != null &&
-            (broadcast['track'] as String? ?? '').isNotEmpty) {
-          return true;
-        }
-      } catch (_) {}
-    }
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_prefAccessToken);
-    return token != null && token.isNotEmpty;
+  /// Check if the user has an active authenticated Spotify session
+  Future<bool> isUserConnected([String? userId]) async {
+    return isSpotifyLinked(userId);
   }
 
   /// Disconnect Spotify account, clear stored tokens, active track and broadcast
@@ -254,6 +286,10 @@ class SpotifyService {
     await prefs.remove(_prefAccessToken);
     await prefs.remove(_prefRefreshToken);
     await prefs.remove(_prefExpiresAt);
+    await prefs.remove(_prefConnectedUserId);
+    if (userId != null && userId.isNotEmpty) {
+      await prefs.remove('${_prefAccessToken}_$userId');
+    }
     _latestTrack = null;
     setLiveSync(null, false);
     if (userId != null && userId.isNotEmpty) {
@@ -276,10 +312,20 @@ class SpotifyService {
   }
 
   /// Check whether a Spotify user account is currently linked
-  Future<bool> isSpotifyLinked() async {
+  Future<bool> isSpotifyLinked([String? userId]) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_prefAccessToken);
-    return token != null && token.isNotEmpty;
+    if (token == null || token.isEmpty) return false;
+    if (userId != null && userId.isNotEmpty) {
+      final connectedUid = prefs.getString(_prefConnectedUserId);
+      if (connectedUid != null && connectedUid != userId) {
+        return false;
+      }
+      if (connectedUid == null) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Retrieve a valid user access token, automatically refreshing if expired
@@ -346,9 +392,14 @@ class SpotifyService {
   }
 
   /// Exchange authorization code from Spotify OAuth redirect for access & refresh tokens
-  Future<bool> exchangeAuthCode(String code) async {
+  Future<bool> exchangeAuthCode(
+    String code, [
+    String? userId,
+    String? customRedirectUri,
+  ]) async {
     try {
       final cleanCode = code.trim();
+      final targetRedirect = customRedirectUri ?? defaultRedirectUri;
       final authHeader = base64Encode(utf8.encode('$clientId:$clientSecret'));
       final uri = Uri.parse('https://accounts.spotify.com/api/token');
       final response = await _client.post(
@@ -360,7 +411,7 @@ class SpotifyService {
         body: {
           'grant_type': 'authorization_code',
           'code': cleanCode,
-          'redirect_uri': redirectUri,
+          'redirect_uri': targetRedirect,
         },
       );
 
@@ -369,7 +420,8 @@ class SpotifyService {
         final accessToken = data['access_token'] as String?;
         final refreshToken = data['refresh_token'] as String?;
         final expiresIn = data['expires_in'] as int? ?? 3600;
-        final expiresAt = DateTime.now().millisecondsSinceEpoch + (expiresIn * 1000);
+        final expiresAt =
+            DateTime.now().millisecondsSinceEpoch + (expiresIn * 1000);
 
         if (accessToken != null) {
           final prefs = await SharedPreferences.getInstance();
@@ -378,10 +430,14 @@ class SpotifyService {
             await prefs.setString(_prefRefreshToken, refreshToken);
           }
           await prefs.setInt(_prefExpiresAt, expiresAt);
+          if (userId != null && userId.isNotEmpty) {
+            await prefs.setString(_prefConnectedUserId, userId);
+          }
           return true;
         }
       } else {
-        debugPrint('Token exchange failed: ${response.statusCode} ${response.body}');
+        debugPrint(
+            'Token exchange failed: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       debugPrint('Error exchanging Spotify auth code: $e');
@@ -390,40 +446,62 @@ class SpotifyService {
   }
 
   /// Save direct Spotify access token (manual developer connect or test token)
-  Future<void> saveManualAccessToken(String token) async {
+  Future<void> saveManualAccessToken(String token, [String? userId]) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefAccessToken, token.trim());
-    await prefs.setInt(_prefExpiresAt, DateTime.now().millisecondsSinceEpoch + (3600 * 1000));
+    await prefs.setInt(_prefExpiresAt,
+        DateTime.now().millisecondsSinceEpoch + (3600 * 1000));
+    if (userId != null && userId.isNotEmpty) {
+      await prefs.setString(_prefConnectedUserId, userId);
+    }
   }
 
   String? lastPlaybackStatus;
 
-  /// Connect user with Spotify OAuth using local loopback listener
-  Future<bool> authenticateWithSpotify() async {
+  /// Connect user with Spotify OAuth using deep link on Android, with local loopback listener fallback
+  Future<bool> authenticateWithSpotify([String? userId]) async {
     if (mockAuthenticateWithSpotify != null) {
       return mockAuthenticateWithSpotify!();
     }
 
-    HttpServer? server;
-    try {
-      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8888);
-    } catch (e) {
-      debugPrint('Could not bind loopback server on port 8888: $e');
+    // If already linked, avoid launching the browser unnecessarily
+    if (await isSpotifyLinked(userId)) {
+      return true;
     }
 
-    final authUri = Uri.parse(
-      'https://accounts.spotify.com/authorize?'
-      'client_id=$clientId&'
-      'response_type=code&'
-      'redirect_uri=${Uri.encodeComponent(redirectUri)}&'
-      'scope=${Uri.encodeComponent('user-read-currently-playing user-read-playback-state user-read-recently-played')}',
-    );
+    _authUserId = userId;
+    _usedRedirectUri = defaultRedirectUri;
+    final completer = Completer<bool>();
+    _authCompleter = completer;
 
-    await launchUrl(authUri, mode: LaunchMode.externalApplication);
+    HttpServer? server;
+    StreamSubscription<HttpRequest>? sub;
 
-    if (server != null) {
+    // Check if initial deep link callback is already pending on Android
+    if (!kIsWeb && Platform.isAndroid) {
       try {
-        final request = await server.first.timeout(const Duration(minutes: 2));
+        final pendingUri =
+            await _nativeChannel.invokeMethod<String>('getInitialAuthCallback');
+        if (pendingUri != null && pendingUri.isNotEmpty) {
+          await _handleAuthCallbackUri(pendingUri);
+          if (completer.isCompleted) {
+            return await completer.future;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Also start loopback HTTP server as a listener/fallback
+    try {
+      server =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 8888, shared: true);
+      sub = server.listen((HttpRequest request) async {
+        if (request.uri.path == '/favicon.ico') {
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+          return;
+        }
+
         final code = request.uri.queryParameters['code'];
         final error = request.uri.queryParameters['error'];
 
@@ -433,39 +511,70 @@ class SpotifyService {
             <!DOCTYPE html>
             <html>
             <head><meta charset="utf-8"><title>Connected</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
               body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 48px 20px; background: #121212; color: #fff; }
               .card { max-width: 380px; margin: 0 auto; background: #1e1e1e; padding: 32px 24px; border-radius: 20px; box-shadow: 0 12px 32px rgba(0,0,0,0.6); }
               .icon { font-size: 52px; margin-bottom: 16px; color: #1DB954; }
               h2 { margin: 0 0 10px; color: #1DB954; font-size: 22px; }
               p { color: #b3b3b3; font-size: 14px; line-height: 1.5; margin: 0; }
+              .btn { display: inline-block; margin-top: 20px; padding: 12px 24px; background: #1DB954; color: #fff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; }
             </style>
             </head>
             <body>
               <div class="card">
                 <div class="icon">✓</div>
                 <h2>Spotify Connected!</h2>
-                <p>You can now return to LocalQuest. Your currently playing track will sync automatically.</p>
+                <p>You can now switch back to LocalQuest. Your currently playing music will sync automatically.</p>
+                <a class="btn" href="javascript:window.close();">Return to LocalQuest</a>
               </div>
+              <script>
+                setTimeout(function() {
+                  window.close();
+                }, 2000);
+              </script>
             </body>
             </html>
           ''');
           await request.response.close();
-          await server.close();
-          return await exchangeAuthCode(code);
-        } else {
-          request.response.write('Spotify connection cancelled or failed: $error');
+          final success =
+              await exchangeAuthCode(code, userId, loopbackRedirectUri);
+          if (!completer.isCompleted) {
+            completer.complete(success);
+          }
+        } else if (error != null) {
+          request.response.write(
+              'Spotify connection cancelled or failed: $error');
           await request.response.close();
-          await server.close();
-          return false;
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
         }
-      } catch (e) {
-        debugPrint('OAuth timeout or error: $e');
-        await server.close();
-        return false;
-      }
+      });
+    } catch (e) {
+      debugPrint('Could not bind loopback server on port 8888: $e');
     }
-    return false;
+
+    final authUri = Uri.parse(
+      'https://accounts.spotify.com/authorize?'
+      'client_id=$clientId&'
+      'response_type=code&'
+      'redirect_uri=${Uri.encodeComponent(_usedRedirectUri ?? defaultRedirectUri)}&'
+      'scope=${Uri.encodeComponent('user-read-currently-playing user-read-playback-state user-read-recently-played')}',
+    );
+
+    await launchUrl(authUri, mode: LaunchMode.externalApplication);
+
+    try {
+      return await completer.future.timeout(const Duration(minutes: 2));
+    } catch (e) {
+      debugPrint('OAuth timeout or cancelled: $e');
+      return false;
+    } finally {
+      await sub?.cancel();
+      await server?.close(force: true);
+      _authCompleter = null;
+    }
   }
 
   /// Helper to convert Spotify track JSON map to SpotifyTrack model

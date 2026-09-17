@@ -65,6 +65,11 @@ class SocialService {
                     ),
                   );
                   continue;
+                } else {
+                  // User account was deleted!
+                  // Clean up the orphaned reference from this user's friends subcollection
+                  doc.reference.delete().catchError((_) {});
+                  continue;
                 }
               } catch (_) {}
               friends.add(initial);
@@ -125,6 +130,11 @@ class SocialService {
                       fromLevel: liveLevel ?? req.fromLevel,
                     ),
                   );
+                  continue;
+                } else {
+                  // The requester's account was deleted!
+                  // Clean up orphaned friend request
+                  doc.reference.delete().catchError((_) {});
                   continue;
                 }
               } catch (_) {}
@@ -414,5 +424,52 @@ class SocialService {
       }
     }
     return results;
+  }
+
+  /// Check if current user already sent a pending request to target user
+  Future<bool> hasPendingSentRequest({
+    required String currentUserId,
+    required String targetUserId,
+  }) async {
+    try {
+      final targetDoc = await db.collection('users').doc(targetUserId).get();
+      if (!targetDoc.exists) return false;
+
+      final doc = await db
+          .collection('users')
+          .doc(targetUserId)
+          .collection('friendRequests')
+          .doc(currentUserId)
+          .get();
+      return doc.exists && doc.data()?['status'] == 'pending';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Check if two users are already friends
+  Future<bool> isFriend({
+    required String currentUserId,
+    required String targetUserId,
+  }) async {
+    try {
+      final doc = await db
+          .collection('users')
+          .doc(currentUserId)
+          .collection('friends')
+          .doc(targetUserId)
+          .get();
+      if (!doc.exists) return false;
+
+      // Verify that target user actually still exists in Firestore
+      final targetDoc = await db.collection('users').doc(targetUserId).get();
+      if (!targetDoc.exists) {
+        doc.reference.delete().catchError((_) {});
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }

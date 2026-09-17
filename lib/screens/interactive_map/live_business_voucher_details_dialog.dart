@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/localquest_models.dart';
 import '../../services/live_business_voucher_claim_service.dart';
+import '../../services/localquest_services.dart';
 import 'live_business_voucher_collection_check.dart';
 
 class LiveBusinessVoucherDetailsDialog extends StatefulWidget {
@@ -29,6 +30,12 @@ class _LiveBusinessVoucherDetailsDialogState
   String? _message;
 
   Campaign get campaign => widget.campaign;
+
+  @override
+  void initState() {
+    super.initState();
+    MerchantRepository.instance.recordCampaignView(widget.campaign.id);
+  }
 
   String _discountLabel() {
     if (campaign.discountValue <= 0) {

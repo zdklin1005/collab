@@ -471,6 +471,24 @@ class MissionService {
     await _syncCampaignMissions(uid, city: city);
   }
 
+  /// Backward-compatible alias for [ensureMissionsUpToDate] returning active missions.
+  Future<List<Mission>> generateDailyMissions(
+    String uid, {
+    required double currentLat,
+    required double currentLng,
+    int count = 3,
+  }) async {
+    await ensureMissionsUpToDate(
+      uid,
+      currentLat: currentLat,
+      currentLng: currentLng,
+    );
+    final snap = await _missionsRef(
+      uid,
+    ).where('status', isEqualTo: MissionStatus.active.name).get();
+    return snap.docs.map(Mission.fromDoc).toList();
+  }
+
   /// Generates today's 3 daily missions if they haven't been generated
   /// yet today (Malaysia time). Expires any leftover daily missions
   /// from a previous day — daily missions don't carry over.
